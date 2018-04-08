@@ -39,7 +39,7 @@ void SimAnneal::initExpectedParams()
 
 void SimAnneal::exportData()
 {
-  //create the vector of strings for the db locationss
+  // create the vector of strings for the db locations
   std::vector<std::vector<std::string>> dbl_data(db_locs.size());
   for (unsigned int i = 0; i < db_locs.size(); i++) { //need the index
     dbl_data[i].resize(2);
@@ -50,16 +50,17 @@ void SimAnneal::exportData()
   phys_con->setDBLocData(dbl_data);
 
   std::vector<std::vector<std::string>> db_dist_data(db_charges.size());
-  unsigned int i = 0;
-  for (auto db_charge : db_charges) {
-    db_dist_data[i].resize(1);
+  //unsigned int i = 0;
+  for (unsigned int i = 0; i < db_charges.size(); i++) {
+  //for (auto db_charge : db_charges) {
+    db_dist_data[i].resize(2);
     std::string dbc_link;
-    for(auto chg : db_charge){
+    for(auto chg : db_charges[i]){
       dbc_link.append(std::to_string(chg));
     }
     db_dist_data[i][0] = dbc_link;
+    db_dist_data[i][1] = std::to_string(config_energies[i]);
     // std::cout << db_dist_data[i][0] << std::endl;
-    i++;
   }
 
   phys_con->setExportDBElecConfig(true);
@@ -90,7 +91,7 @@ bool SimAnneal::runSim()
 
   // exit if no dbs
   if(n_dbs == 0) {
-    std::cout << "No dbs found, nothing to simulation. Exiting." << std::endl;
+    std::cout << "No dbs found, nothing to simulate. Exiting." << std::endl;
     return false;
   }
 
@@ -142,6 +143,9 @@ void SimAnneal::initVars()
   db_charges.resize(result_queue_size);
   db_charges.push_back(std::vector<int>(n_dbs));
   curr_charges = db_charges.back();
+
+  config_energies.resize(result_queue_size);
+  config_energies.push_back(0);
 
   std::cout << "Variable initialization complete" << std::endl << std::endl;
 }
@@ -251,9 +255,11 @@ void SimAnneal::simAnneal()
     std::cout << "Charge post-hop=";
     printCharges();
 
+    E_end = systemEnergy();
 
     // push back the new arrangement
     db_charges.push_back(curr_charges);
+    config_energies.push_back(E_end);
 
     // perform time-step if not pre-annealing
     if(t_preanneal > 0)
@@ -262,7 +268,6 @@ void SimAnneal::simAnneal()
       timeStep();
 
     // print statistics
-    E_end = systemEnergy();
     std::cout << "Cycle: " << ((t_preanneal > 0) ? -t_preanneal : t);
     std::cout << ", ending energy: " << E_end;
     std::cout << ", delta: " << E_end-E_begin << std::endl << std::endl;

@@ -29,11 +29,14 @@ namespace phys {
 
     // run simulation
     bool runSim();
+
+    // export the data through physics connector
     void exportData();
 
 
     std::vector<std::pair<float,float>> db_locs; // location of free dbs
     boost::circular_buffer<std::vector<int>> db_charges;
+    boost::circular_buffer<float> config_energies;  // energies in line with db_charges
 
   private:
     // simulation components
@@ -44,6 +47,7 @@ namespace phys {
     void dbHop(int from_ind, int to_ind);
     void timeStep();      // advance time-step
     void printCharges();
+
     // physical calculations
     float systemEnergy();
     float distance(float x1, float y1, float x2, float y2);
@@ -70,10 +74,8 @@ namespace phys {
     // TODO reduce class-level variables
 
     int n_dbs=-1; // number of dbs
-    float debye_length; // Silicon intrinsic Debye length in m (TODO trial and error to get good magic number)
-    //std::vector<int> db_charges; // charge in each db, only 0 or 1 are allowed
+    float debye_length; // Silicon intrinsic Debye length in m
     std::vector<std::vector<float>> db_r; // distance between all dbs
-    //std::vector<std::pair<float,float>> db_locs; // location of free dbs
     std::vector<std::tuple<float,float,float>> fixed_charges; // location of fixed charges
     float v_0; // global potential and other stuff (magic number)
     float kT, kT_step, v_freeze_step; // temperature, time
@@ -84,7 +86,6 @@ namespace phys {
     float unfav_hop_scale; // acceptance prob of positive energy hopes, lower for less probable: exp(-v_diff/unfav_hop_scale)
     // TODO result queue: which type?
     int result_queue_size;
-    //std::deque<std::vector<int>> db_charges;
     std::vector<int> curr_charges;
 
     PhysicsConnector* phys_con;

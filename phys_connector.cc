@@ -340,6 +340,7 @@ void PhysicsConnector::writeResultsXml()
     for (unsigned int i = 0; i < db_elec_data.size(); i++){
       bpt::ptree node_dist;
       node_dist.put("", db_elec_data[i][0]);
+      node_dist.put("<xmlattr>.energy", db_elec_data[i][1]);
       node_elec_dist.add_child("dist", node_dist);
     }
     node_root.add_child("elec_dist", node_elec_dist);
