@@ -92,7 +92,7 @@
      <item>
       <widget class="QLineEdit" name="le_global_v0">
        <property name="text">
-        <string>1.5</string>
+        <string>0.3</string>
        </property>
       </widget>
      </item>

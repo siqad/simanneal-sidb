@@ -129,6 +129,7 @@ void SimAnneal::initVars()
                   std::stoi(phys_con->getParameter("result_queue_size")) : 1000;
   result_queue_size = t_max < result_queue_size ? t_max : result_queue_size;
 
+  Kc = 1/(4 * constants::PI * constants::EPS_SURFACE * constants::EPS0);
   kT = 2.568E-2; kT_step = 0.999999;    // kT = Boltzmann constant (eV/K) * 298 K, NOTE kT_step arbitrary
   v_freeze = 0, v_freeze_step = 0.001;  // NOTE v_freeze_step arbitrary
   unfav_hop_scale = 1;    // TODO still needs experimenting
@@ -392,13 +393,14 @@ int SimAnneal::getRandDBInd(int charge)
 float SimAnneal::systemEnergy()
 {
   assert(n_dbs > 0);
-  float v = v_0;
+  float v = 0;
   for(int i=0; i<n_dbs; i++) {
-    v += curr_charges[i] * (v_ext[i] + v_drive[i]); // TODO combine v_ext and v_drive since they're not changing anyway (but somewhere above there's v_ext - v_drive, investigate)
+    v += v_0 + curr_charges[i] * (v_ext[i] + v_drive[i]); // TODO combine v_ext and v_drive since they're not changing anyway (but somewhere above there's v_ext - v_drive, investigate)
     for(int j=i+1; j<n_dbs; j++)
       v += curr_charges[i] * curr_charges[j] * v_ij[i][j];
   }
-  return v * har_to_ev;
+  //return v * har_to_ev; // revert back to this when going back to hartree calculations
+  return v;
 }
 
 
@@ -411,5 +413,5 @@ float SimAnneal::distance(float x1, float y1, float x2, float y2)
 float SimAnneal::interElecPotential(float r)
 {
   //return exp(-r/debye_length) / r;
-  return 1.6E-19 / (4*3.14*8.854E-12) * exp(-r/debye_length) / r; // TODO revert to the version above after verification stage
+  return constants::Q0 * Kc * exp(-r/debye_length) / r;
 }
