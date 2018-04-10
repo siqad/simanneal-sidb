@@ -132,7 +132,6 @@ void SimAnneal::initVars()
   Kc = 1/(4 * constants::PI * constants::EPS_SURFACE * constants::EPS0);
   kT = 2.568E-2; kT_step = 0.999999;    // kT = Boltzmann constant (eV/K) * 298 K, NOTE kT_step arbitrary
   v_freeze = 0, v_freeze_step = 0.001;  // NOTE v_freeze_step arbitrary
-  unfav_hop_scale = 1;    // TODO still needs experimenting
 
   // resize vectors
   v_eff.resize(n_dbs);
@@ -329,7 +328,7 @@ bool SimAnneal::acceptHop(float v_diff)
     return true;
 
   // some acceptance function, acceptance probability falls off exponentially
-  float prob = exp(-v_diff/unfav_hop_scale);
+  float prob = exp(-v_diff/kT);
   return evalProb(prob);
 }
 

@@ -113,7 +113,5 @@ namespace phys {
     std::vector<std::tuple<float,float,float>> fixed_charges; // location of fixed charges
     std::vector<int> curr_charges;  // electron configuration at the current time-step
 
-    float unfav_hop_scale; // acceptance prob of positive energy hopes, lower for less probable: exp(-v_diff/unfav_hop_scale)
-
   };
 }
