@@ -218,9 +218,11 @@ void SimAnneal::simAnneal()
       for(j=0; j<n_dbs; j++)
         if(i!=j)
           v_eff[i] -= v_ij[i][j] * curr_charges[j];
-
-      curr_charges[i] = acceptPop(i) ? !curr_charges[i] : curr_charges[i]; // accept population change?
     }
+    for (i=0; i<n_dbs; i++)
+      if (acceptPop(i))
+        curr_charges[i] = !curr_charges[i];
+
     printCharges();
 
 
