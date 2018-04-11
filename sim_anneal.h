@@ -21,6 +21,7 @@ namespace constants{
   const float PI = 3.14159;
   const float EPS0 = 8.854E-12;
   const float EPS_SURFACE = 6.35;
+  const float Kb = 8.617E-5;
 }
 
 namespace phys {
@@ -99,7 +100,7 @@ namespace phys {
     float v_0;          // global bias
 
     // other variables used for calculations
-    float kT, kT_step, v_freeze_step; // temperature, time
+    float kT0, kT, kT_step, v_freeze_step; // temperature, time
     int t=0, t_max, t_preanneal;      // keep track of annealing cycles
     float v_freeze;                   // freeze out potential (pushes
                                       // out population transition probability)

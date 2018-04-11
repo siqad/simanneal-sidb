@@ -81,6 +81,24 @@
     </layout>
    </item>
    <item>
+    <layout class="QHBoxLayout" name="min_T_hl">
+     <item>
+      <widget class="QLabel" name="label_min_T">
+       <property name="text">
+        <string>Minimum Annealing Temperature (K):</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLineEdit" name="le_min_T">
+       <property name="text">
+        <string>4</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
     <layout class="QHBoxLayout" name="global_v0_hl">
      <item>
       <widget class="QLabel" name="label_global_v0">

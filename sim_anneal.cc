@@ -121,16 +121,21 @@ void SimAnneal::initVars()
   t_max = phys_con->parameterExists("anneal_cycles") ?
                   std::stoi(phys_con->getParameter("anneal_cycles")) : 10000;
   v_0 = phys_con->parameterExists("global_v0") ?
-                  std::stof(phys_con->getParameter("global_v0")) : 1; // TODO this should be fixed
+                  std::stof(phys_con->getParameter("global_v0")) : 0.25;
   debye_length = phys_con->parameterExists("debye_length") ?
-                  std::stof(phys_con->getParameter("debye_length")) : 5E-9; // ~10s of dimer rows
+                  std::stof(phys_con->getParameter("debye_length")) : 5E-9;
+
+  kT0 = constants::Kb;
+  kT0 *= phys_con->parameterExists("min_T") ?
+            std::stof(phys_con->getParameter("min_T")) : 4;
+  std::cout << "kT0 retrieved: " << std::stof(phys_con->getParameter("min_T"));
 
   result_queue_size = phys_con->parameterExists("result_queue_size") ?
                   std::stoi(phys_con->getParameter("result_queue_size")) : 1000;
   result_queue_size = t_max < result_queue_size ? t_max : result_queue_size;
 
   Kc = 1/(4 * constants::PI * constants::EPS_SURFACE * constants::EPS0);
-  kT = 2.568E-2; kT_step = 0.999999;    // kT = Boltzmann constant (eV/K) * 298 K, NOTE kT_step arbitrary
+  kT = 300*constants::Kb; kT_step = 0.999;    // kT = Boltzmann constant (eV/K) * 298 K, NOTE kT_step arbitrary
   v_freeze = 0, v_freeze_step = 0.001;  // NOTE v_freeze_step arbitrary
 
   // resize vectors
@@ -287,8 +292,7 @@ void SimAnneal::dbHop(int from_ind, int to_ind)
 void SimAnneal::timeStep()
 {
   t++;
-  // TODO kT and v_freeze schedules still need refinement
-  kT *= kT_step;
+  kT = kT0 + (kT - kT0) * kT_step;
   v_freeze += v_freeze_step;
 }
 
