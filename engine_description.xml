@@ -12,4 +12,42 @@
         <param gui_object_type="QLineEdit" gui_object_name="le_global_v0">global_v0</param>
         <param gui_object_type="QLineEdit" gui_object_name="le_debye_length">debye_length</param>
     </sim_params>
+    <sim_params_new>
+        <result_queue_size>
+          <T>int</T>
+          <val>1000</val>
+          <label>Result queue size</label>
+          <tip>The number of results to retrieve from SimAnneal.</tip>
+        </result_queue_size>
+        <preanneal_cycles>
+          <T>int</T>
+          <val>1000</val>
+          <label>Preanneal cycles</label>
+          <tip>The number of simulated annealing cycles to run in high temperature before entering the actual schedule.</tip>
+        </preanneal_cycles>
+        <anneal_cycles>
+          <T>int</T>
+          <val>10000</val>
+          <label>Anneal cycles</label>
+          <tip>The number of simulated annealing cycles.</tip>
+        </anneal_cycles>
+        <min_T>
+          <T>float</T>
+          <val>4</val>
+          <label>Minimum annealing temperature (K)</label>
+          <tip>The minimum temperature at the end of the annealing schedule.</tip>
+        </min_T>
+        <global_v0>
+          <T>float</T>
+          <val>0.25</val>
+          <label>Fermi level V0</label>
+          <tip>The global Fermi level on the surface, higher value brings more electrons to the surface.</tip>
+        </global_v0>
+        <debye_length>
+          <T>float</T>
+          <val>5E-9</val>
+          <label>Debye length (m)</label>
+          <tip>Debye length for screening.</tip>
+        </debye_length>
+    </sim_params_new>
 </physeng>
