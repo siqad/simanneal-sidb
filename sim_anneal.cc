@@ -123,7 +123,9 @@ void SimAnneal::initVars()
   v_0 = phys_con->parameterExists("global_v0") ?
                   std::stof(phys_con->getParameter("global_v0")) : 0.25;
   debye_length = phys_con->parameterExists("debye_length") ?
-                  std::stof(phys_con->getParameter("debye_length")) : 5E-9;
+                  std::stof(phys_con->getParameter("debye_length")) : 5;
+  debye_length *= 1E-9; // TODO change the rest of the code to use nm / angstrom
+                        //      instead of doing a conversion here.
 
   kT0 = constants::Kb;
   kT0 *= phys_con->parameterExists("min_T") ?

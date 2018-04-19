@@ -37,8 +37,8 @@
         </global_v0>
         <debye_length>
           <T>float</T>
-          <val>5E-9</val>
-          <label>Debye length (m)</label>
+          <val>5</val>
+          <label>Debye length (nm)</label>
           <tip>Debye length for screening.</tip>
         </debye_length>
         <test_var>
