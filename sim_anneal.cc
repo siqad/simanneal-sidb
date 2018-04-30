@@ -420,5 +420,5 @@ float SimAnneal::distance(float x1, float y1, float x2, float y2)
 float SimAnneal::interElecPotential(float r)
 {
   //return exp(-r/debye_length) / r;
-  return constants::Q0 * Kc * exp(-r/debye_length) / r;
+  return constants::Q0 * Kc * erf(r/constants::ERFDB) * exp(-r/debye_length) / r;
 }

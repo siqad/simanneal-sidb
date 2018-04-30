@@ -22,6 +22,7 @@ namespace constants{
   const float EPS0 = 8.854E-12;
   const float EPS_SURFACE = 6.35;
   const float Kb = 8.617E-5;
+  const float ERFDB = 5E-10;
 }
 
 namespace phys {
