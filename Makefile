@@ -51,8 +51,8 @@ ifeq ($(FOR_OS),win32)
 endif
 ifeq ($(FOR_OS),win64)
 	# MXE paths
-	MXE_INCLUDE_PATH=/opt/mxe/usr/x86_64-w64-mingw32.static/include
-	MXE_LIB_PATH=/opt/mxe/usr/x86_64-w64-mingw32.static/lib
+	MXE_INCLUDE_PATH=/usr/lib/mxe/usr/x86_64-w64-mingw32.static/include
+	MXE_LIB_PATH=/usr/lib/mxe/usr/x86_64-w64-mingw32.static/lib
 
 	# Boost compiled with mingw32
 	BOOST_INCLUDE_PATH=$(MXE_INCLUDE_PATH)/boost
