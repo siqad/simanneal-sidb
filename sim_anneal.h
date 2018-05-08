@@ -66,7 +66,7 @@ namespace phys {
     ublas::vector<int> genPopDelta();
 
     // perform an electron hop from one DB to another
-    void dbHop(int from_ind, int to_ind);
+    void performHop(int from_ind, int to_ind);
 
     // advance time-step
     void timeStep();
@@ -79,6 +79,7 @@ namespace phys {
     float distance(float x1, float y1, float x2, float y2);
     float totalCoulombPotential(ublas::vector<int> config);
     float interElecPotential(float r);
+    float hopEnergyDelta(int i, int j);
 
     // ACCEPTANCE FUNCTIONS
     bool acceptPop(int db_ind);

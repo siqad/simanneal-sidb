@@ -187,7 +187,7 @@ void SimAnneal::simAnneal()
   float E_sys, E_begin, E_end;
   ublas::vector<int> dn(n_dbs);
   int from_ind, to_ind; // hopping from -> to (indices)
-  int hop_count;
+  int hop_attempts;
   float E_pre_hop, E_post_hop;
 
   E_sys = systemEnergy();
@@ -202,23 +202,60 @@ void SimAnneal::simAnneal()
     // Population
     std::cout << "Population update, v_freeze=" << v_freeze << ", kT=" << kT << std::endl;
     dn = genPopDelta();
-    n += dn;
-    E_sys += -1 * ublas::inner_prod(v_local, dn) + totalCoulombPotential(dn);
-    v_local -= ublas::prod(v_ij, dn);
 
-    std::cout << "dn = [ ";
-    for (int i=0; i<dn.size(); i++)
-      std::cout << dn(i) << " ";
-    std::cout << "]" << std::endl;
+    bool pop_changed = false;
+    for (int i=0; i<dn.size(); i++) {
+      if (dn[i] != 0)
+        pop_changed = true;
+      break;
+    }
 
+    if (pop_changed) {
+      n += dn;
+      E_sys += -1 * ublas::inner_prod(v_local, dn) + totalCoulombPotential(dn);
+      v_local -= ublas::prod(v_ij, dn);
+
+      std::cout << "dn = [ ";
+      for (int i=0; i<dn.size(); i++)
+        std::cout << dn(i) << " ";
+      std::cout << "]" << std::endl;
+
+      printCharges();
+      std::cout << "v_local = [ ";
+      for (int i=0; i<v_local.size(); i++)
+        std::cout << v_local(i) << " ";
+      std::cout << "]" << std::endl;
+
+      std::cout << "E_calc = " << systemEnergy() << std::endl;
+      std::cout << "E_sys = " << E_sys << std::endl;
+    }
+
+
+    std::cout << "Hopping" << std::endl;
+    hop_attempts = 0;
+    int unocc_count = chargedDBCount(1);
+    while (hop_attempts < unocc_count*5) {
+      from_ind = getRandDBInd(1);
+      to_ind = getRandDBInd(0);
+      if (from_ind == -1 || to_ind == -1)
+        break; // hopping not possible
+
+      
+      if (acceptHop(hopEnergyDelta(from_ind, to_ind))) {
+        performHop(from_ind, to_ind);
+        // calculate energy difference
+        //E_sys += 0; // TODO look up matrix column addition
+        //v_local += 0; // TODO look at matrix column addition
+
+        std::cout << "Hop performed: ";
+        printCharges();
+        std::cout << "Energy diff=" << E_post_hop-E_pre_hop << std::endl;
+      }
+      hop_attempts++;
+    }
+    std::cout << "Charge post-hop=";
     printCharges();
-    std::cout << "v_local = [ ";
-    for (int i=0; i<v_local.size(); i++)
-      std::cout << v_local(i) << " ";
-    std::cout << "]" << std::endl;
 
-    std::cout << "E_calc = " << systemEnergy() << std::endl;
-    std::cout << "E_sys = " << E_sys << std::endl;
 
 
     // Hopping
@@ -281,7 +318,7 @@ ublas::vector<int> SimAnneal::genPopDelta()
   return dn;
 }
 
-void SimAnneal::dbHop(int from_ind, int to_ind)
+void SimAnneal::performHop(int from_ind, int to_ind)
 {
   n[from_ind] = 0;
   n[to_ind] = 1;
