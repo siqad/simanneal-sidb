@@ -73,19 +73,14 @@ void SimAnneal::exportData()
 bool SimAnneal::runSim()
 {
   // grab all physical locations (in original distance unit)
-  // TODO move to phys_engine
   std::cout << "Grab all physical locations..." << std::endl;
   n_dbs = 0;
   phys_con->initCollections();
   for(auto db : *(phys_con->db_col)) {
-    if(db->elec != 1){
-      db_locs.push_back(std::make_pair(db->x, db->y));
-      n_dbs++;
-      std::cout << "DB loc: x=" << db_locs.back().first
-          << ", y=" << db_locs.back().second << std::endl;
-    }
-    else
-      fixed_charges.push_back(std::make_tuple(db->x, db->y, db->elec));
+    db_locs.push_back(std::make_pair(db->x, db->y));
+    n_dbs++;
+    std::cout << "DB loc: x=" << db_locs.back().first
+        << ", y=" << db_locs.back().second << std::endl;
   }
   std::cout << "Free dbs, n_dbs=" << n_dbs << std::endl << std::endl;
 
@@ -98,7 +93,6 @@ bool SimAnneal::runSim()
   // initialize variables & perform pre-calculation
   initVars();
   precalc();
-
 
   // SIM ANNEAL
   simAnneal();
@@ -141,15 +135,13 @@ void SimAnneal::initVars()
   v_freeze = 0, v_freeze_step = 0.001;  // NOTE v_freeze_step arbitrary
 
   // resize vectors
-  v_eff.resize(n_dbs);
+  v_local.resize(n_dbs);
   v_ext.resize(n_dbs);
-  v_drive.resize(n_dbs);
-  v_ij.resize(n_dbs);
-  db_r.resize(n_dbs);
+  v_ij.resize(n_dbs,n_dbs);
+  db_r.resize(n_dbs,n_dbs);
 
   db_charges.resize(result_queue_size);
-  db_charges.push_back(std::vector<int>(n_dbs));
-  curr_charges = db_charges.back();
+  n.resize(n_dbs);
 
   config_energies.resize(result_queue_size);
   config_energies.push_back(0);
@@ -166,37 +158,22 @@ void SimAnneal::precalc()
   }
 
   for(int i=0; i<n_dbs; i++) {
-    db_r[i].resize(n_dbs);
-    v_ij[i].resize(n_dbs);
-    for(int j=0; j<n_dbs; j++) {
-      if (i>j) {
-        db_r[i][j] = db_r[j][i];
-        v_ij[i][j] = v_ij[j][i];
+    for(int j=i; j<n_dbs; j++) {
+      if (j==i) {
+        db_r(i,j) = 0;
+        v_ij(i,j) = 0;
+      } else {
+        db_r(i,j) = distance(db_locs[i].first, db_locs[i].second, db_locs[j].first, db_locs[j].second)*db_distance_scale;
+        v_ij(i,j) = interElecPotential(db_r(i,j));
+        db_r(j,i) = db_r(i,j);
+        v_ij(j,i) = v_ij(i,j);
       }
-      else if (i==j) {
-        db_r[i][j] = 0;
-        v_ij[i][j] = div_0;
-      }
-      else {
-        db_r[i][j] = distance(db_locs[i].first, db_locs[i].second, db_locs[j].first, db_locs[j].second)*db_distance_scale;
-        v_ij[i][j] = interElecPotential(db_r[i][j]);
-        std::cout << "db_r[" << i << "][" << j << "]=" << db_r[i][j] << ", v_ij[" << i << "][" << j << "]=" << v_ij[i][j] << std::endl;
-        // TODO: db_r in bohr length
-      }
+      std::cout << "db_r[" << i << "][" << j << "]=" << db_r(i,j) << ", v_ij[" << i << "][" << j << "]=" << v_ij(i,j) << std::endl;
     }
 
-    // effect from fixed charges
-    v_drive[i] = 0;
-    for(std::tuple<float,float,float> fc : fixed_charges) {
-      float r = distance(std::get<0>(fc), std::get<1>(fc), db_locs[i].first, db_locs[i].second)*db_distance_scale;
-      v_drive[i] += interElecPotential(r);
-    }
-    std::cout << "v_drive["<<i<<"]="<<v_drive[i]<<std::endl;
     // TODO add electrode effect to v_ext
 
-    v_eff[i] = 0;
-    v_ext[i] = 0;
-    //db_charges[i] = 0;
+    v_ext[i] = v_0;
   }
   std::cout << "Pre-calculation complete" << std::endl << std::endl;
 }
@@ -207,34 +184,45 @@ void SimAnneal::simAnneal()
   std::cout << "Performing simulated annealing..." << std::endl;
 
   // Vars
-  float E_begin, E_end;
-  int i=0,j=0;
+  float E_sys, E_begin, E_end;
+  ublas::vector<int> dn(n_dbs);
   int from_ind, to_ind; // hopping from -> to (indices)
   int hop_count;
   float E_pre_hop, E_post_hop;
+
+  E_sys = systemEnergy();
+  v_local = v_ext - ublas::prod(v_ij, n);
 
   // Run simulated annealing for predetermined time steps
   while(t < t_max) {
     E_begin = systemEnergy();
 
 
+    printCharges();
     // Population
     std::cout << "Population update, v_freeze=" << v_freeze << ", kT=" << kT << std::endl;
-    for(i=0; i<n_dbs; i++) {
-      v_eff[i] = v_0 + v_ext[i] - v_drive[i];
-      for(j=0; j<n_dbs; j++)
-        if(i!=j)
-          v_eff[i] -= v_ij[i][j] * curr_charges[j];
-    }
-    for (i=0; i<n_dbs; i++)
-      if (acceptPop(i))
-        curr_charges[i] = !curr_charges[i];
+    dn = genPopDelta();
+    n += dn;
+    E_sys += -1 * ublas::inner_prod(v_local, dn) + totalCoulombPotential(dn);
+    v_local -= ublas::prod(v_ij, dn);
+
+    std::cout << "dn = [ ";
+    for (int i=0; i<dn.size(); i++)
+      std::cout << dn(i) << " ";
+    std::cout << "]" << std::endl;
 
     printCharges();
+    std::cout << "v_local = [ ";
+    for (int i=0; i<v_local.size(); i++)
+      std::cout << v_local(i) << " ";
+    std::cout << "]" << std::endl;
+
+    std::cout << "E_calc = " << systemEnergy() << std::endl;
+    std::cout << "E_sys = " << E_sys << std::endl;
 
 
     // Hopping
-    std::cout << "Hopping" << std::endl;
+    /*std::cout << "Hopping" << std::endl;
     hop_count = 0;
     int unocc_count = chargedDBCount(1);
     while(hop_count < unocc_count*5) {
@@ -253,7 +241,7 @@ void SimAnneal::simAnneal()
       // accept hop given energy change? reverse hop if energy delta is unaccpted
       if(!acceptHop(E_post_hop-E_pre_hop))
         dbHop(to_ind, from_ind);
-        //curr_charges[from_ind] = 1, curr_charges[to_ind] = 0;
+        //n[from_ind] = 1, n[to_ind] = 0;
       else{
         std::cout << "Hop performed: ";
         printCharges();
@@ -262,12 +250,12 @@ void SimAnneal::simAnneal()
       hop_count++;
     }
     std::cout << "Charge post-hop=";
-    printCharges();
+    printCharges();*/
 
     E_end = systemEnergy();
 
     // push back the new arrangement
-    db_charges.push_back(curr_charges);
+    db_charges.push_back(n);
     config_energies.push_back(E_end);
 
     // perform time-step if not pre-annealing
@@ -283,11 +271,20 @@ void SimAnneal::simAnneal()
   }
 }
 
+ublas::vector<int> SimAnneal::genPopDelta()
+{
+  ublas::vector<int> dn(n_dbs);
+  for (int i=0; i<n.size(); i++) {
+    float prob = 1. / ( 1 + exp( ((2*n[i]-1)*v_local[i] + v_freeze) / kT ) );
+    dn[i] = evalProb(prob) ? 1 - 2*n[i] : 0;
+  }
+  return dn;
+}
 
 void SimAnneal::dbHop(int from_ind, int to_ind)
 {
-  curr_charges[from_ind] = 0;
-  curr_charges[to_ind] = 1;
+  n[from_ind] = 0;
+  n[to_ind] = 1;
 }
 
 
@@ -302,8 +299,8 @@ void SimAnneal::timeStep()
 void SimAnneal::printCharges()
 {
   for(int i=0; i<n_dbs; i++)
-    std::cout << curr_charges[i];
-  //for(int i : *curr_charges)
+    std::cout << n[i];
+  //for(int i : *n)
   //  std::cout << i;
   std::cout << std::endl;
 }
@@ -317,8 +314,8 @@ void SimAnneal::printCharges()
 
 bool SimAnneal::acceptPop(int db_ind)
 {
-  int curr_charge = curr_charges[db_ind];
-  float v = curr_charge ? v_eff[db_ind] + v_freeze : - v_eff[db_ind] + v_freeze; // 1->0 : 0->1
+  int curr_charge = n[db_ind];
+  float v = curr_charge ? v_ext[db_ind] + v_freeze : - v_ext[db_ind] + v_freeze; // 1->0 : 0->1
   float prob;
 
   prob = 1. / ( 1 + exp( v/kT ) );
@@ -348,7 +345,6 @@ bool SimAnneal::evalProb(float prob)
   boost::variate_generator<boost::random::mt19937&, boost::random::uniform_real_distribution<float>> rnd_gen(rng, dis);
 
   float generated_num = rnd_gen();
-  //std::cout << "Probability: True if lower than " << prob << ", evaluation " << generated_num << std::endl;
 
   return prob >= generated_num;
 }
@@ -363,7 +359,7 @@ bool SimAnneal::evalProb(float prob)
 int SimAnneal::chargedDBCount(int charge)
 {
   int i=0;
-  for(int db_charge : curr_charges)
+  for(int db_charge : n)
     if(db_charge == charge)
       i++;
   return i;
@@ -375,8 +371,8 @@ int SimAnneal::getRandDBInd(int charge)
   std::vector<int> dbs;
 
   // store the indices of dbs that have the desired occupation
-  for (unsigned int i=0; i<curr_charges.size(); i++)
-    if (curr_charges[i] == charge)
+  for (unsigned int i=0; i<n.size(); i++)
+    if (n[i] == charge)
       dbs.push_back(i);
 
   if (dbs.empty())
@@ -402,9 +398,9 @@ float SimAnneal::systemEnergy()
   assert(n_dbs > 0);
   float v = 0;
   for(int i=0; i<n_dbs; i++) {
-    v += v_0 + curr_charges[i] * (v_ext[i] + v_drive[i]); // TODO combine v_ext and v_drive since they're not changing anyway (but somewhere above there's v_ext - v_drive, investigate)
+    v -= v_0 + n[i] * (v_ext[i]);
     for(int j=i+1; j<n_dbs; j++)
-      v += curr_charges[i] * curr_charges[j] * v_ij[i][j];
+      v += n[i] * n[j] * v_ij(i,j);
   }
   //return v * har_to_ev; // revert back to this when going back to hartree calculations
   return v;
@@ -414,6 +410,12 @@ float SimAnneal::systemEnergy()
 float SimAnneal::distance(float x1, float y1, float x2, float y2)
 {
   return sqrt(pow(x1-x2, 2.0) + pow(y1-y2, 2.0));
+}
+
+
+float SimAnneal::totalCoulombPotential(ublas::vector<int> config)
+{
+  return 0.5 * ublas::inner_prod(config, ublas::prod(v_ij, config));
 }
 
 

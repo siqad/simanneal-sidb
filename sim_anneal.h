@@ -15,6 +15,8 @@
 #include <cmath>
 
 #include <boost/random.hpp>
+#include <boost/numeric/ublas/matrix.hpp>
+#include <boost/numeric/ublas/matrix_proxy.hpp>
 
 namespace constants{
   const float Q0 = 1.602E-19;
@@ -26,7 +28,7 @@ namespace constants{
 }
 
 namespace phys {
-
+  namespace ublas = boost::numeric::ublas;
   class SimAnneal
   {
   public:
@@ -45,7 +47,7 @@ namespace phys {
 
     int result_queue_size;
     std::vector<std::pair<float,float>> db_locs; // location of free dbs
-    boost::circular_buffer<std::vector<int>> db_charges;
+    boost::circular_buffer<ublas::vector<int>> db_charges;
     boost::circular_buffer<float> config_energies;  // energies in line with db_charges
 
   private:
@@ -60,6 +62,9 @@ namespace phys {
     // perform the simulated annealing
     void simAnneal();
 
+    // determine change in population
+    ublas::vector<int> genPopDelta();
+
     // perform an electron hop from one DB to another
     void dbHop(int from_ind, int to_ind);
 
@@ -72,6 +77,7 @@ namespace phys {
     // CALCULATIONS
     float systemEnergy();
     float distance(float x1, float y1, float x2, float y2);
+    float totalCoulombPotential(ublas::vector<int> config);
     float interElecPotential(float r);
 
     // ACCEPTANCE FUNCTIONS
@@ -91,7 +97,6 @@ namespace phys {
     PhysicsConnector* phys_con;
 
     // VARIABLES
-    const int div_0 = 1E5; // arbitrary big number that represents divide by 0
     const float har_to_ev = 27.2114; // hartree to eV conversion factor
     const float db_distance_scale = 1E-10; // TODO move this to xml
 
@@ -105,15 +110,14 @@ namespace phys {
     int t=0, t_max, t_preanneal;      // keep track of annealing cycles
     float v_freeze;                   // freeze out potential (pushes
                                       // out population transition probability)
-    std::vector<float> v_eff, v_ext, v_drive; // keep track of voltages at each
-                                              // dot location
-    std::vector<std::vector<float>> v_ij;     // coulombic repulsion
+    ublas::vector<float> v_local;
+    ublas::vector<float> v_ext; // keep track of voltages at each DB
+    ublas::matrix<float> v_ij;     // coulombic repulsion
 
     // keeping track of electron configurations and other house keeping vars
     int n_dbs=-1; // number of dbs
-    std::vector<std::vector<float>> db_r; // distance between all dbs
-    std::vector<std::tuple<float,float,float>> fixed_charges; // location of fixed charges
-    std::vector<int> curr_charges;  // electron configuration at the current time-step
+    ublas::matrix<float> db_r; // distance between all dbs
+    ublas::vector<int> n;  // electron configuration at the current time-step
 
   };
 }
