@@ -195,9 +195,10 @@ void SimAnneal::simAnneal()
 
     bool pop_changed = false;
     for (unsigned i=0; i<dn.size(); i++) {
-      if (dn[i] != 0)
+      if (dn[i] != 0) {
         pop_changed = true;
-      break;
+        break;
+      }
     }
 
     if (pop_changed) {
