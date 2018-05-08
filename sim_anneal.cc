@@ -15,6 +15,7 @@ SimAnneal::SimAnneal(const std::string& i_path, const std::string& o_path)
 {
   phys_con = new PhysicsConnector(std::string("SimAnneal"), i_path, o_path);
   rng.seed(std::time(NULL));
+  dis01 = boost::random::uniform_real_distribution<float>(0,1);
   initExpectedParams();
 }
 
@@ -22,7 +23,6 @@ SimAnneal::SimAnneal(const std::string& i_path, const std::string& o_path)
 void SimAnneal::initExpectedParams()
 {
   std::cout << "SimAnneal instantiated." << std::endl;
-  phys_con->setRequiredSimParam("preanneal_cycles");
   phys_con->setRequiredSimParam("anneal_cycles");
   phys_con->setRequiredSimParam("global_v0");
   phys_con->setRequiredSimParam("debye_length");
@@ -106,12 +106,6 @@ bool SimAnneal::runSim()
 void SimAnneal::initVars()
 {
   std::cout << "Initializing variables..." << std::endl;
-  if(n_dbs <= 0){
-    std::cout << "There are no dbs in the problem!" << std::endl;
-    return;
-  }
-  t_preanneal = phys_con->parameterExists("preanneal_cycles") ?
-                  std::stoi(phys_con->getParameter("preanneal_cycles")) : 1000;
   t_max = phys_con->parameterExists("anneal_cycles") ?
                   std::stoi(phys_con->getParameter("anneal_cycles")) : 10000;
   v_0 = phys_con->parameterExists("global_v0") ?
@@ -142,9 +136,9 @@ void SimAnneal::initVars()
 
   db_charges.resize(result_queue_size);
   n.resize(n_dbs);
+  occ.resize(n_dbs);
 
   config_energies.resize(result_queue_size);
-  config_energies.push_back(0);
 
   std::cout << "Variable initialization complete" << std::endl << std::endl;
 }
@@ -152,13 +146,9 @@ void SimAnneal::initVars()
 void SimAnneal::precalc()
 {
   std::cout << "Performing pre-calculation..." << std::endl;
-  if(n_dbs <= 0){
-    std::cout << "There are no dbs in the problem!" << std::endl;
-    return;
-  }
 
-  for(int i=0; i<n_dbs; i++) {
-    for(int j=i; j<n_dbs; j++) {
+  for (int i=0; i<n_dbs; i++) {
+    for (int j=i; j<n_dbs; j++) {
       if (j==i) {
         db_r(i,j) = 0;
         v_ij(i,j) = 0;
@@ -168,7 +158,8 @@ void SimAnneal::precalc()
         db_r(j,i) = db_r(i,j);
         v_ij(j,i) = v_ij(i,j);
       }
-      std::cout << "db_r[" << i << "][" << j << "]=" << db_r(i,j) << ", v_ij[" << i << "][" << j << "]=" << v_ij(i,j) << std::endl;
+      std::cout << "db_r[" << i << "][" << j << "]=" << db_r(i,j) << ", v_ij["
+          << i << "][" << j << "]=" << v_ij(i,j) << std::endl;
     }
 
     // TODO add electrode effect to v_ext
@@ -184,27 +175,26 @@ void SimAnneal::simAnneal()
   std::cout << "Performing simulated annealing..." << std::endl;
 
   // Vars
-  float E_sys, E_begin, E_end;
-  ublas::vector<int> dn(n_dbs);
-  int from_ind, to_ind; // hopping from -> to (indices)
+  float E_sys;                  // energy of the system
+  ublas::vector<int> dn(n_dbs); // change of occupation for population update
+  int from_occ_ind, to_occ_ind; // hopping from n[occ[from_ind]]
+  int from_ind, to_ind;         // hopping from n[from_ind] to n[to_ind]
   int hop_attempts;
-  float E_pre_hop, E_post_hop;
 
   E_sys = systemEnergy();
   v_local = v_ext - ublas::prod(v_ij, n);
 
   // Run simulated annealing for predetermined time steps
   while(t < t_max) {
-    E_begin = systemEnergy();
-
 
     printCharges();
+
     // Population
     std::cout << "Population update, v_freeze=" << v_freeze << ", kT=" << kT << std::endl;
     dn = genPopDelta();
 
     bool pop_changed = false;
-    for (int i=0; i<dn.size(); i++) {
+    for (unsigned i=0; i<dn.size(); i++) {
       if (dn[i] != 0)
         pop_changed = true;
       break;
@@ -216,102 +206,88 @@ void SimAnneal::simAnneal()
       v_local -= ublas::prod(v_ij, dn);
 
       std::cout << "dn = [ ";
-      for (int i=0; i<dn.size(); i++)
+      for (unsigned i=0; i<dn.size(); i++)
         std::cout << dn(i) << " ";
       std::cout << "]" << std::endl;
 
       printCharges();
       std::cout << "v_local = [ ";
-      for (int i=0; i<v_local.size(); i++)
+      for (unsigned i=0; i<v_local.size(); i++)
         std::cout << v_local(i) << " ";
       std::cout << "]" << std::endl;
 
-      std::cout << "E_calc = " << systemEnergy() << std::endl;
+      //std::cout << "E_calc = " << systemEnergy() << std::endl;
       std::cout << "E_sys = " << E_sys << std::endl;
     }
 
 
-    std::cout << "Hopping" << std::endl;
+    // Occupation list update
+    int occ_ind=0, unocc_ind=n_dbs-1;
+    for (int db_ind=0; db_ind<n_dbs; db_ind++) {
+      if (n[db_ind])
+        occ[occ_ind++] = db_ind;
+      else
+        occ[unocc_ind--] = db_ind;
+    }
+    std::cout << "occ = [ ";
+    for (unsigned i=0; i<dn.size(); i++)
+      std::cout << occ[i] << " ";
+    std::cout << "]" << std::endl;
+    n_elec = occ_ind;
+
+
+    // Hopping
+    std::cout << "Hopping with n_elec=" << n_elec << std::endl;
     hop_attempts = 0;
-    int unocc_count = chargedDBCount(1);
-    while (hop_attempts < unocc_count*5) {
-      from_ind = getRandDBInd(1);
-      to_ind = getRandDBInd(0);
-      if (from_ind == -1 || to_ind == -1)
-        break; // hopping not possible
+    if (n_elec != 0) {
+      while (hop_attempts < (n_dbs-n_elec)*5) {
+        from_occ_ind = getRandOccInd(1);
+        to_occ_ind = getRandOccInd(0);
+        from_ind = occ[from_occ_ind];
+        to_ind = occ[to_occ_ind];
 
-      
-      if (acceptHop(hopEnergyDelta(from_ind, to_ind))) {
-        performHop(from_ind, to_ind);
-        // calculate energy difference
-        //E_sys += 0; // TODO look up matrix column addition
-        //v_local += 0; // TODO look at matrix column addition
+        //E_pre_hop = systemEnergy();
+        float E_del = hopEnergyDelta(from_ind, to_ind);
+        if (acceptHop(E_del)) {
+          performHop(from_ind, to_ind);
+          occ[from_occ_ind] = to_ind;
+          occ[to_occ_ind] = from_ind;
+          // calculate energy difference
+          E_sys += E_del;
+          ublas::matrix_column<ublas::matrix<float>> v_i (v_ij, from_ind);
+          ublas::matrix_column<ublas::matrix<float>> v_j (v_ij, to_ind);
+          v_local += v_i - v_j;
 
-        std::cout << "Hop performed: ";
-        printCharges();
-        std::cout << "Energy diff=" << E_post_hop-E_pre_hop << std::endl;
+          std::cout << "Hop performed: ";
+          printCharges();
+          std::cout << "Energy diff=" << E_del << std::endl;
+        }
+        hop_attempts++;
       }
-      hop_attempts++;
     }
     std::cout << "Charge post-hop=";
     printCharges();
 
-
-
-    // Hopping
-    /*std::cout << "Hopping" << std::endl;
-    hop_count = 0;
-    int unocc_count = chargedDBCount(1);
-    while(hop_count < unocc_count*5) {
-      // TODO instead of finding system energy twice, could just find the potential difference of the db between pre- and post-hop
-      E_pre_hop = systemEnergy(); // original energy
-      from_ind = getRandDBInd(1);
-      to_ind = getRandDBInd(0);
-
-      if(from_ind == -1 || to_ind == -1)
-        break; // hopping not possible
-
-      // perform the hop
-      dbHop(from_ind, to_ind);
-      E_post_hop = systemEnergy(); // new energy
-
-      // accept hop given energy change? reverse hop if energy delta is unaccpted
-      if(!acceptHop(E_post_hop-E_pre_hop))
-        dbHop(to_ind, from_ind);
-        //n[from_ind] = 1, n[to_ind] = 0;
-      else{
-        std::cout << "Hop performed: ";
-        printCharges();
-        std::cout << "Energy diff=" << E_post_hop-E_pre_hop << std::endl;
-      }
-      hop_count++;
-    }
-    std::cout << "Charge post-hop=";
-    printCharges();*/
-
-    E_end = systemEnergy();
-
     // push back the new arrangement
     db_charges.push_back(n);
-    config_energies.push_back(E_end);
+    config_energies.push_back(E_sys);
 
     // perform time-step if not pre-annealing
-    if(t_preanneal > 0)
-      t_preanneal--;
-    else
-      timeStep();
+    timeStep();
 
     // print statistics
-    std::cout << "Cycle: " << ((t_preanneal > 0) ? -t_preanneal : t);
-    std::cout << ", ending energy: " << E_end;
-    std::cout << ", delta: " << E_end-E_begin << std::endl << std::endl;
+    std::cout << "Cycle: " << t;
+    std::cout << ", ending energy: " << E_sys << std::endl << std::endl;
+    /*std::cout << ", delta: " << E_del << std::endl << std::endl;*/
   }
+
+  std::cout << "Final energy should be: " << systemEnergy() << std::endl;
 }
 
 ublas::vector<int> SimAnneal::genPopDelta()
 {
   ublas::vector<int> dn(n_dbs);
-  for (int i=0; i<n.size(); i++) {
+  for (unsigned i=0; i<n.size(); i++) {
     float prob = 1. / ( 1 + exp( ((2*n[i]-1)*v_local[i] + v_freeze) / kT ) );
     dn[i] = evalProb(prob) ? 1 - 2*n[i] : 0;
   }
@@ -329,7 +305,7 @@ void SimAnneal::timeStep()
 {
   t++;
   kT = kT0 + (kT - kT0) * kT_step;
-  v_freeze += v_freeze_step;
+  v_freeze = t * v_freeze_step;
 }
 
 
@@ -337,8 +313,6 @@ void SimAnneal::printCharges()
 {
   for(int i=0; i<n_dbs; i++)
     std::cout << n[i];
-  //for(int i : *n)
-  //  std::cout << i;
   std::cout << std::endl;
 }
 
@@ -356,8 +330,6 @@ bool SimAnneal::acceptPop(int db_ind)
   float prob;
 
   prob = 1. / ( 1 + exp( v/kT ) );
-
-  //std::cout << "v_eff=" << v_eff[db_ind] << ", P(" << curr_charge << "->" << !curr_charge << ")=" << prob << std::endl;
 
   return evalProb(prob);
 }
@@ -378,12 +350,10 @@ bool SimAnneal::acceptHop(float v_diff)
 // takes a probability and generates true/false accordingly
 bool SimAnneal::evalProb(float prob)
 {
-  boost::random::uniform_real_distribution<float> dis(0,1);
-  boost::variate_generator<boost::random::mt19937&, boost::random::uniform_real_distribution<float>> rnd_gen(rng, dis);
+  //float generated_num = dis01(rng);
+  boost::variate_generator<boost::random::mt19937&, boost::random::uniform_real_distribution<float>> rnd_gen(rng, dis01);
 
-  float generated_num = rnd_gen();
-
-  return prob >= generated_num;
+  return prob >= rnd_gen();
 }
 
 
@@ -393,34 +363,18 @@ bool SimAnneal::evalProb(float prob)
 // ACCESSORS
 
 
-int SimAnneal::chargedDBCount(int charge)
+int SimAnneal::getRandOccInd(int charge)
 {
-  int i=0;
-  for(int db_charge : n)
-    if(db_charge == charge)
-      i++;
-  return i;
-}
-
-
-int SimAnneal::getRandDBInd(int charge)
-{
-  std::vector<int> dbs;
-
-  // store the indices of dbs that have the desired occupation
-  for (unsigned int i=0; i<n.size(); i++)
-    if (n[i] == charge)
-      dbs.push_back(i);
-
-  if (dbs.empty())
-    return -1; // no potential candidates
-
-  // pick one from them
-  boost::random::uniform_int_distribution<int> dis(0,dbs.size()-1);
-  boost::variate_generator<boost::random::mt19937&, boost::random::uniform_int_distribution<int>> rnd_gen(rng, dis);
-  // TODO move these to init and make them class var, not reinitialize it every time
-
-  return dbs[rnd_gen()];
+  int min,max;
+  if (charge) {
+    min = 0;
+    max = n_elec-1;
+  } else {
+    min = n_elec;
+    max = n_dbs-1;
+  }
+  boost::random::uniform_int_distribution<int> dis(min,max);
+  return dis(rng);
 }
 
 
@@ -444,7 +398,7 @@ float SimAnneal::systemEnergy()
 }
 
 
-float SimAnneal::distance(float x1, float y1, float x2, float y2)
+float SimAnneal::distance(const float &x1, const float &y1, const float &x2, const float &y2)
 {
   return sqrt(pow(x1-x2, 2.0) + pow(y1-y2, 2.0));
 }
@@ -456,8 +410,14 @@ float SimAnneal::totalCoulombPotential(ublas::vector<int> config)
 }
 
 
-float SimAnneal::interElecPotential(float r)
+float SimAnneal::interElecPotential(const float &r)
 {
   //return exp(-r/debye_length) / r;
   return constants::Q0 * Kc * erf(r/constants::ERFDB) * exp(-r/debye_length) / r;
+}
+
+
+float SimAnneal::hopEnergyDelta(const int &i, const int &j)
+{
+  return v_local[i] - v_local[j] - v_ij(i,j);
 }

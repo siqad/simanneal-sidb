@@ -11,12 +11,6 @@
           <label>Result queue size</label>
           <tip>The number of results to retrieve from SimAnneal.</tip>
         </result_queue_size>
-        <preanneal_cycles>
-          <T>int</T>
-          <val>1000</val>
-          <label>Preanneal cycles</label>
-          <tip>The number of simulated annealing cycles to run in high temperature before entering the actual schedule.</tip>
-        </preanneal_cycles>
         <anneal_cycles>
           <T>int</T>
           <val>10000</val>

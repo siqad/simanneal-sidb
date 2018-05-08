@@ -76,10 +76,10 @@ namespace phys {
 
     // CALCULATIONS
     float systemEnergy();
-    float distance(float x1, float y1, float x2, float y2);
+    float distance(const float &x1, const float &y1, const float &x2, const float &y2);
     float totalCoulombPotential(ublas::vector<int> config);
-    float interElecPotential(float r);
-    float hopEnergyDelta(int i, int j);
+    float interElecPotential(const float &r);
+    float hopEnergyDelta(const int &i, const int &j);
 
     // ACCEPTANCE FUNCTIONS
     bool acceptPop(int db_ind);
@@ -87,11 +87,11 @@ namespace phys {
     bool evalProb(float prob); // generate true or false based on given probaility
 
     // OTHER ACCESSORS
-    int getRandDBInd(int charge);
-    int chargedDBCount(int charge);
+    int getRandOccInd(int charge);
 
 
     // boost random number generator
+    boost::random::uniform_real_distribution<float> dis01;
     boost::random::mt19937 rng;
 
     // physics connector for interfacing with GUI
@@ -108,7 +108,7 @@ namespace phys {
 
     // other variables used for calculations
     float kT0, kT, kT_step, v_freeze_step; // temperature, time
-    int t=0, t_max, t_preanneal;      // keep track of annealing cycles
+    int t=0, t_max;                   // keep track of annealing cycles
     float v_freeze;                   // freeze out potential (pushes
                                       // out population transition probability)
     ublas::vector<float> v_local;
@@ -117,8 +117,9 @@ namespace phys {
 
     // keeping track of electron configurations and other house keeping vars
     int n_dbs=-1; // number of dbs
-    ublas::matrix<float> db_r; // distance between all dbs
-    ublas::vector<int> n;  // electron configuration at the current time-step
-
+    int n_elec=0; // number of doubly occupied DBs
+    ublas::matrix<float> db_r;  // distance between all dbs
+    ublas::vector<int> n;       // electron configuration at the current time-step
+    std::vector<int> occ;       // indices of dbs, first n_elec indices are occupied
   };
 }
