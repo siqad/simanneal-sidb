@@ -105,8 +105,7 @@ namespace phys{
     // dangling bond
     struct DBDot {
       float x,y;  // physical location in angstroms
-      float elec;
-      DBDot(float in_x, float in_y, float in_e) : x(in_x), y(in_y), elec(in_e) {};
+      DBDot(float in_x, float in_y) : x(in_x), y(in_y) {};
     };
 
     class DBCollection
