@@ -39,14 +39,10 @@ ifeq ($(FOR_OS),win32)
 	BOOST_INCLUDE_PATH=$(MXE_INCLUDE_PATH)/boost
 	BOOST_LIB_PATH=$(MXE_LIB_PATH)
 
-	# Windows Python files
-	PYTHON_INCLUDE_PATH=/home/samuelngsh/Python36-32/include
-	PYTHON_LIB_PATH=/home/samuelngsh/Python36-32/libs
-
 	BIN_NAME=simanneal.exe
-	CXX=i686-w64-mingw32.static-g++ -I $(PYTHON_INCLUDE_PATH) -L $(PYTHON_LIB_PATH) -I $(BOOST_INCLUDE_PATH) -L $(BOOST_LIB_PATH)
+	CXX=i686-w64-mingw32.static-g++ -I $(BOOST_INCLUDE_PATH) -L $(BOOST_LIB_PATH)
 	LIBS=
-	LINK_FLAGS = -lboost_system-mt -lboost_filesystem-mt -lpython36
+	LINK_FLAGS = -lboost_system-mt -lboost_filesystem-mt #-lpython36
 	PKG_CONFIG=i686-w64-mingw32.static-pkg-config
 endif
 ifeq ($(FOR_OS),win64)
@@ -58,14 +54,10 @@ ifeq ($(FOR_OS),win64)
 	BOOST_INCLUDE_PATH=$(MXE_INCLUDE_PATH)/boost
 	BOOST_LIB_PATH=$(MXE_LIB_PATH)
 
-	# Windows Python files
-	PYTHON_INCLUDE_PATH=/home/samuelngsh/Python36-64/include
-	PYTHON_LIB_PATH=/home/samuelngsh/Python36-64/libs
-
 	BIN_NAME=simanneal.exe
-	CXX=x86_64-w64-mingw32.static-g++ -I $(PYTHON_INCLUDE_PATH) -L $(PYTHON_LIB_PATH) -I $(BOOST_INCLUDE_PATH) -L $(BOOST_LIB_PATH)
+	CXX=x86_64-w64-mingw32.static-g++ -I $(BOOST_INCLUDE_PATH) -L $(BOOST_LIB_PATH)
 	LIBS=
-	LINK_FLAGS=-lboost_system-mt -lboost_filesystem-mt -lpython36
+	LINK_FLAGS=-lboost_system-mt -lboost_filesystem-mt #-lpython36
 	PKG_CONFIG=x86_64-w64-mingw32.static-pkg-config
 endif
 
