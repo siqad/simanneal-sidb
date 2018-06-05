@@ -1,7 +1,7 @@
 // @file:     sim_anneal.cc
 // @author:   Samuel
 // @created:  2017.08.23
-// @editted:  2017.08.23 - Samuel
+// @editted:  2018.06.01 - Samuel
 // @license:  GNU LGPL v3
 //
 // @desc:     Simulated annealing physics engine
@@ -86,7 +86,7 @@ bool SimAnneal::runSim()
 
   // exit if no dbs
   if(n_dbs == 0) {
-    std::cout << "No dbs found, nothing to simulate. Exiting." << std::endl;
+    std::cout << "No dbs found, nothing to simulate. Exitting." << std::endl;
     return false;
   }
 
@@ -170,6 +170,12 @@ void SimAnneal::precalc()
 }
 
 
+
+
+
+
+
+
 void SimAnneal::simAnneal()
 {
   std::cout << "Performing simulated annealing..." << std::endl;
@@ -187,10 +193,11 @@ void SimAnneal::simAnneal()
   // Run simulated annealing for predetermined time steps
   while(t < t_max) {
 
-    printCharges();
+    //No longer printing to standard output charges to save execution time on GPU threads.
+    //printCharges();
 
     // Population
-    std::cout << "Population update, v_freeze=" << v_freeze << ", kT=" << kT << std::endl;
+    //std::cout << "Population update, v_freeze=" << v_freeze << ", kT=" << kT << std::endl;
     dn = genPopDelta();
 
     bool pop_changed = false;
@@ -206,19 +213,19 @@ void SimAnneal::simAnneal()
       E_sys += -1 * ublas::inner_prod(v_local, dn) + totalCoulombPotential(dn);
       v_local -= ublas::prod(v_ij, dn);
 
-      std::cout << "dn = [ ";
+      /*std::cout << "dn = [ ";
       for (unsigned i=0; i<dn.size(); i++)
         std::cout << dn(i) << " ";
-      std::cout << "]" << std::endl;
+      std::cout << "]" << std::endl;*/
 
-      printCharges();
+      /*printCharges();
       std::cout << "v_local = [ ";
       for (unsigned i=0; i<v_local.size(); i++)
         std::cout << v_local(i) << " ";
-      std::cout << "]" << std::endl;
+      std::cout << "]" << std::endl;*/
 
       //std::cout << "E_calc = " << systemEnergy() << std::endl;
-      std::cout << "E_sys = " << E_sys << std::endl;
+      //std::cout << "E_sys = " << E_sys << std::endl;
     }
 
 
@@ -230,15 +237,15 @@ void SimAnneal::simAnneal()
       else
         occ[unocc_ind--] = db_ind;
     }
-    std::cout << "occ = [ ";
+    /*std::cout << "occ = [ ";
     for (unsigned i=0; i<dn.size(); i++)
       std::cout << occ[i] << " ";
-    std::cout << "]" << std::endl;
+    std::cout << "]" << std::endl;*/
     n_elec = occ_ind;
 
 
     // Hopping
-    std::cout << "Hopping with n_elec=" << n_elec << std::endl;
+    //std::cout << "Hopping with n_elec=" << n_elec << std::endl;
     hop_attempts = 0;
     if (n_elec != 0) {
       while (hop_attempts < (n_dbs-n_elec)*5) {
@@ -259,15 +266,15 @@ void SimAnneal::simAnneal()
           ublas::matrix_column<ublas::matrix<float>> v_j (v_ij, to_ind);
           v_local += v_i - v_j;
 
-          std::cout << "Hop performed: ";
+          /*std::cout << "Hop performed: ";
           printCharges();
-          std::cout << "Energy diff=" << E_del << std::endl;
+          std::cout << "Energy diff=" << E_del << std::endl;*/
         }
         hop_attempts++;
       }
     }
-    std::cout << "Charge post-hop=";
-    printCharges();
+    //std::cout << "Charge post-hop=";
+    //printCharges();
 
     // push back the new arrangement
     db_charges.push_back(n);
@@ -277,13 +284,18 @@ void SimAnneal::simAnneal()
     timeStep();
 
     // print statistics
-    std::cout << "Cycle: " << t;
+    /*std::cout << "Cycle: " << t;
     std::cout << ", ending energy: " << E_sys << std::endl << std::endl;
-    /*std::cout << ", delta: " << E_del << std::endl << std::endl;*/
+    std::cout << ", delta: " << E_del << std::endl << std::endl;*/
   }
 
-  std::cout << "Final energy should be: " << systemEnergy() << std::endl;
+  //std::cout << "Final energy should be: " << systemEnergy() << std::endl;
 }
+
+
+
+
+
 
 ublas::vector<int> SimAnneal::genPopDelta()
 {
@@ -382,7 +394,7 @@ int SimAnneal::getRandOccInd(int charge)
 
 
 
-// PHYS CALCU
+// PHYS CALCULATION
 
 
 float SimAnneal::systemEnergy()
