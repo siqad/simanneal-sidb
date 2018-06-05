@@ -47,7 +47,7 @@ int main(int argc, char *argv[])
   SimAnneal sim_anneal(if_name, of_name);
 
   std::cout << std::endl << "*** Run Simulation ***" << std::endl;
-  if(!sim_anneal.runSim()) {
+  if(!sim_anneal.runSim(if_name, of_name)) {
     std::cout << "Simulation failed, aborting" << std::endl;
     return 0;
   }

@@ -13,6 +13,7 @@
 #include <tuple>
 #include <memory>
 #include <cmath>
+#include <thread>
 
 #include <boost/random.hpp>
 #include <boost/numeric/ublas/matrix.hpp>
@@ -39,10 +40,15 @@ namespace phys {
     ~SimAnneal() {};
 
     // run simulation
-    bool runSim();
+    bool runSim(const std::string& if_path, const std::string& of_path);
 
     // export the data through physics connector
     void exportData();
+
+    // simmulated annealing accessor
+    void annealAccessor(){
+      simAnneal();
+    }
 
 
     int result_queue_size;

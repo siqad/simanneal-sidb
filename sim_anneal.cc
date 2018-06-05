@@ -70,8 +70,9 @@ void SimAnneal::exportData()
 }
 
 
-bool SimAnneal::runSim()
+bool SimAnneal::runSim(const std::string& if_path, const std::string& of_path)
 {
+  SimAnneal sim_class(if_path, of_path);
   // grab all physical locations (in original distance unit)
   std::cout << "Grab all physical locations..." << std::endl;
   n_dbs = 0;
@@ -95,7 +96,10 @@ bool SimAnneal::runSim()
   precalc();
 
   // SIM ANNEAL
-  simAnneal();
+  //simAnneal();
+  //annealAccessor();
+  std::thread th1(&SimAnneal::annealAccessor, sim_class);
+  th1.join();
 
   return true;
 }
