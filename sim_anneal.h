@@ -40,15 +40,13 @@ namespace phys {
     ~SimAnneal() {};
 
     // run simulation
-    bool runSim(const std::string& if_path, const std::string& of_path);
+    bool runSim();
 
     // export the data through physics connector
-    void exportData();
+    //void exportData();
 
     // simmulated annealing accessor
-    void annealAccessor(){
-      simAnneal();
-    }
+    void simAnneal();
 
 
     int result_queue_size;
@@ -60,13 +58,10 @@ namespace phys {
     // MAIN SIMULATION ROUTINE
     // initialize simulation variables
     void initVars();
-    void initExpectedParams();
+    //void initExpectedParams();
 
     // precalculate frequently used variables
     void precalc();
-
-    // perform the simulated annealing
-    void simAnneal();
 
     // determine change in population
     ublas::vector<int> genPopDelta();
@@ -104,8 +99,8 @@ namespace phys {
     PhysicsConnector* phys_con;
 
     // VARIABLES
-    const float har_to_ev = 27.2114; // hartree to eV conversion factor
-    const float db_distance_scale = 1E-10; // TODO move this to xml
+    float har_to_ev = 27.2114; // hartree to eV conversion factor
+    float db_distance_scale = 1E-10; // TODO move this to xml
 
     // handy constants or variables from problem file
     float Kc;           // 1 / (4 pi eps)

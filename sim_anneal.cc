@@ -9,18 +9,21 @@
 #include "sim_anneal.h"
 #include <ctime>
 
+#include <boost/numeric/ublas/vector.hpp>
+#include <boost/numeric/ublas/io.hpp>
+
 using namespace phys;
 
 SimAnneal::SimAnneal(const std::string& i_path, const std::string& o_path)
 {
-  phys_con = new PhysicsConnector(std::string("SimAnneal"), i_path, o_path);
+  //phys_con = new PhysicsConnector(std::string("SimAnneal"), i_path, o_path);
   rng.seed(std::time(NULL));
   dis01 = boost::random::uniform_real_distribution<float>(0,1);
-  initExpectedParams();
+  //initExpectedParams();
 }
 
 
-void SimAnneal::initExpectedParams()
+/*void SimAnneal::initExpectedParams()
 {
   std::cout << "SimAnneal instantiated." << std::endl;
   phys_con->setRequiredSimParam("anneal_cycles");
@@ -34,10 +37,10 @@ void SimAnneal::initExpectedParams()
       std::cout << "Parameter " << iter << " not found." << std::endl;
     }
   }
-}
+}*/
 
 
-void SimAnneal::exportData()
+/*void SimAnneal::exportData()
 {
   // create the vector of strings for the db locations
   std::vector<std::vector<std::string>> dbl_data(db_locs.size());
@@ -68,11 +71,11 @@ void SimAnneal::exportData()
 
   phys_con->writeResultsXml();
 }
+*/
 
-
-bool SimAnneal::runSim(const std::string& if_path, const std::string& of_path)
+bool SimAnneal::runSim()
 {
-  SimAnneal sim_class(if_path, of_path);
+
   // grab all physical locations (in original distance unit)
   std::cout << "Grab all physical locations..." << std::endl;
   n_dbs = 0;
@@ -96,9 +99,7 @@ bool SimAnneal::runSim(const std::string& if_path, const std::string& of_path)
   precalc();
 
   // SIM ANNEAL
-  //simAnneal();
-  //annealAccessor();
-  std::thread th1(&SimAnneal::annealAccessor, sim_class);
+  std::thread th1(&SimAnneal::simAnneal, this);
   th1.join();
 
   return true;
@@ -109,6 +110,8 @@ bool SimAnneal::runSim(const std::string& if_path, const std::string& of_path)
 
 void SimAnneal::initVars()
 {
+
+  Kc = 0;
   std::cout << "Initializing variables..." << std::endl;
   t_max = phys_con->parameterExists("anneal_cycles") ?
                   std::stoi(phys_con->getParameter("anneal_cycles")) : 10000;
@@ -128,7 +131,7 @@ void SimAnneal::initVars()
                   std::stoi(phys_con->getParameter("result_queue_size")) : 1000;
   result_queue_size = t_max < result_queue_size ? t_max : result_queue_size;
 
-  Kc = 1/(4 * constants::PI * constants::EPS_SURFACE * constants::EPS0);
+  //Kc = 1/(4 * constants::PI * constants::EPS_SURFACE * constants::EPS0);
   kT = 300*constants::Kb; kT_step = 0.999;    // kT = Boltzmann constant (eV/K) * 298 K, NOTE kT_step arbitrary
   v_freeze = 0, v_freeze_step = 0.001;  // NOTE v_freeze_step arbitrary
 
@@ -186,11 +189,23 @@ void SimAnneal::simAnneal()
 
   // Vars
   float E_sys;                  // energy of the system
+  int count = 0;
+
   std::cout << "Working..." << std::endl;
 
+  std::cout << n_dbs << std::endl;
 
-  //TODO Fix the memory dump due to too large of a vector.
-  ublas::vector<int> dn(n_dbs); // change of occupation for population update
+    //TODO Fix the memory dump due to too large of a vector.
+  boost::numeric::ublas::vector<int> dn(n_dbs); // change of occupation for population update
+
+  std::cout << "Working..." << std::endl;
+
+  for(count =0; count < dn.size(); count++ ){
+    std::cout << dn[count] << std::endl;
+  }
+
+  std::cout << std::endl << dn.size() << std::endl;
+
   int from_occ_ind, to_occ_ind; // hopping from n[occ[from_ind]]
   int from_ind, to_ind;         // hopping from n[from_ind] to n[to_ind]
   int hop_attempts;
@@ -200,7 +215,7 @@ void SimAnneal::simAnneal()
 
   // Run simulated annealing for predetermined time steps
   while(t < t_max) {
-
+    //std::cout << "Working..." << std::endl;
     //No longer printing to standard output charges to save execution time on GPU threads.
     //printCharges();
 
@@ -220,16 +235,16 @@ void SimAnneal::simAnneal()
       E_sys += -1 * ublas::inner_prod(v_local, dn) + totalCoulombPotential(dn);
       v_local -= ublas::prod(v_ij, dn);
 
-      /*std::cout << "dn = [ ";
-      for (unsigned i=0; i<dn.size(); i++)
-        std::cout << dn(i) << " ";
-      std::cout << "]" << std::endl;*/
+      //std::cout << "dn = [ ";
+      //for (unsigned i=0; i<dn.size(); i++)
+      //  std::cout << dn(i) << " ";
+      //std::cout << "]" << std::endl;
 
-      /*printCharges();
-      std::cout << "v_local = [ ";
-      for (unsigned i=0; i<v_local.size(); i++)
-        std::cout << v_local(i) << " ";
-      std::cout << "]" << std::endl;*/
+      //printCharges();
+      //std::cout << "v_local = [ ";
+      //for (unsigned i=0; i<v_local.size(); i++)
+      //  std::cout << v_local(i) << " ";
+      //std::cout << "]" << std::endl;
 
       //std::cout << "E_calc = " << systemEnergy() << std::endl;
       //std::cout << "E_sys = " << E_sys << std::endl;
@@ -244,10 +259,10 @@ void SimAnneal::simAnneal()
       else
         occ[unocc_ind--] = db_ind;
     }
-    /*std::cout << "occ = [ ";
-    for (unsigned i=0; i<dn.size(); i++)
-      std::cout << occ[i] << " ";
-    std::cout << "]" << std::endl;*/
+    //std::cout << "occ = [ ";
+    //for (unsigned i=0; i<dn.size(); i++)
+    //  std::cout << occ[i] << " ";
+    //std::cout << "]" << std::endl;
     n_elec = occ_ind;
 
 
@@ -273,9 +288,9 @@ void SimAnneal::simAnneal()
           ublas::matrix_column<ublas::matrix<float>> v_j (v_ij, to_ind);
           v_local += v_i - v_j;
 
-          /*std::cout << "Hop performed: ";
-          printCharges();
-          std::cout << "Energy diff=" << E_del << std::endl;*/
+          //std::cout << "Hop performed: ";
+          //printCharges();
+          //std::cout << "Energy diff=" << E_del << std::endl;
         }
         hop_attempts++;
       }
@@ -291,9 +306,9 @@ void SimAnneal::simAnneal()
     timeStep();
 
     // print statistics
-    /*std::cout << "Cycle: " << t;
-    std::cout << ", ending energy: " << E_sys << std::endl << std::endl;
-    std::cout << ", delta: " << E_del << std::endl << std::endl;*/
+    //std::cout << "Cycle: " << t;
+    //std::cout << ", ending energy: " << E_sys << std::endl << std::endl;
+    //std::cout << ", delta: " << E_del << std::endl << std::endl;
   }
 
   //std::cout << "Final energy should be: " << systemEnergy() << std::endl;
