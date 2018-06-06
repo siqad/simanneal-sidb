@@ -186,6 +186,10 @@ void SimAnneal::simAnneal()
 
   // Vars
   float E_sys;                  // energy of the system
+  std::cout << "Working..." << std::endl;
+
+
+  //TODO Fix the memory dump due to too large of a vector.
   ublas::vector<int> dn(n_dbs); // change of occupation for population update
   int from_occ_ind, to_occ_ind; // hopping from n[occ[from_ind]]
   int from_ind, to_ind;         // hopping from n[from_ind] to n[to_ind]
@@ -211,7 +215,6 @@ void SimAnneal::simAnneal()
         break;
       }
     }
-
     if (pop_changed) {
       n += dn;
       E_sys += -1 * ublas::inner_prod(v_local, dn) + totalCoulombPotential(dn);
