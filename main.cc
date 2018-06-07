@@ -12,7 +12,6 @@
 
 using namespace phys;
 
-void initExpectedParams();
 void exportData();
 void getLocation();
 
@@ -52,8 +51,7 @@ int main(int argc, char *argv[])
 
   std::cout << std::endl << "*** Run Simulation ***" << std::endl;
 
-  phys_con = new PhysicsConnector(std::string("SimAnneal"), i_path, o_path);
-  initExpectedParams();
+  sqconn = new SiQADConnector(std::string("SimAnneal"), i_path, o_path);
 
   if(!sim_anneal.runSim()) {
     std::cout << "Simulation failed, aborting" << std::endl;
@@ -65,53 +63,29 @@ int main(int argc, char *argv[])
   // sim_anneal.writeResultsXml();
 }
 
-
-void initExpectedParams()
-{
-  std::cout << "SimAnneal instantiated." << std::endl;
-  phys_con->setRequiredSimParam("anneal_cycles");
-  phys_con->setRequiredSimParam("global_v0");
-  phys_con->setRequiredSimParam("debye_length");
-  phys_con->setRequiredSimParam("result_queue_size");
-  phys_con->setExpectDB(true);
-  phys_con->readProblem();
-  for (auto& iter : phys_con->getRequiredSimParam()) {
-    if(!phys_con->parameterExists(iter)){
-      std::cout << "Parameter " << iter << " not found." << std::endl;
-    }
-  }
-}
-
 void exportData()
 {
   // create the vector of strings for the db locations
-  std::vector<std::vector<std::string>> dbl_data(SimAnneal::db_locs.size());
-  for (unsigned int i = 0; i < SimAnneal::db_locs.size(); i++) { //need the index
-    dbl_data[i].resize(2);
-    dbl_data[i][0] = std::to_string(SimAnneal::db_locs[i].first);
-    dbl_data[i][1] = std::to_string(SimAnneal::db_locs[i].second);
+  std::vector<std::pair<std::string, std::string>> dbl_data(db_locs.size());
+  for (unsigned int i = 0; i < db_locs.size(); i++) { //need the index
+  dbl_data[i].first = std::to_string(db_locs[i].first);
+  dbl_data[i].second = std::to_string(db_locs[i].second);
   }
-  phys_con->setExportDBLoc(true);
-  phys_con->setDBLocData(dbl_data);
+  sqconn->setExport("db_loc", dbl_data);
 
-  std::vector<std::vector<std::string>> db_dist_data(SimAnneal::db_charges.size());
-  //unsigned int i = 0;
-  for (unsigned int i = 0; i < SimAnneal::db_charges.size(); i++) {
-  //for (auto db_charge : db_charges) {
-    db_dist_data[i].resize(2);
+  std::vector<std::pair<std::string, std::string>> db_dist_data(db_charges.size());
+  for (unsigned int i = 0; i < db_charges.size(); i++) {
     std::string dbc_link;
-    for(auto chg : SimAnneal::db_charges[i]){
+    for(auto chg : db_charges[i]){
       dbc_link.append(std::to_string(chg));
     }
-    db_dist_data[i][0] = dbc_link;
-    db_dist_data[i][1] = std::to_string(SimAnneal::config_energies[i]);
-    // std::cout << db_dist_data[i][0] << std::endl;
+    db_dist_data[i].first = dbc_link;
+    db_dist_data[i].second = std::to_string(config_energies[i]);
   }
 
-  phys_con->setExportDBElecConfig(true);
-  phys_con->setDBElecData(db_dist_data);
+  sqconn->setExport("db_charge", db_dist_data);
 
-  phys_con->writeResultsXml();
+  sqconn->writeResultsXml();
 }
 
 void getLocation()

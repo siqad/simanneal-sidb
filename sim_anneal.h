@@ -7,7 +7,7 @@
 // @desc:     Simulated annealing physics engine
 
 // #include "phys_engine.h"
-#include "phys_connector.h"
+#include "siqadconn.h"
 #include <vector>
 #include <deque>
 #include <tuple>
@@ -16,6 +16,7 @@
 #include <thread>
 
 #include <boost/random.hpp>
+#include <boost/circular_buffer.hpp>
 #include <boost/numeric/ublas/matrix.hpp>
 #include <boost/numeric/ublas/matrix_proxy.hpp>
 
@@ -96,11 +97,11 @@ namespace phys {
     boost::random::mt19937 rng;
 
     // physics connector for interfacing with GUI
-    PhysicsConnector* phys_con;
+    SiQADConnector* sqconn;
 
     // VARIABLES
-    float har_to_ev = 27.2114; // hartree to eV conversion factor
-    float db_distance_scale = 1E-10; // TODO move this to xml
+    const float har_to_ev = 27.2114; // hartree to eV conversion factor
+    const float db_distance_scale = 1E-10; // TODO move this to xml
 
     // handy constants or variables from problem file
     float Kc;           // 1 / (4 pi eps)

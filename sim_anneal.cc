@@ -16,71 +16,43 @@ using namespace phys;
 
 SimAnneal::SimAnneal(const std::string& i_path, const std::string& o_path)
 {
-  //phys_con = new PhysicsConnector(std::string("SimAnneal"), i_path, o_path);
+  //sqconn = new SiQADConnector(std::string("SimAnneal"), i_path, o_path);
   rng.seed(std::time(NULL));
   dis01 = boost::random::uniform_real_distribution<float>(0,1);
-  //initExpectedParams();
 }
-
-
-/*void SimAnneal::initExpectedParams()
-{
-  std::cout << "SimAnneal instantiated." << std::endl;
-  phys_con->setRequiredSimParam("anneal_cycles");
-  phys_con->setRequiredSimParam("global_v0");
-  phys_con->setRequiredSimParam("debye_length");
-  phys_con->setRequiredSimParam("result_queue_size");
-  phys_con->setExpectDB(true);
-  phys_con->readProblem();
-  for (auto& iter : phys_con->getRequiredSimParam()) {
-    if(!phys_con->parameterExists(iter)){
-      std::cout << "Parameter " << iter << " not found." << std::endl;
-    }
-  }
-}*/
-
 
 /*void SimAnneal::exportData()
 {
   // create the vector of strings for the db locations
-  std::vector<std::vector<std::string>> dbl_data(db_locs.size());
+  std::vector<std::pair<std::string, std::string>> dbl_data(db_locs.size());
   for (unsigned int i = 0; i < db_locs.size(); i++) { //need the index
-    dbl_data[i].resize(2);
-    dbl_data[i][0] = std::to_string(db_locs[i].first);
-    dbl_data[i][1] = std::to_string(db_locs[i].second);
+  dbl_data[i].first = std::to_string(db_locs[i].first);
+  dbl_data[i].second = std::to_string(db_locs[i].second);
   }
-  phys_con->setExportDBLoc(true);
-  phys_con->setDBLocData(dbl_data);
+  sqconn->setExport("db_loc", dbl_data);
 
-  std::vector<std::vector<std::string>> db_dist_data(db_charges.size());
-  //unsigned int i = 0;
+  std::vector<std::pair<std::string, std::string>> db_dist_data(db_charges.size());
   for (unsigned int i = 0; i < db_charges.size(); i++) {
-  //for (auto db_charge : db_charges) {
-    db_dist_data[i].resize(2);
     std::string dbc_link;
     for(auto chg : db_charges[i]){
       dbc_link.append(std::to_string(chg));
     }
-    db_dist_data[i][0] = dbc_link;
-    db_dist_data[i][1] = std::to_string(config_energies[i]);
-    // std::cout << db_dist_data[i][0] << std::endl;
+    db_dist_data[i].first = dbc_link;
+    db_dist_data[i].second = std::to_string(config_energies[i]);
   }
 
-  phys_con->setExportDBElecConfig(true);
-  phys_con->setDBElecData(db_dist_data);
+  sqconn->setExport("db_charge", db_dist_data);
 
-  phys_con->writeResultsXml();
+  sqconn->writeResultsXml();
 }
 */
 
 bool SimAnneal::runSim()
 {
-
   // grab all physical locations (in original distance unit)
   std::cout << "Grab all physical locations..." << std::endl;
   n_dbs = 0;
-  phys_con->initCollections();
-  for(auto db : *(phys_con->db_col)) {
+  for(auto db : *(sqconn->dbCollection())) {
     db_locs.push_back(std::make_pair(db->x, db->y));
     n_dbs++;
     std::cout << "DB loc: x=" << db_locs.back().first
@@ -90,7 +62,7 @@ bool SimAnneal::runSim()
 
   // exit if no dbs
   if(n_dbs == 0) {
-    std::cout << "No dbs found, nothing to simulate. Exitting." << std::endl;
+    std::cout << "No dbs found, nothing to simulate. Exiting." << std::endl;
     return false;
   }
 
@@ -99,6 +71,7 @@ bool SimAnneal::runSim()
   precalc();
 
   // SIM ANNEAL
+  //simAnneal();
   std::thread th1(&SimAnneal::simAnneal, this);
   th1.join();
 
@@ -110,28 +83,21 @@ bool SimAnneal::runSim()
 
 void SimAnneal::initVars()
 {
-
-  Kc = 0;
   std::cout << "Initializing variables..." << std::endl;
-  t_max = phys_con->parameterExists("anneal_cycles") ?
-                  std::stoi(phys_con->getParameter("anneal_cycles")) : 10000;
-  v_0 = phys_con->parameterExists("global_v0") ?
-                  std::stof(phys_con->getParameter("global_v0")) : 0.25;
-  debye_length = phys_con->parameterExists("debye_length") ?
-                  std::stof(phys_con->getParameter("debye_length")) : 5;
+  t_max = std::stoi(sqconn->getParameter("anneal_cycles"));
+  v_0 = std::stof(sqconn->getParameter("global_v0"));
+  debye_length = std::stof(sqconn->getParameter("debye_length"));
   debye_length *= 1E-9; // TODO change the rest of the code to use nm / angstrom
                         //      instead of doing a conversion here.
 
   kT0 = constants::Kb;
-  kT0 *= phys_con->parameterExists("min_T") ?
-            std::stof(phys_con->getParameter("min_T")) : 4;
-  std::cout << "kT0 retrieved: " << std::stof(phys_con->getParameter("min_T"));
+  kT0 *= std::stof(sqconn->getParameter("min_T"));
+  std::cout << "kT0 retrieved: " << std::stof(sqconn->getParameter("min_T"));
 
-  result_queue_size = phys_con->parameterExists("result_queue_size") ?
-                  std::stoi(phys_con->getParameter("result_queue_size")) : 1000;
+  result_queue_size = std::stoi(sqconn->getParameter("result_queue_size"));
   result_queue_size = t_max < result_queue_size ? t_max : result_queue_size;
 
-  //Kc = 1/(4 * constants::PI * constants::EPS_SURFACE * constants::EPS0);
+  Kc = 1/(4 * constants::PI * constants::EPS_SURFACE * constants::EPS0);
   kT = 300*constants::Kb; kT_step = 0.999;    // kT = Boltzmann constant (eV/K) * 298 K, NOTE kT_step arbitrary
   v_freeze = 0, v_freeze_step = 0.001;  // NOTE v_freeze_step arbitrary
 
