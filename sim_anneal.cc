@@ -47,9 +47,9 @@ SimAnneal::SimAnneal(const std::string& i_path, const std::string& o_path)
 }
 */
 
-bool SimAnneal::runSim()
+void SimAnneal::runSim()
 {
-  // grab all physical locations (in original distance unit)
+  /*// grab all physical locations (in original distance unit)
   std::cout << "Grab all physical locations..." << std::endl;
   n_dbs = 0;
   for(auto db : *(sqconn->dbCollection())) {
@@ -65,23 +65,37 @@ bool SimAnneal::runSim()
     std::cout << "No dbs found, nothing to simulate. Exiting." << std::endl;
     return false;
   }
+  */
 
   // initialize variables & perform pre-calculation
-  initVars();
-  precalc();
+  //initVars();
+  kT = 300*constants::Kb;    // kT = Boltzmann constant (eV/K) * 298 K
+  v_freeze = 0;
+
+  // resize vectors
+  v_local.resize(n_dbs);
+
+  db_charges.resize(result_queue_size);
+  n.resize(n_dbs);
+  occ.resize(n_dbs);
+
+  config_energies.resize(result_queue_size);
+  std::cout << "Vector initialization complete" << std::endl << std::endl;
+
+  //precalc();
 
   // SIM ANNEAL
-  //simAnneal();
-  std::thread th1(&SimAnneal::simAnneal, this);
-  th1.join();
+  simAnneal();
 
-  return true;
+
+  //std::thread th1(&SimAnneal::simAnneal, this);
+  //th1.join();
 }
 
 
 // PRIVATE
 
-void SimAnneal::initVars()
+/*void SimAnneal::initVars()
 {
   std::cout << "Initializing variables..." << std::endl;
   t_max = std::stoi(sqconn->getParameter("anneal_cycles"));
@@ -115,7 +129,9 @@ void SimAnneal::initVars()
 
   std::cout << "Variable initialization complete" << std::endl << std::endl;
 }
+*/
 
+/*
 void SimAnneal::precalc()
 {
   std::cout << "Performing pre-calculation..." << std::endl;
@@ -141,7 +157,7 @@ void SimAnneal::precalc()
   }
   std::cout << "Pre-calculation complete" << std::endl << std::endl;
 }
-
+*/
 
 
 
@@ -155,23 +171,8 @@ void SimAnneal::simAnneal()
 
   // Vars
   float E_sys;                  // energy of the system
-  int count = 0;
 
-  std::cout << "Working..." << std::endl;
-
-  std::cout << n_dbs << std::endl;
-
-    //TODO Fix the memory dump due to too large of a vector.
   boost::numeric::ublas::vector<int> dn(n_dbs); // change of occupation for population update
-
-  std::cout << "Working..." << std::endl;
-
-  for(count =0; count < dn.size(); count++ ){
-    std::cout << dn[count] << std::endl;
-  }
-
-  std::cout << std::endl << dn.size() << std::endl;
-
   int from_occ_ind, to_occ_ind; // hopping from n[occ[from_ind]]
   int from_ind, to_ind;         // hopping from n[from_ind] to n[to_ind]
   int hop_attempts;
@@ -277,7 +278,7 @@ void SimAnneal::simAnneal()
     //std::cout << ", delta: " << E_del << std::endl << std::endl;
   }
 
-  //std::cout << "Final energy should be: " << systemEnergy() << std::endl;
+  std::cout << "Final energy should be: " << systemEnergy() << std::endl;
 }
 
 
