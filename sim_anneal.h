@@ -14,6 +14,7 @@
 #include <memory>
 #include <cmath>
 #include <thread>
+#include <mutex>
 
 #include <boost/random.hpp>
 #include <boost/circular_buffer.hpp>
@@ -34,14 +35,18 @@ namespace phys {
   class SimAnneal
   {
   public:
+
     // constructor
-    SimAnneal(const std::string& i_path, const std::string& o_path);
+    SimAnneal(const std::string& i_path, const std::string& o_path, const int thread_id);
 
     // destructor
     ~SimAnneal() {};
 
     // run simulation
     void runSim();
+
+    static std::vector< boost::circular_buffer<ublas::vector<int>> > chargeStore;
+    static std::vector< boost::circular_buffer<float> > energyStore;
 
     // export the data through physics connector
     //void exportData();
@@ -79,9 +84,15 @@ namespace phys {
     //Other variables used for CALCULATIONS
     static int t_max;                   // keep track of annealing cycles
 
+    static int num_threads;
+
     // VARIABLES
     //const float har_to_ev = 27.2114; // hartree to eV conversion factor
     const float db_distance_scale = 1E-10; // TODO move this to xml
+
+    //static void writeStore(SimAnneal *object, int threadId);
+
+    int threadId;
 
 
   private:
@@ -102,9 +113,6 @@ namespace phys {
     // advance time-step
     void timeStep();
 
-    // print the current charge configuration into cout
-    void printCharges();
-
     // CALCULATIONS
     float systemEnergy();
     float totalCoulombPotential(ublas::vector<int> config);
@@ -118,6 +126,8 @@ namespace phys {
     // OTHER ACCESSORS
     int getRandOccInd(int charge);
 
+    // print the current charge configuration into cout
+    void printCharges();
 
     // boost random number generator
     boost::random::uniform_real_distribution<float> dis01;

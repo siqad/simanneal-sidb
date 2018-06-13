@@ -5,6 +5,12 @@
     <interpreter></interpreter> <!-- used for calling a script with python, java, etc. Leave blank otherwise -->
     <bin_path>simanneal</bin_path> <!-- path to binary or script, relative to the folder containing engine_description.xml -->
     <sim_params preserve_order="true">
+        <num_threads>
+          <T>int</T>
+          <val>100</val>
+          <label>Number of threads</label>
+          <tip>The number of threads to run for multithreading SimAnneal.</tip>
+        </num_threads>
         <result_queue_size>
           <T>int</T>
           <val>1000</val>

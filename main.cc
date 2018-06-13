@@ -12,8 +12,10 @@
 
 using namespace phys;
 
+//initialization of static variables
 int SimAnneal::n_dbs = -1;
 int SimAnneal::t_max = 0;
+int SimAnneal::num_threads = 0;
 float SimAnneal::Kc = 0;
 float SimAnneal::debye_length = 0;
 float SimAnneal::v_0 = 0;
@@ -24,7 +26,9 @@ ublas::matrix<float> SimAnneal::db_r = { };  // distance between all dbs
 ublas::vector<float> SimAnneal::v_ext = { }; // keep track of voltages at each DB
 ublas::matrix<float> SimAnneal::v_ij = { };     // coulombic repulsion
 
-void exportData();
+std::vector< boost::circular_buffer<ublas::vector<int>> > SimAnneal::chargeStore = {};
+std::vector< boost::circular_buffer<float> > SimAnneal::energyStore = {};
+
 
 // temporary main function for testing the xml parsing functionality
 int main(int argc, char *argv[])
@@ -60,7 +64,7 @@ int main(int argc, char *argv[])
   std::cout << "Out File: " << of_name << std::endl;
 
   std::cout << std::endl << "*** Constructing Problem ***" << std::endl;
-  SimAnneal sim_anneal(if_name, of_name);
+  SimAnneal sim_anneal(if_name, of_name, -1);
 
   std::cout << std::endl << "*** Run Simulation ***" << std::endl;
 
@@ -89,6 +93,7 @@ int main(int argc, char *argv[])
   //Variable initialization. (Used to be part of initVars())
 
   std::cout << "Initializing variables..." << std::endl;
+  sim_anneal.num_threads = std::stoi(sqconn->getParameter("num_threads"));
   sim_anneal.t_max = std::stoi(sqconn->getParameter("anneal_cycles"));
   sim_anneal.v_0 = std::stof(sqconn->getParameter("global_v0"));
   sim_anneal.debye_length = std::stof(sqconn->getParameter("debye_length"));
@@ -112,7 +117,13 @@ int main(int argc, char *argv[])
   sim_anneal.v_ext.resize(sim_anneal.n_dbs);
   sim_anneal.v_ij.resize(sim_anneal.n_dbs,sim_anneal.n_dbs);
 
+  boost::circular_buffer<boost::numeric::ublas::vector<int>> placeVec;
 
+  for (unsigned int i = 0; i < sim_anneal.num_threads; ++ i){
+    sim_anneal.chargeStore.push_back(placeVec);
+  }
+
+  sim_anneal.energyStore.resize(sim_anneal.num_threads);
 
   std::cout << "Performing pre-calculation..." << std::endl;
 
@@ -138,24 +149,66 @@ int main(int argc, char *argv[])
   std::cout << "Pre-calculation complete" << std::endl << std::endl;
 
 
+  std::vector<std::thread> threads;
+  for (int i=0; i<sim_anneal.num_threads; i++) {
+    SimAnneal sim(if_name, of_name, i);
+    std::thread th(&SimAnneal::runSim, sim);
+    threads.push_back(std::move(th));
+  }
 
-  SimAnneal sim_1(if_name, of_name);
-  std::thread t1(&SimAnneal::runSim, sim_1);
+  for (auto &th : threads) {
+    th.join();
+  }
+/*
+  SimAnneal sim0(if_name, of_name, 0);
+  std::thread t0(&SimAnneal::runSim, sim0);
+  SimAnneal sim1(if_name, of_name, 1);
+  std::thread t1(&SimAnneal::runSim, sim1);
+  SimAnneal sim2(if_name, of_name, 2);
+  std::thread t2(&SimAnneal::runSim, sim2);
+  SimAnneal sim3(if_name, of_name, 3);
+  std::thread t3(&SimAnneal::runSim, sim3);
+  t0.join();
   t1.join();
-
-
+  t2.join();
+  t3.join();
+*/
   std::cout << std::endl << "*** Write Result to Output ***" << std::endl;
+
   //sim_anneal.exportData();
   // sim_anneal.writeResultsXml(); (Commented by Sam)
 
+  //Selecting the best simmulated annealing calculation if more threads were run in parallel.
+  float bestThread = 0;
+  if (sim_anneal.num_threads > 1){
+    for(unsigned int i = 1; i < sim_anneal.num_threads; i++){
+      if(sim_anneal.energyStore[i][sim_anneal.energyStore[i].size() - 1] < sim_anneal.energyStore[bestThread][sim_anneal.energyStore[bestThread].size() - 1]){
+        bestThread = i;
+      }
+    }
+  }
 
+  std::cout << sim_anneal.energyStore[bestThread][sim_anneal.energyStore[bestThread].size() - 1] << "  " << bestThread << "   " << sim_anneal.num_threads << std::endl;
+/*
+  for(int i=0; i<finalOcc.size(); i++)
+    std::cout << finalOcc[i];
+  std::cout << std::endl;
+*/
+  //std::cout << finalOcc.size() << std::endl;
 
-  //exportData();
-}
+  //Create vectors to write to file.
+  //boost::circular_buffer<boost::numeric::ublas::vector<int>> db_charges (sim_1.db_charges.size());
+  //db_charges = sim_1.db_charges;
+
+  //boost::circular_buffer<float> config_energies (sim_1.config_energies.size());
+  //config_energies = sim_1.config_energies;
 
 /*
-void exportData()
-{
+  for(int i=0; i<sim_1.n_dbs; i++)
+    std::cout << sim_1.n[i];
+  std::cout << std::endl;
+*/
+
   // create the vector of strings for the db locations
   std::vector<std::pair<std::string, std::string>> dbl_data(sim_anneal.db_locs.size());
   for (unsigned int i = 0; i < sim_anneal.db_locs.size(); i++) { //need the index
@@ -164,18 +217,18 @@ void exportData()
   }
   sqconn->setExport("db_loc", dbl_data);
 
-  std::vector<std::pair<std::string, std::string>> db_dist_data(db_charges.size());
-  for (unsigned int i = 0; i < db_charges.size(); i++) {
+  std::vector<std::pair<std::string, std::string>> db_dist_data(sim_anneal.chargeStore[bestThread].size());
+  for (unsigned int i = 0; i < sim_anneal.chargeStore[bestThread].size(); i++) {
     std::string dbc_link;
-    for(auto chg : db_charges[i]){
+    for(auto chg : sim_anneal.chargeStore[bestThread][i]){
       dbc_link.append(std::to_string(chg));
     }
     db_dist_data[i].first = dbc_link;
-    db_dist_data[i].second = std::to_string(config_energies[i]);
+    db_dist_data[i].second = std::to_string(sim_anneal.energyStore[bestThread][i]);
   }
 
   sqconn->setExport("db_charge", db_dist_data);
 
   sqconn->writeResultsXml();
+  //exportData();
 }
-*/

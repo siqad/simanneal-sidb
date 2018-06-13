@@ -14,11 +14,23 @@
 
 using namespace phys;
 
-SimAnneal::SimAnneal(const std::string& i_path, const std::string& o_path)
+std::mutex siqadMutex;
+
+void writeStore(SimAnneal *object, int threadId){
+  siqadMutex.lock();
+
+  object->chargeStore[threadId] = object->db_charges;
+  object->energyStore[threadId] = object->config_energies;
+
+  siqadMutex.unlock();
+}
+
+SimAnneal::SimAnneal(const std::string& i_path, const std::string& o_path, const int thread_id)
 {
   //sqconn = new SiQADConnector(std::string("SimAnneal"), i_path, o_path);
-  rng.seed(std::time(NULL));
+  rng.seed(std::time(NULL)*thread_id+4065);
   dis01 = boost::random::uniform_real_distribution<float>(0,1);
+  threadId = thread_id;
 }
 
 /*void SimAnneal::exportData()
@@ -80,7 +92,7 @@ void SimAnneal::runSim()
   occ.resize(n_dbs);
 
   config_energies.resize(result_queue_size);
-  std::cout << "Vector initialization complete" << std::endl << std::endl;
+  //std::cout << "Vector initialization complete" << std::endl << std::endl;
 
   //precalc();
 
@@ -167,7 +179,7 @@ void SimAnneal::precalc()
 
 void SimAnneal::simAnneal()
 {
-  std::cout << "Performing simulated annealing..." << std::endl;
+  //std::cout << "Performing simulated annealing..." << std::endl;
 
   // Vars
   float E_sys;                  // energy of the system
@@ -177,7 +189,8 @@ void SimAnneal::simAnneal()
   int from_ind, to_ind;         // hopping from n[from_ind] to n[to_ind]
   int hop_attempts;
 
-  E_sys = systemEnergy();
+
+    E_sys = systemEnergy();
   v_local = v_ext - ublas::prod(v_ij, n);
 
   // Run simulated annealing for predetermined time steps
@@ -277,8 +290,20 @@ void SimAnneal::simAnneal()
     //std::cout << ", ending energy: " << E_sys << std::endl << std::endl;
     //std::cout << ", delta: " << E_del << std::endl << std::endl;
   }
+  //std::cout << "Final energy should be: " << systemEnergy() << std::endl;
 
-  std::cout << "Final energy should be: " << systemEnergy() << std::endl;
+/*
+  for(unsigned int i = 0; i < db_charges.size(); i++){
+    std::cout << db_charges[i] << "  ";
+  }
+  std::cout << std::endl;
+
+  for(unsigned int i = 0; i < db_charges.size(); i++){
+    std::cout << config_energies[i] << "  ";
+  }
+  std::cout << std::endl;
+*/
+  writeStore(this, threadId);
 }
 
 
@@ -320,8 +345,6 @@ void SimAnneal::printCharges()
 
 
 
-
-
 // ACCEPTANCE FUNCTIONS
 
 
@@ -345,6 +368,7 @@ bool SimAnneal::acceptHop(float v_diff)
 
   // some acceptance function, acceptance probability falls off exponentially
   float prob = exp(-v_diff/kT);
+
   return evalProb(prob);
 }
 
