@@ -1,7 +1,7 @@
 // @file:     sim_anneal.cc
 // @author:   Samuel
 // @created:  2017.08.23
-// @editted:  2018.06.01 - Samuel
+// @editted:  2018.06.13 - Robert
 // @license:  GNU LGPL v3
 //
 // @desc:     Simulated annealing physics engine
@@ -16,6 +16,7 @@ using namespace phys;
 
 std::mutex siqadMutex;
 
+//Global method for writing to vectors (global in order to avoid clashing).
 void writeStore(SimAnneal *object, int threadId){
   siqadMutex.lock();
 
@@ -25,62 +26,16 @@ void writeStore(SimAnneal *object, int threadId){
   siqadMutex.unlock();
 }
 
-SimAnneal::SimAnneal(const std::string& i_path, const std::string& o_path, const int thread_id)
+SimAnneal::SimAnneal(const int thread_id)
 {
-  //sqconn = new SiQADConnector(std::string("SimAnneal"), i_path, o_path);
   rng.seed(std::time(NULL)*thread_id+4065);
   dis01 = boost::random::uniform_real_distribution<float>(0,1);
   threadId = thread_id;
 }
 
-/*void SimAnneal::exportData()
-{
-  // create the vector of strings for the db locations
-  std::vector<std::pair<std::string, std::string>> dbl_data(db_locs.size());
-  for (unsigned int i = 0; i < db_locs.size(); i++) { //need the index
-  dbl_data[i].first = std::to_string(db_locs[i].first);
-  dbl_data[i].second = std::to_string(db_locs[i].second);
-  }
-  sqconn->setExport("db_loc", dbl_data);
-
-  std::vector<std::pair<std::string, std::string>> db_dist_data(db_charges.size());
-  for (unsigned int i = 0; i < db_charges.size(); i++) {
-    std::string dbc_link;
-    for(auto chg : db_charges[i]){
-      dbc_link.append(std::to_string(chg));
-    }
-    db_dist_data[i].first = dbc_link;
-    db_dist_data[i].second = std::to_string(config_energies[i]);
-  }
-
-  sqconn->setExport("db_charge", db_dist_data);
-
-  sqconn->writeResultsXml();
-}
-*/
-
 void SimAnneal::runSim()
 {
-  /*// grab all physical locations (in original distance unit)
-  std::cout << "Grab all physical locations..." << std::endl;
-  n_dbs = 0;
-  for(auto db : *(sqconn->dbCollection())) {
-    db_locs.push_back(std::make_pair(db->x, db->y));
-    n_dbs++;
-    std::cout << "DB loc: x=" << db_locs.back().first
-        << ", y=" << db_locs.back().second << std::endl;
-  }
-  std::cout << "Free dbs, n_dbs=" << n_dbs << std::endl << std::endl;
-
-  // exit if no dbs
-  if(n_dbs == 0) {
-    std::cout << "No dbs found, nothing to simulate. Exiting." << std::endl;
-    return false;
-  }
-  */
-
   // initialize variables & perform pre-calculation
-  //initVars();
   kT = 300*constants::Kb;    // kT = Boltzmann constant (eV/K) * 298 K
   v_freeze = 0;
 
@@ -92,95 +47,13 @@ void SimAnneal::runSim()
   occ.resize(n_dbs);
 
   config_energies.resize(result_queue_size);
-  //std::cout << "Vector initialization complete" << std::endl << std::endl;
-
-  //precalc();
 
   // SIM ANNEAL
   simAnneal();
-
-
-  //std::thread th1(&SimAnneal::simAnneal, this);
-  //th1.join();
 }
-
-
-// PRIVATE
-
-/*void SimAnneal::initVars()
-{
-  std::cout << "Initializing variables..." << std::endl;
-  t_max = std::stoi(sqconn->getParameter("anneal_cycles"));
-  v_0 = std::stof(sqconn->getParameter("global_v0"));
-  debye_length = std::stof(sqconn->getParameter("debye_length"));
-  debye_length *= 1E-9; // TODO change the rest of the code to use nm / angstrom
-                        //      instead of doing a conversion here.
-
-  kT0 = constants::Kb;
-  kT0 *= std::stof(sqconn->getParameter("min_T"));
-  std::cout << "kT0 retrieved: " << std::stof(sqconn->getParameter("min_T"));
-
-  result_queue_size = std::stoi(sqconn->getParameter("result_queue_size"));
-  result_queue_size = t_max < result_queue_size ? t_max : result_queue_size;
-
-  Kc = 1/(4 * constants::PI * constants::EPS_SURFACE * constants::EPS0);
-  kT = 300*constants::Kb; kT_step = 0.999;    // kT = Boltzmann constant (eV/K) * 298 K, NOTE kT_step arbitrary
-  v_freeze = 0, v_freeze_step = 0.001;  // NOTE v_freeze_step arbitrary
-
-  // resize vectors
-  v_local.resize(n_dbs);
-  v_ext.resize(n_dbs);
-  v_ij.resize(n_dbs,n_dbs);
-  db_r.resize(n_dbs,n_dbs);
-
-  db_charges.resize(result_queue_size);
-  n.resize(n_dbs);
-  occ.resize(n_dbs);
-
-  config_energies.resize(result_queue_size);
-
-  std::cout << "Variable initialization complete" << std::endl << std::endl;
-}
-*/
-
-/*
-void SimAnneal::precalc()
-{
-  std::cout << "Performing pre-calculation..." << std::endl;
-
-  for (int i=0; i<n_dbs; i++) {
-    for (int j=i; j<n_dbs; j++) {
-      if (j==i) {
-        db_r(i,j) = 0;
-        v_ij(i,j) = 0;
-      } else {
-        db_r(i,j) = distance(db_locs[i].first, db_locs[i].second, db_locs[j].first, db_locs[j].second)*db_distance_scale;
-        v_ij(i,j) = interElecPotential(db_r(i,j));
-        db_r(j,i) = db_r(i,j);
-        v_ij(j,i) = v_ij(i,j);
-      }
-      std::cout << "db_r[" << i << "][" << j << "]=" << db_r(i,j) << ", v_ij["
-          << i << "][" << j << "]=" << v_ij(i,j) << std::endl;
-    }
-
-    // TODO add electrode effect to v_ext
-
-    v_ext[i] = v_0;
-  }
-  std::cout << "Pre-calculation complete" << std::endl << std::endl;
-}
-*/
-
-
-
-
-
-
 
 void SimAnneal::simAnneal()
 {
-  //std::cout << "Performing simulated annealing..." << std::endl;
-
   // Vars
   float E_sys;                  // energy of the system
 
@@ -195,12 +68,8 @@ void SimAnneal::simAnneal()
 
   // Run simulated annealing for predetermined time steps
   while(t < t_max) {
-    //std::cout << "Working..." << std::endl;
-    //No longer printing to standard output charges to save execution time on GPU threads.
-    //printCharges();
 
     // Population
-    //std::cout << "Population update, v_freeze=" << v_freeze << ", kT=" << kT << std::endl;
     dn = genPopDelta();
 
     bool pop_changed = false;
@@ -214,20 +83,6 @@ void SimAnneal::simAnneal()
       n += dn;
       E_sys += -1 * ublas::inner_prod(v_local, dn) + totalCoulombPotential(dn);
       v_local -= ublas::prod(v_ij, dn);
-
-      //std::cout << "dn = [ ";
-      //for (unsigned i=0; i<dn.size(); i++)
-      //  std::cout << dn(i) << " ";
-      //std::cout << "]" << std::endl;
-
-      //printCharges();
-      //std::cout << "v_local = [ ";
-      //for (unsigned i=0; i<v_local.size(); i++)
-      //  std::cout << v_local(i) << " ";
-      //std::cout << "]" << std::endl;
-
-      //std::cout << "E_calc = " << systemEnergy() << std::endl;
-      //std::cout << "E_sys = " << E_sys << std::endl;
     }
 
 
@@ -239,15 +94,10 @@ void SimAnneal::simAnneal()
       else
         occ[unocc_ind--] = db_ind;
     }
-    //std::cout << "occ = [ ";
-    //for (unsigned i=0; i<dn.size(); i++)
-    //  std::cout << occ[i] << " ";
-    //std::cout << "]" << std::endl;
     n_elec = occ_ind;
 
 
     // Hopping
-    //std::cout << "Hopping with n_elec=" << n_elec << std::endl;
     hop_attempts = 0;
     if (n_elec != 0) {
       while (hop_attempts < (n_dbs-n_elec)*5) {
@@ -256,7 +106,6 @@ void SimAnneal::simAnneal()
         from_ind = occ[from_occ_ind];
         to_ind = occ[to_occ_ind];
 
-        //E_pre_hop = systemEnergy();
         float E_del = hopEnergyDelta(from_ind, to_ind);
         if (acceptHop(E_del)) {
           performHop(from_ind, to_ind);
@@ -267,16 +116,10 @@ void SimAnneal::simAnneal()
           ublas::matrix_column<ublas::matrix<float>> v_i (v_ij, from_ind);
           ublas::matrix_column<ublas::matrix<float>> v_j (v_ij, to_ind);
           v_local += v_i - v_j;
-
-          //std::cout << "Hop performed: ";
-          //printCharges();
-          //std::cout << "Energy diff=" << E_del << std::endl;
         }
         hop_attempts++;
       }
     }
-    //std::cout << "Charge post-hop=";
-    //printCharges();
 
     // push back the new arrangement
     db_charges.push_back(n);
@@ -284,25 +127,8 @@ void SimAnneal::simAnneal()
 
     // perform time-step if not pre-annealing
     timeStep();
-
-    // print statistics
-    //std::cout << "Cycle: " << t;
-    //std::cout << ", ending energy: " << E_sys << std::endl << std::endl;
-    //std::cout << ", delta: " << E_del << std::endl << std::endl;
   }
-  //std::cout << "Final energy should be: " << systemEnergy() << std::endl;
 
-/*
-  for(unsigned int i = 0; i < db_charges.size(); i++){
-    std::cout << db_charges[i] << "  ";
-  }
-  std::cout << std::endl;
-
-  for(unsigned int i = 0; i < db_charges.size(); i++){
-    std::cout << config_energies[i] << "  ";
-  }
-  std::cout << std::endl;
-*/
   writeStore(this, threadId);
 }
 
@@ -335,18 +161,7 @@ void SimAnneal::timeStep()
   v_freeze = t * v_freeze_step;
 }
 
-
-void SimAnneal::printCharges()
-{
-  for(int i=0; i<n_dbs; i++)
-    std::cout << n[i];
-  std::cout << std::endl;
-}
-
-
-
 // ACCEPTANCE FUNCTIONS
-
 
 bool SimAnneal::acceptPop(int db_ind)
 {

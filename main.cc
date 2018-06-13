@@ -1,7 +1,7 @@
 // @file:     main.cc
 // @author:   Samuel
 // @created:  2017.08.28
-// @editted:  2017.08.28 - Samuel
+// @editted:  2018-06-13 - Robert
 // @license:  GNU LGPL v3
 //
 // @desc:     Main function for physics engine
@@ -12,7 +12,7 @@
 
 using namespace phys;
 
-//initialization of static variables
+//initialization of static variables used in the SimAnneal class
 int SimAnneal::n_dbs = -1;
 int SimAnneal::t_max = 0;
 int SimAnneal::num_threads = 0;
@@ -40,9 +40,6 @@ int main(int argc, char *argv[])
 
   std::cout << "*** Argument Parsing ***" << std::endl;
 
-  // for now, only support two arguments: input and output files
-  // TODO flags: -i input_path -o output_path
-  // maybe make a struct to contain program options in case of more input options
   if(argc == 1){
     if_name = std::string("cooldbdesign.xml");
     of_name = std::string("cooloutput.xml");
@@ -64,7 +61,7 @@ int main(int argc, char *argv[])
   std::cout << "Out File: " << of_name << std::endl;
 
   std::cout << std::endl << "*** Constructing Problem ***" << std::endl;
-  SimAnneal sim_anneal(if_name, of_name, -1);
+  SimAnneal sim_accessor(-1);
 
   std::cout << std::endl << "*** Run Simulation ***" << std::endl;
 
@@ -73,85 +70,98 @@ int main(int argc, char *argv[])
 
   // grab all physical locations (in original distance unit) (Used to be part of runSim)
   std::cout << "Grab all physical locations..." << std::endl;
-  sim_anneal.n_dbs = 0;
+  sim_accessor.n_dbs = 0;
   for(auto db : *(sqconn->dbCollection())) {
-    sim_anneal.db_locs.push_back(std::make_pair(db->x, db->y));
-    sim_anneal.n_dbs++;
-    std::cout << "DB loc: x=" << sim_anneal.db_locs.back().first
-        << ", y=" << sim_anneal.db_locs.back().second << std::endl;
+    sim_accessor.db_locs.push_back(std::make_pair(db->x, db->y));
+    sim_accessor.n_dbs++;
+    std::cout << "DB loc: x=" << sim_accessor.db_locs.back().first
+        << ", y=" << sim_accessor.db_locs.back().second << std::endl;
   }
-  std::cout << "Free dbs, n_dbs=" << sim_anneal.n_dbs << std::endl << std::endl;
+  std::cout << "Free dbs, n_dbs=" << sim_accessor.n_dbs << std::endl << std::endl;
 
   // exit if no dbs
-  if(sim_anneal.n_dbs == 0) {
+  if(sim_accessor.n_dbs == 0) {
     std::cout << "No dbs found, nothing to simulate. Exiting." << std::endl;
     std::cout << "Simulation failed, aborting" << std::endl;
     return 0;
   }
 
 
-  //Variable initialization. (Used to be part of initVars())
-
+  //Variable initialization
   std::cout << "Initializing variables..." << std::endl;
-  sim_anneal.num_threads = std::stoi(sqconn->getParameter("num_threads"));
-  sim_anneal.t_max = std::stoi(sqconn->getParameter("anneal_cycles"));
-  sim_anneal.v_0 = std::stof(sqconn->getParameter("global_v0"));
-  sim_anneal.debye_length = std::stof(sqconn->getParameter("debye_length"));
-  sim_anneal.debye_length *= 1E-9; // TODO change the rest of the code to use nm / angstrom
+  sim_accessor.num_threads = std::stoi(sqconn->getParameter("num_threads"));
+  sim_accessor.t_max = std::stoi(sqconn->getParameter("anneal_cycles"));
+  sim_accessor.v_0 = std::stof(sqconn->getParameter("global_v0"));
+  sim_accessor.debye_length = std::stof(sqconn->getParameter("debye_length"));
+  sim_accessor.debye_length *= 1E-9; // TODO change the rest of the code to use nm / angstrom
                         //      instead of doing a conversion here.
 
-  sim_anneal.kT0 = constants::Kb;
-  sim_anneal.kT0 *= std::stof(sqconn->getParameter("min_T"));
+  sim_accessor.kT0 = constants::Kb;
+  sim_accessor.kT0 *= std::stof(sqconn->getParameter("min_T"));
   std::cout << "kT0 retrieved: " << std::stof(sqconn->getParameter("min_T"));
 
-  sim_anneal.result_queue_size = std::stoi(sqconn->getParameter("result_queue_size"));
-  sim_anneal.result_queue_size = sim_anneal.t_max < sim_anneal.result_queue_size ? sim_anneal.t_max : sim_anneal.result_queue_size;
+  sim_accessor.result_queue_size = std::stoi(sqconn->getParameter("result_queue_size"));
+  sim_accessor.result_queue_size = sim_accessor.t_max < sim_accessor.result_queue_size ? sim_accessor.t_max : sim_accessor.result_queue_size;
 
-  sim_anneal.Kc = 1/(4 * constants::PI * constants::EPS_SURFACE * constants::EPS0);
-  sim_anneal.kT_step = 0.999;    // kT = Boltzmann constant (eV/K) * 298 K, NOTE kT_step arbitrary
-  sim_anneal.v_freeze_step = 0.001;  // NOTE v_freeze_step arbitrary
+  sim_accessor.Kc = 1/(4 * constants::PI * constants::EPS_SURFACE * constants::EPS0);
+  sim_accessor.kT_step = 0.999;    // kT = Boltzmann constant (eV/K) * 298 K, NOTE kT_step arbitrary
+  sim_accessor.v_freeze_step = 0.001;  // NOTE v_freeze_step arbitrary
 
   std::cout << "Variable initialization complete" << std::endl;
 
-  sim_anneal.db_r.resize(sim_anneal.n_dbs,sim_anneal.n_dbs);
-  sim_anneal.v_ext.resize(sim_anneal.n_dbs);
-  sim_anneal.v_ij.resize(sim_anneal.n_dbs,sim_anneal.n_dbs);
-
-  boost::circular_buffer<boost::numeric::ublas::vector<int>> placeVec;
-
-  for (unsigned int i = 0; i < sim_anneal.num_threads; ++ i){
-    sim_anneal.chargeStore.push_back(placeVec);
-  }
-
-  sim_anneal.energyStore.resize(sim_anneal.num_threads);
+  sim_accessor.db_r.resize(sim_accessor.n_dbs,sim_accessor.n_dbs);
+  sim_accessor.v_ext.resize(sim_accessor.n_dbs);
+  sim_accessor.v_ij.resize(sim_accessor.n_dbs,sim_accessor.n_dbs);
 
   std::cout << "Performing pre-calculation..." << std::endl;
 
-  for (int i=0; i<sim_anneal.n_dbs; i++) {
-    for (int j=i; j<sim_anneal.n_dbs; j++) {
+  for (int i=0; i<sim_accessor.n_dbs; i++) {
+    for (int j=i; j<sim_accessor.n_dbs; j++) {
       if (j==i) {
-        sim_anneal.db_r(i,j) = 0;
-        sim_anneal.v_ij(i,j) = 0;
+        sim_accessor.db_r(i,j) = 0;
+        sim_accessor.v_ij(i,j) = 0;
       } else {
-        sim_anneal.db_r(i,j) = sim_anneal.distance(sim_anneal.db_locs[i].first, sim_anneal.db_locs[i].second, sim_anneal.db_locs[j].first, sim_anneal.db_locs[j].second)*sim_anneal.db_distance_scale;
-        sim_anneal.v_ij(i,j) = sim_anneal.interElecPotential(sim_anneal.db_r(i,j));
-        sim_anneal.db_r(j,i) = sim_anneal.db_r(i,j);
-        sim_anneal.v_ij(j,i) = sim_anneal.v_ij(i,j);
+        sim_accessor.db_r(i,j) = sim_accessor.distance(sim_accessor.db_locs[i].first, sim_accessor.db_locs[i].second, sim_accessor.db_locs[j].first, sim_accessor.db_locs[j].second)*sim_accessor.db_distance_scale;
+        sim_accessor.v_ij(i,j) = sim_accessor.interElecPotential(sim_accessor.db_r(i,j));
+        sim_accessor.db_r(j,i) = sim_accessor.db_r(i,j);
+        sim_accessor.v_ij(j,i) = sim_accessor.v_ij(i,j);
       }
-      std::cout << "db_r[" << i << "][" << j << "]=" << sim_anneal.db_r(i,j) << ", v_ij["
-          << i << "][" << j << "]=" << sim_anneal.v_ij(i,j) << std::endl;
+      std::cout << "db_r[" << i << "][" << j << "]=" << sim_accessor.db_r(i,j) << ", v_ij["
+          << i << "][" << j << "]=" << sim_accessor.v_ij(i,j) << std::endl;
     }
 
     // TODO add electrode effect to v_ext
 
-    sim_anneal.v_ext[i] = sim_anneal.v_0;
+    sim_accessor.v_ext[i] = sim_accessor.v_0;
   }
+
+  if(sim_accessor.num_threads == -1){
+    if(sim_accessor.n_dbs <= 9){
+      sim_accessor.num_threads = 8;
+    }
+    else if(sim_accessor.n_dbs <= 25){
+      sim_accessor.num_threads = 16;
+    }
+    else{
+      sim_accessor.num_threads = 100;
+    }
+  }
+
+  boost::circular_buffer<boost::numeric::ublas::vector<int>> placeVec;
+
+  for (int i = 0; i < sim_accessor.num_threads; ++ i){
+    sim_accessor.chargeStore.push_back(placeVec);
+  }
+
+  sim_accessor.energyStore.resize(sim_accessor.num_threads);
+
+
   std::cout << "Pre-calculation complete" << std::endl << std::endl;
 
 
   std::vector<std::thread> threads;
-  for (int i=0; i<sim_anneal.num_threads; i++) {
-    SimAnneal sim(if_name, of_name, i);
+  for (int i=0; i<sim_accessor.num_threads; i++) {
+    SimAnneal sim(i);
     std::thread th(&SimAnneal::runSim, sim);
     threads.push_back(std::move(th));
   }
@@ -159,76 +169,43 @@ int main(int argc, char *argv[])
   for (auto &th : threads) {
     th.join();
   }
-/*
-  SimAnneal sim0(if_name, of_name, 0);
-  std::thread t0(&SimAnneal::runSim, sim0);
-  SimAnneal sim1(if_name, of_name, 1);
-  std::thread t1(&SimAnneal::runSim, sim1);
-  SimAnneal sim2(if_name, of_name, 2);
-  std::thread t2(&SimAnneal::runSim, sim2);
-  SimAnneal sim3(if_name, of_name, 3);
-  std::thread t3(&SimAnneal::runSim, sim3);
-  t0.join();
-  t1.join();
-  t2.join();
-  t3.join();
-*/
-  std::cout << std::endl << "*** Write Result to Output ***" << std::endl;
 
-  //sim_anneal.exportData();
-  // sim_anneal.writeResultsXml(); (Commented by Sam)
+  std::cout << std::endl << "*** Write Result to Output ***" << std::endl;
 
   //Selecting the best simmulated annealing calculation if more threads were run in parallel.
   float bestThread = 0;
-  if (sim_anneal.num_threads > 1){
-    for(unsigned int i = 1; i < sim_anneal.num_threads; i++){
-      if(sim_anneal.energyStore[i][sim_anneal.energyStore[i].size() - 1] < sim_anneal.energyStore[bestThread][sim_anneal.energyStore[bestThread].size() - 1]){
+  if (sim_accessor.num_threads > 1){
+    for(int i = 1; i < sim_accessor.num_threads; i++){
+      if(sim_accessor.energyStore[i][sim_accessor.energyStore[i].size() - 1] < sim_accessor.energyStore[bestThread][sim_accessor.energyStore[bestThread].size() - 1]){
         bestThread = i;
       }
     }
   }
 
-  std::cout << sim_anneal.energyStore[bestThread][sim_anneal.energyStore[bestThread].size() - 1] << "  " << bestThread << "   " << sim_anneal.num_threads << std::endl;
-/*
-  for(int i=0; i<finalOcc.size(); i++)
-    std::cout << finalOcc[i];
-  std::cout << std::endl;
-*/
-  //std::cout << finalOcc.size() << std::endl;
+  std::cout << " LOWEST ENERGY FOUND: " << sim_accessor.energyStore[bestThread][sim_accessor.energyStore[bestThread].size() - 1] << std::endl;
+  std::cout << " BEST THREAD ID: " << bestThread << std::endl;
+  std::cout << " NUM THREADS USED: " << sim_accessor.num_threads << std::endl;
 
-  //Create vectors to write to file.
-  //boost::circular_buffer<boost::numeric::ublas::vector<int>> db_charges (sim_1.db_charges.size());
-  //db_charges = sim_1.db_charges;
-
-  //boost::circular_buffer<float> config_energies (sim_1.config_energies.size());
-  //config_energies = sim_1.config_energies;
-
-/*
-  for(int i=0; i<sim_1.n_dbs; i++)
-    std::cout << sim_1.n[i];
-  std::cout << std::endl;
-*/
 
   // create the vector of strings for the db locations
-  std::vector<std::pair<std::string, std::string>> dbl_data(sim_anneal.db_locs.size());
-  for (unsigned int i = 0; i < sim_anneal.db_locs.size(); i++) { //need the index
-  dbl_data[i].first = std::to_string(sim_anneal.db_locs[i].first);
-  dbl_data[i].second = std::to_string(sim_anneal.db_locs[i].second);
+  std::vector<std::pair<std::string, std::string>> dbl_data(sim_accessor.db_locs.size());
+  for (unsigned int i = 0; i < sim_accessor.db_locs.size(); i++) { //need the index
+  dbl_data[i].first = std::to_string(sim_accessor.db_locs[i].first);
+  dbl_data[i].second = std::to_string(sim_accessor.db_locs[i].second);
   }
   sqconn->setExport("db_loc", dbl_data);
 
-  std::vector<std::pair<std::string, std::string>> db_dist_data(sim_anneal.chargeStore[bestThread].size());
-  for (unsigned int i = 0; i < sim_anneal.chargeStore[bestThread].size(); i++) {
+  std::vector<std::pair<std::string, std::string>> db_dist_data(sim_accessor.chargeStore[bestThread].size());
+  for (unsigned int i = 0; i < sim_accessor.chargeStore[bestThread].size(); i++) {
     std::string dbc_link;
-    for(auto chg : sim_anneal.chargeStore[bestThread][i]){
+    for(auto chg : sim_accessor.chargeStore[bestThread][i]){
       dbc_link.append(std::to_string(chg));
     }
     db_dist_data[i].first = dbc_link;
-    db_dist_data[i].second = std::to_string(sim_anneal.energyStore[bestThread][i]);
+    db_dist_data[i].second = std::to_string(sim_accessor.energyStore[bestThread][i]);
   }
 
   sqconn->setExport("db_charge", db_dist_data);
 
   sqconn->writeResultsXml();
-  //exportData();
 }

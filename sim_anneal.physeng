@@ -7,9 +7,9 @@
     <sim_params preserve_order="true">
         <num_threads>
           <T>int</T>
-          <val>100</val>
+          <val>-1</val>
           <label>Number of threads</label>
-          <tip>The number of threads to run for multithreading SimAnneal.</tip>
+          <tip>The number of threads used in multithreading. If left at -1, a number is automatically selected based on the DB layout.</tip>
         </num_threads>
         <result_queue_size>
           <T>int</T>

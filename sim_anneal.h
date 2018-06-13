@@ -1,7 +1,7 @@
 // @file:     sim_anneal.h
 // @author:   Samuel
 // @created:  2017.08.23
-// @editted:  2017.08.23 - Samuel
+// @editted:  2018-06-13 - Robert
 // @license:  GNU LGPL v3
 //
 // @desc:     Simulated annealing physics engine
@@ -37,7 +37,7 @@ namespace phys {
   public:
 
     // constructor
-    SimAnneal(const std::string& i_path, const std::string& o_path, const int thread_id);
+    SimAnneal(const int thread_id);
 
     // destructor
     ~SimAnneal() {};
@@ -45,24 +45,12 @@ namespace phys {
     // run simulation
     void runSim();
 
-    static std::vector< boost::circular_buffer<ublas::vector<int>> > chargeStore;
-    static std::vector< boost::circular_buffer<float> > energyStore;
-
-    // export the data through physics connector
-    //void exportData();
-
-    // simmulated annealing accessor
-    void simAnneal();
+    static std::vector< boost::circular_buffer<ublas::vector<int>> > chargeStore; //Vector for storing db_charges
+    static std::vector< boost::circular_buffer<float> > energyStore; //Vector for storing config_energies
 
     //Total calculations
     float distance(const float &x1, const float &y1, const float &x2, const float &y2);
     float interElecPotential(const float &r);
-
-
-    static int result_queue_size;
-    static std::vector<std::pair<float,float>> db_locs; // location of free dbs
-    boost::circular_buffer<ublas::vector<int>> db_charges;
-    boost::circular_buffer<float> config_energies;  // energies in line with db_charges
 
     // keeping track of electron configurations and other house keeping vars
     static int n_dbs; // number of dbs
@@ -72,6 +60,13 @@ namespace phys {
     std::vector<int> occ;       // indices of dbs, first n_elec indices are occupied
     static ublas::vector<float> v_ext; // keep track of voltages at each DB
     static ublas::matrix<float> v_ij;     // coulombic repulsion
+    static int result_queue_size;
+    static std::vector<std::pair<float,float>> db_locs; // location of free dbs
+    boost::circular_buffer<ublas::vector<int>> db_charges;
+    boost::circular_buffer<float> config_energies;  // energies in line with db_charges
+
+    static int num_threads;    // number of threads used in simmulation
+    int threadId;              // the thread id of each class object
 
     // other variables used for calculations
     static float kT0, kT_step, v_freeze_step;
@@ -82,30 +77,20 @@ namespace phys {
     static float v_0;          // global bias
 
     //Other variables used for CALCULATIONS
-    static int t_max;                   // keep track of annealing cycles
-
-    static int num_threads;
+    static int t_max;          // keep track of annealing cycles
 
     // VARIABLES
     //const float har_to_ev = 27.2114; // hartree to eV conversion factor
     const float db_distance_scale = 1E-10; // TODO move this to xml
 
-    //static void writeStore(SimAnneal *object, int threadId);
-
-    int threadId;
-
 
   private:
-    // MAIN SIMULATION ROUTINE
-    // initialize simulation variables
-    //void initVars();
-    //void initExpectedParams();
-
-    // precalculate frequently used variables
-    //void precalc();
 
     // determine change in population
     ublas::vector<int> genPopDelta();
+
+    // simmulated annealing accessor
+    void simAnneal();
 
     // perform an electron hop from one DB to another
     void performHop(int from_ind, int to_ind);
@@ -133,14 +118,11 @@ namespace phys {
     boost::random::uniform_real_distribution<float> dis01;
     boost::random::mt19937 rng;
 
-    // physics connector for interfacing with GUI
-    //SiQADConnector* sqconn;
-
     // other variables used for calculations
                                 // temperature, time
-    int t=0;                   // keep track of annealing cycles
-    float kT, v_freeze;                   // freeze out potential (pushes
-                                      // out population transition probability)
+    int t=0;                    // keep track of annealing cycles
+    float kT, v_freeze;         // freeze out potential (pushes
+                                // out population transition probability)
     ublas::vector<float> v_local;
   };
 }
