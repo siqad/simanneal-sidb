@@ -16,7 +16,7 @@ using namespace phys;
 
 std::mutex siqadMutex;
 
-//Global method for writing to vectors (global in order to avoid clashing).
+//Global method for writing to vectors (global in order to avoid thread clashing).
 void writeStore(SimAnneal *object, int threadId){
   siqadMutex.lock();
 
