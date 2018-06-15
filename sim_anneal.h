@@ -83,7 +83,6 @@ namespace phys {
     //const float har_to_ev = 27.2114; // hartree to eV conversion factor
     const float db_distance_scale = 1E-10; // TODO move this to xml
 
-
   private:
 
     // determine change in population
@@ -124,5 +123,13 @@ namespace phys {
     float kT, v_freeze;         // freeze out potential (pushes
                                 // out population transition probability)
     ublas::vector<float> v_local;
+
+    float E_sys;                  // energy of the system
+
+    //Vars used in restarting
+    float E_best;                 // best energy of the system thus far
+    boost::numeric::ublas::vector<int> n_best; // electron configuration at the lowest recorded energy
+    int steadyPopCount;
+
   };
 }

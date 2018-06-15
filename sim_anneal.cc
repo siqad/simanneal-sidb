@@ -12,6 +12,8 @@
 #include <boost/numeric/ublas/vector.hpp>
 #include <boost/numeric/ublas/io.hpp>
 
+#define STEADY_THREASHOLD 7000
+
 using namespace phys;
 
 std::mutex siqadMutex;
@@ -52,19 +54,29 @@ void SimAnneal::runSim()
   simAnneal();
 }
 
+
+
+
+
+
+
 void SimAnneal::simAnneal()
 {
   // Vars
-  float E_sys;                  // energy of the system
-
   boost::numeric::ublas::vector<int> dn(n_dbs); // change of occupation for population update
   int from_occ_ind, to_occ_ind; // hopping from n[occ[from_ind]]
   int from_ind, to_ind;         // hopping from n[from_ind] to n[to_ind]
   int hop_attempts;
 
+  n_best.resize(n.size());
+  E_best = 0;
 
-    E_sys = systemEnergy();
+  E_sys = systemEnergy();
+  //E_best = E_sys;         // initializing the best system energy with the initial energy
+  //n_best = n;             //initializing the best electrin configuration with the initial electron config.
   v_local = v_ext - ublas::prod(v_ij, n);
+
+  steadyPopCount = 0;
 
   // Run simulated annealing for predetermined time steps
   while(t < t_max) {
@@ -79,6 +91,14 @@ void SimAnneal::simAnneal()
         break;
       }
     }
+
+    if(pop_changed){
+      steadyPopCount = 0;
+    }
+    else{
+      steadyPopCount++;
+    }
+
     if (pop_changed) {
       n += dn;
       E_sys += -1 * ublas::inner_prod(v_local, dn) + totalCoulombPotential(dn);
@@ -137,6 +157,10 @@ void SimAnneal::simAnneal()
 
 
 
+
+
+
+
 ublas::vector<int> SimAnneal::genPopDelta()
 {
   ublas::vector<int> dn(n_dbs);
@@ -159,6 +183,22 @@ void SimAnneal::timeStep()
   t++;
   kT = kT0 + (kT - kT0) * kT_step;
   v_freeze = t * v_freeze_step;
+
+
+  //simAnneal restarts
+  if(steadyPopCount > STEADY_THREASHOLD && E_sys < E_best){
+    E_best = E_sys;
+    n_best = n;
+  }
+
+
+  if( steadyPopCount > STEADY_THREASHOLD && (E_sys > 95.0/100*E_best || evalProb(0.001))){
+    //t-=0.05*t_max;
+    E_sys = E_best;
+    n = n_best;
+    std::cout << "******************RESTART******************" << std::endl;
+  }
+
 }
 
 // ACCEPTANCE FUNCTIONS
