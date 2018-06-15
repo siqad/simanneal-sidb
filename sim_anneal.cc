@@ -24,6 +24,7 @@ void writeStore(SimAnneal *object, int threadId){
 
   object->chargeStore[threadId] = object->db_charges;
   object->energyStore[threadId] = object->config_energies;
+  object->numElecStore[threadId] = object->n_elec;
 
   siqadMutex.unlock();
 }

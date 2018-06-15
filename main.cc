@@ -28,6 +28,7 @@ ublas::matrix<float> SimAnneal::v_ij = { };     // coulombic repulsion
 
 std::vector< boost::circular_buffer<ublas::vector<int>> > SimAnneal::chargeStore = {};
 std::vector< boost::circular_buffer<float> > SimAnneal::energyStore = {};
+std::vector<int> SimAnneal::numElecStore = {};
 
 
 // temporary main function for testing the xml parsing functionality
@@ -148,14 +149,9 @@ int main(int argc, char *argv[])
     }
   }
 
-  boost::circular_buffer<boost::numeric::ublas::vector<int>> placeVec;
-
-  for (int i = 0; i < sim_accessor.num_threads; ++ i){
-    sim_accessor.chargeStore.push_back(placeVec);
-  }
-
+  sim_accessor.chargeStore.resize(sim_accessor.num_threads);
   sim_accessor.energyStore.resize(sim_accessor.num_threads);
-
+  sim_accessor.numElecStore.resize(sim_accessor.num_threads);
 
   std::cout << "Pre-calculation complete" << std::endl << std::endl;
 
@@ -176,8 +172,18 @@ int main(int argc, char *argv[])
   //Selecting the best simmulated annealing calculation if more threads were run in parallel.
   float bestThread = 0;
   if (sim_accessor.num_threads > 1){
+    //Rounding to the nearest integer of the most popular doubly-occupied DBs.
+    float occSum = 0;
+    int numCorrectElec = 0;
+
+    for(int i = 0; i< sim_accessor.num_threads; i++){
+      occSum += sim_accessor.numElecStore[i];
+    }
+    numCorrectElec = round(occSum/sim_accessor.num_threads);
+
+    //Searching for the lowest energy among the threads with the correct number of doubly-occupied DBs.
     for(int i = 1; i < sim_accessor.num_threads; i++){
-      if(sim_accessor.energyStore[i][sim_accessor.energyStore[i].size() - 1] < sim_accessor.energyStore[bestThread][sim_accessor.energyStore[bestThread].size() - 1]){
+      if((sim_accessor.energyStore[i][sim_accessor.energyStore[i].size() - 1] < sim_accessor.energyStore[bestThread][sim_accessor.energyStore[bestThread].size() - 1]) && sim_accessor.numElecStore[i] == numCorrectElec){
         bestThread = i;
       }
     }

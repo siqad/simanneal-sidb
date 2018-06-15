@@ -47,6 +47,7 @@ namespace phys {
 
     static std::vector< boost::circular_buffer<ublas::vector<int>> > chargeStore; //Vector for storing db_charges
     static std::vector< boost::circular_buffer<float> > energyStore; //Vector for storing config_energies
+    static std::vector<int> numElecStore;
 
     //Total calculations
     float distance(const float &x1, const float &y1, const float &x2, const float &y2);
