@@ -74,7 +74,7 @@ namespace phys {
     // handy constants or variables from problem file
     static float Kc;           // 1 / (4 pi eps)
     static float debye_length; // Silicon intrinsic Debye length in m
-    static float v_0;          // global bias
+    static float mu;          // global bias
 
     //Other variables used for CALCULATIONS
     static int t_max;          // keep track of annealing cycles
