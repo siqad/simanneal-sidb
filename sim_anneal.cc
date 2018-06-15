@@ -82,7 +82,7 @@ void SimAnneal::initVars()
 {
   std::cout << "Initializing variables..." << std::endl;
   t_max = std::stoi(sqconn->getParameter("anneal_cycles"));
-  v_0 = std::stof(sqconn->getParameter("global_v0"));
+  mu = std::stof(sqconn->getParameter("global_v0"));
   debye_length = std::stof(sqconn->getParameter("debye_length"));
   debye_length *= 1E-9; // TODO change the rest of the code to use nm / angstrom
                         //      instead of doing a conversion here.
@@ -134,7 +134,8 @@ void SimAnneal::precalc()
 
     // TODO add electrode effect to v_ext
 
-    v_ext[i] = v_0;
+    //v_ext[i] = mu;
+    v_ext[i] = 0;
   }
   std::cout << "Pre-calculation complete" << std::endl << std::endl;
 }
@@ -259,7 +260,8 @@ ublas::vector<int> SimAnneal::genPopDelta()
 {
   ublas::vector<int> dn(n_dbs);
   for (unsigned i=0; i<n.size(); i++) {
-    float prob = 1. / ( 1 + exp( ((2*n[i]-1)*v_local[i] + v_freeze) / kT ) );
+    //float prob = 1. / ( 1 + exp( ((2*n[i]-1)*v_local[i] + v_freeze) / kT ) );
+    float prob = 1. / ( 1 + exp( ((2*n[i]-1)*(v_local[i] + mu) + v_freeze) / kT ) );
     dn[i] = evalProb(prob) ? 1 - 2*n[i] : 0;
   }
   return dn;
@@ -292,18 +294,6 @@ void SimAnneal::printCharges()
 
 
 // ACCEPTANCE FUNCTIONS
-
-
-bool SimAnneal::acceptPop(int db_ind)
-{
-  int curr_charge = n[db_ind];
-  float v = curr_charge ? v_ext[db_ind] + v_freeze : - v_ext[db_ind] + v_freeze; // 1->0 : 0->1
-  float prob;
-
-  prob = 1. / ( 1 + exp( v/kT ) );
-
-  return evalProb(prob);
-}
 
 
 // acceptance function for hopping
@@ -360,11 +350,11 @@ float SimAnneal::systemEnergy()
   assert(n_dbs > 0);
   float v = 0;
   for(int i=0; i<n_dbs; i++) {
-    v -= v_0 + n[i] * (v_ext[i]);
+    //v -= mu + v_ext[i] * n[i];
+    v -= v_ext[i] * n[i];
     for(int j=i+1; j<n_dbs; j++)
-      v += n[i] * n[j] * v_ij(i,j);
+      v += v_ij(i,j) * n[i] * n[j];
   }
-  //return v * har_to_ev; // revert back to this when going back to hartree calculations
   return v;
 }
 

@@ -104,7 +104,7 @@ namespace phys {
     // handy constants or variables from problem file
     float Kc;           // 1 / (4 pi eps)
     float debye_length; // Silicon intrinsic Debye length in m
-    float v_0;          // global bias
+    float mu;          // global bias
 
     // other variables used for calculations
     float kT0, kT, kT_step, v_freeze_step; // temperature, time
