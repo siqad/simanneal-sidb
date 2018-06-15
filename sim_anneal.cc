@@ -12,7 +12,7 @@
 #include <boost/numeric/ublas/vector.hpp>
 #include <boost/numeric/ublas/io.hpp>
 
-#define STEADY_THREASHOLD 7000
+#define STEADY_THREASHOLD 10000
 
 using namespace phys;
 
@@ -69,7 +69,7 @@ void SimAnneal::simAnneal()
   int hop_attempts;
 
   n_best.resize(n.size());
-  E_best = 0;
+  firstBest = false;
 
   E_sys = systemEnergy();
   //E_best = E_sys;         // initializing the best system energy with the initial energy
@@ -187,19 +187,24 @@ void SimAnneal::timeStep()
 
 
   //simAnneal restarts
+  if(!firstBest){
+    firstBest = true;
+    E_best = E_sys;
+  }
+
   if(steadyPopCount > STEADY_THREASHOLD && E_sys < E_best){
     E_best = E_sys;
     n_best = n;
   }
 
-
+/*
   if( steadyPopCount > STEADY_THREASHOLD && (E_sys > 95.0/100*E_best || evalProb(0.001))){
     //t-=0.05*t_max;
     E_sys = E_best;
     n = n_best;
     std::cout << "******************RESTART******************" << std::endl;
   }
-
+*/
 }
 
 // ACCEPTANCE FUNCTIONS
