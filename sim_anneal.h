@@ -127,11 +127,12 @@ namespace phys {
 
     float E_sys;                  // energy of the system
 
+/*
     //Vars used in restarting
     float E_best;                 // best energy of the system thus far
     boost::numeric::ublas::vector<int> n_best; // electron configuration at the lowest recorded energy
     int steadyPopCount;
     bool firstBest;
-
+*/
   };
 }

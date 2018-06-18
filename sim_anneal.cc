@@ -12,7 +12,7 @@
 #include <boost/numeric/ublas/vector.hpp>
 #include <boost/numeric/ublas/io.hpp>
 
-#define STEADY_THREASHOLD 10000
+//#define STEADY_THREASHOLD 700       //arbitrary value used in restarting
 
 using namespace phys;
 
@@ -69,15 +69,15 @@ void SimAnneal::simAnneal()
   int from_ind, to_ind;         // hopping from n[from_ind] to n[to_ind]
   int hop_attempts;
 
-  n_best.resize(n.size());
-  firstBest = false;
+  //n_best.resize(n.size());      //Variables used in restarting. uncomment
+  //firstBest = false;            //these two for restarts.
 
   E_sys = systemEnergy();
   //E_best = E_sys;         // initializing the best system energy with the initial energy
-  //n_best = n;             //initializing the best electrin configuration with the initial electron config.
+  //n_best = n;             //initializing the best electron configuration with the initial electron config.
   v_local = v_ext - ublas::prod(v_ij, n);
 
-  steadyPopCount = 0;
+  //steadyPopCount = 0;           //Variable for restarting. Uncomment when restarting.
 
   // Run simulated annealing for predetermined time steps
   while(t < t_max) {
@@ -93,12 +93,14 @@ void SimAnneal::simAnneal()
       }
     }
 
+/*        //Used in Restarting. Uncomment if restarting.
     if(pop_changed){
       steadyPopCount = 0;
     }
     else{
       steadyPopCount++;
     }
+*/
 
     if (pop_changed) {
       n += dn;
@@ -186,7 +188,7 @@ void SimAnneal::timeStep()
   kT = kT0 + (kT - kT0) * kT_step;
   v_freeze = t * v_freeze_step;
 
-
+/*
   //simAnneal restarts
   if(!firstBest){
     firstBest = true;
@@ -198,8 +200,8 @@ void SimAnneal::timeStep()
     n_best = n;
   }
 
-/*
-  if( steadyPopCount > STEADY_THREASHOLD && (E_sys > 95.0/100*E_best || evalProb(0.001))){
+
+  if( steadyPopCount > STEADY_THREASHOLD && (E_sys > 1.1*E_best || evalProb(0)) && t < 0.99*t_max){
     //t-=0.05*t_max;
     E_sys = E_best;
     n = n_best;
