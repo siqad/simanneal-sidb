@@ -171,7 +171,7 @@ int main(int argc, char *argv[])
   std::cout << std::endl << "*** Write Result to Output ***" << std::endl;
 
   //Selecting the best simmulated annealing calculation if more threads were run in parallel.
-  float bestThread = 0;
+  /*float bestThread = 0;
   if (sim_accessor.num_threads > 1){
     //Rounding to the nearest integer of the most popular doubly-occupied DBs.
     float occSum = 0;
@@ -192,7 +192,7 @@ int main(int argc, char *argv[])
 
   std::cout << " LOWEST ENERGY FOUND: " << sim_accessor.energyStore[bestThread][sim_accessor.energyStore[bestThread].size() - 1] << std::endl;
   std::cout << " BEST THREAD ID: " << bestThread << std::endl;
-  std::cout << " NUM THREADS USED: " << sim_accessor.num_threads << std::endl;
+  std::cout << " NUM THREADS USED: " << sim_accessor.num_threads << std::endl;*/
 
 
   // create the vector of strings for the db locations
@@ -239,16 +239,20 @@ int main(int argc, char *argv[])
       // if insertion fails, the result already exists. Just increment the 
       // counter within the map of that result.
       if (!insert_result.second)
-        insert_result.first++;
+        insert_result.first->second++;
     }
   }
 
   // recalculate the energy for each configuration to get better accuracy
-  std::vector<std::pair<std::string, std::string>> db_dist_data(elec_result_map.size());
+  std::vector<std::vector<std::string>> db_dist_data;
   int i=0;
   for (auto result_it = elec_result_map.cbegin(); result_it != elec_result_map.cend(); ++result_it) {
-    db_dist_data[i].first = result_it->first;
-    db_dist_data[i].second = std::to_string(sim_accessor.systemEnergy(result_it->first));
+    std::vector<std::string> db_dist;
+    db_dist.push_back(result_it->first);                              // config
+    db_dist.push_back(std::to_string(sim_accessor.
+                                     systemEnergy(result_it->first)));// energy
+    db_dist.push_back(std::to_string(result_it->second));             // count
+    db_dist_data.push_back(db_dist);
     i++;
   }
 
