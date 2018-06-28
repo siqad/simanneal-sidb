@@ -276,6 +276,29 @@ float SimAnneal::systemEnergy()
 }
 
 
+//float SimAnneal::systemEnergy(ublas::vector<int> n_in)
+float SimAnneal::systemEnergy(std::string n_in)
+{
+  assert(n_dbs > 0);
+  assert(n_in.length() == n_dbs);
+  // convert string of 0 and 1 to ublas vector
+  ublas::vector<int> n_int(n_in.length());
+  for (int i=0; i<n_dbs; i++) {
+    // ASCII char to int with the correct integer
+    n_int[i] = n_in.at(i) - '0';
+  }
+
+  float v = 0;
+  for(int i=0; i<n_dbs; i++) {
+    //v -= mu + v_ext[i] * n[i];
+    v -= v_ext[i] * n_int[i];
+    for(int j=i+1; j<n_dbs; j++)
+      v += v_ij(i,j) * n_int[i] * n_int[j];
+  }
+  return v;
+}
+
+
 float SimAnneal::distance(const float &x1, const float &y1, const float &x2, const float &y2)
 {
   return sqrt(pow(x1-x2, 2.0) + pow(y1-y2, 2.0));

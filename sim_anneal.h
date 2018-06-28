@@ -53,6 +53,9 @@ namespace phys {
     float distance(const float &x1, const float &y1, const float &x2, const float &y2);
     float interElecPotential(const float &r);
 
+    // Calculate the system energy of a given configuration
+    static float systemEnergy(std::string n_in);
+
     // keeping track of electron configurations and other house keeping vars
     static int n_dbs; // number of dbs
     int n_elec=0; // number of doubly occupied DBs

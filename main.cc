@@ -7,6 +7,7 @@
 // @desc:     Main function for physics engine
 
 #include "sim_anneal.h"
+#include <unordered_map>
 #include <iostream>
 #include <string>
 
@@ -197,11 +198,15 @@ int main(int argc, char *argv[])
   // create the vector of strings for the db locations
   std::vector<std::pair<std::string, std::string>> dbl_data(sim_accessor.db_locs.size());
   for (unsigned int i = 0; i < sim_accessor.db_locs.size(); i++) { //need the index
-  dbl_data[i].first = std::to_string(sim_accessor.db_locs[i].first);
-  dbl_data[i].second = std::to_string(sim_accessor.db_locs[i].second);
+    dbl_data[i].first = std::to_string(sim_accessor.db_locs[i].first);
+    dbl_data[i].second = std::to_string(sim_accessor.db_locs[i].second);
   }
   sqconn->setExport("db_loc", dbl_data);
 
+
+
+
+/*
   std::vector<std::pair<std::string, std::string>> db_dist_data(sim_accessor.chargeStore[bestThread].size());
   for (unsigned int i = 0; i < sim_accessor.chargeStore[bestThread].size(); i++) {
     std::string dbc_link;
@@ -211,6 +216,44 @@ int main(int argc, char *argv[])
     db_dist_data[i].first = dbc_link;
     db_dist_data[i].second = std::to_string(sim_accessor.energyStore[bestThread][i]);
   }
+*/
+
+
+
+
+  // save the results of all distributions to a map, with the vector of 
+  // distribution as key and the count of occurances as value.
+  // TODO move typedef to header, and make typedefs for the rest of the common types
+  typedef std::unordered_map<std::string, int> ElecResultMapType;
+  ElecResultMapType elec_result_map;
+
+  for (auto elec_result_set : sim_accessor.chargeStore) {
+    for (ublas::vector<int> elec_result : elec_result_set) {
+      std::string elec_result_str;
+      for (auto chg : elec_result)
+        elec_result_str.append(std::to_string(chg));
+
+      // attempt insertion
+      std::pair<ElecResultMapType::iterator, bool> insert_result = elec_result_map.insert({elec_result_str,1});
+
+      // if insertion fails, the result already exists. Just increment the 
+      // counter within the map of that result.
+      if (!insert_result.second)
+        insert_result.first++;
+    }
+  }
+
+  // recalculate the energy for each configuration to get better accuracy
+  std::vector<std::pair<std::string, std::string>> db_dist_data(elec_result_map.size());
+  int i=0;
+  for (auto result_it = elec_result_map.cbegin(); result_it != elec_result_map.cend(); ++result_it) {
+    db_dist_data[i].first = result_it->first;
+    db_dist_data[i].second = std::to_string(sim_accessor.systemEnergy(result_it->first));
+    i++;
+  }
+
+
+  // TODO rearrange map to appropriate format to be exported by SiQADConn
 
   sqconn->setExport("db_charge", db_dist_data);
 
