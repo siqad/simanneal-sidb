@@ -29,3 +29,5 @@ LINKLINE = $(LINK) -o $(TARGET) $(OBJS) $(LIB_CUDA)
 
 $(TARGET): $(OBJS) Makefile
 	$(LINKLINE)
+
+	rm -rf $(OBJS)
