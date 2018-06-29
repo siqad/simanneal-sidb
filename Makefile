@@ -12,7 +12,7 @@ INCLUDES = -I. -I$(CUDA_INSTALL_PATH)/include
 
 # Common flags
 COMMONFLAGS += $(INCLUDES)
-NVCCFLAGS := $(COMMONFLAGS) -gencode arch=compute_20,code=sm_20
+NVCCFLAGS := $(COMMONFLAGS) -gencode arch=compute_30,code=sm_30
 CXXFLAGS += $(COMMONFLAGS)
 CFLAGS += $(COMMONFLAGS)
 
@@ -33,7 +33,7 @@ SRC = src
 INC = include
 
 # Options
-OBJS_CU = $(OBJ)/sim_anneal.ch.o $(OBJ)/main.cu.o
+OBJS_CU = $(OBJ)/sim_anneal.h.o $(OBJ)/main.cc.o
 OBJS = $(OBJ)/siqadconn.cc.o $(OBJ)/link.o
 TARGET = simanneal
 LINKLINE = $(LINK) -o $(TARGET) $(OBJS_CU) $(OBJS) $(LIB_CUDA)

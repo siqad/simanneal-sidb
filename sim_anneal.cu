@@ -6,7 +6,7 @@
 //
 // @desc:     Simulated annealing physics engine
 
-#include "include/sim_anneal.h"
+#include "sim_anneal.h"
 #include <ctime>
 
 #include <boost/numeric/ublas/vector.hpp>
