@@ -1,27 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<siqad>
+<dbdesigner>
     <!--Program Flags-->
     <program>
-        <file_purpose>simulation</file_purpose>
+        <file_purpose>save</file_purpose>
         <version>TBD</version>
-        <date>2018-06-12 15:32:37</date>
+        <date>2018-06-20 21:37:07</date>
     </program>
-	<sim_params>
-        <num_threads>8</num_threads>
-        <anneal_cycles>10000</anneal_cycles>
-        <debye_length>5</debye_length>
-        <global_v0>0.34</global_v0>
-        <min_T>4</min_T>
-        <result_queue_size>1000</result_queue_size>
-    </sim_params>
     <!--GUI Flags-->
     <gui>
-        <zoom>0.045687</zoom>
-        <scroll x="271" y="100"/>
+        <zoom>0.0242636</zoom>
+        <scroll x="-179" y="0"/>
     </gui>
     <!--Layer Properties-->
     <!--Layer ID is intrinsic to the layer order-->
-	<layers>
     <layer_prop>
         <name>Lattice</name>
         <type>Lattice</type>
@@ -69,7 +60,6 @@
         <visible>1</visible>
         <active>0</active>
     </layer_prop>
-	</layers>
     <!--Item Hierarchy-->
     <design>
         <!--Lattice-->
@@ -190,20 +180,82 @@
                 <latcoord n="52" m="20" l="0"/>
                 <physloc x="199.68" y="153.6"/>
             </dbdot>
-			<dbdot>
+            <dbdot>
                 <layer_id>1</layer_id>
-                <latcoord n="33" m="7" l="1"/>
-                <physloc x="126.72" y="56.01"/>
+                <latcoord n="30" m="31" l="0"/>
+                <physloc x="115.2" y="238.08"/>
+            </dbdot>
+            <aggregate>
+                <dbdot>
+                    <layer_id>1</layer_id>
+                    <latcoord n="33" m="27" l="1"/>
+                    <physloc x="126.72" y="209.61"/>
+                </dbdot>
+                <dbdot>
+                    <layer_id>1</layer_id>
+                    <latcoord n="33" m="29" l="0"/>
+                    <physloc x="126.72" y="222.72"/>
+                </dbdot>
+                <dbdot>
+                    <layer_id>1</layer_id>
+                    <latcoord n="30" m="29" l="0"/>
+                    <physloc x="115.2" y="222.72"/>
+                </dbdot>
+                <dbdot>
+                    <layer_id>1</layer_id>
+                    <latcoord n="30" m="27" l="1"/>
+                    <physloc x="115.2" y="209.61"/>
+                </dbdot>
+            </aggregate>
+            <dbdot>
+                <layer_id>1</layer_id>
+                <latcoord n="33" m="3" l="1"/>
+                <physloc x="126.72" y="25.29"/>
             </dbdot>
             <dbdot>
                 <layer_id>1</layer_id>
-                <latcoord n="14" m="17" l="0"/>
-                <physloc x="53.76" y="130.56"/>
+                <latcoord n="33" m="1" l="1"/>
+                <physloc x="126.72" y="9.93"/>
             </dbdot>
             <dbdot>
                 <layer_id>1</layer_id>
-                <latcoord n="30" m="25" l="0"/>
-                <physloc x="115.2" y="192"/>
+                <latcoord n="33" m="5" l="0"/>
+                <physloc x="126.72" y="38.4"/>
+            </dbdot>
+            <dbdot>
+                <layer_id>1</layer_id>
+                <latcoord n="30" m="5" l="0"/>
+                <physloc x="115.2" y="38.4"/>
+            </dbdot>
+            <dbdot>
+                <layer_id>1</layer_id>
+                <latcoord n="30" m="3" l="1"/>
+                <physloc x="115.2" y="25.29"/>
+            </dbdot>
+            <dbdot>
+                <layer_id>1</layer_id>
+                <latcoord n="6" m="15" l="1"/>
+                <physloc x="23.04" y="117.45"/>
+            </dbdot>
+            <dbdot>
+                <layer_id>1</layer_id>
+                <latcoord n="2" m="17" l="0"/>
+                <physloc x="7.68" y="130.56"/>
+            </dbdot>
+            <dbdot>
+                <layer_id>1</layer_id>
+                <latcoord n="9" m="17" l="0"/>
+                <physloc x="34.56" y="130.56"/>
+            </dbdot>
+            <dbdot>
+                <layer_id>1</layer_id>
+                <latcoord n="6" m="17" l="0"/>
+                <physloc x="23.04" y="130.56"/>
+            </dbdot>
+            <dbdot>
+                <layer_id>1</layer_id>
+                <latcoord n="9" m="15" l="1"/>
+                <physloc x="34.56" y="117.45"/>
             </dbdot>
         </layer>
         <!--Metal-->
@@ -213,4 +265,4 @@
         <!--Plot-->
         <layer type="Plot"/>
     </design>
-</siqad>
+</dbdesigner>
