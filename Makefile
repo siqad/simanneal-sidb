@@ -8,7 +8,7 @@ NVCC  := nvcc -ccbin /usr/bin
 INCLUDES = -I. -I$(CUDA_INSTALL_PATH)/include
 
 # Common flags
-COMMONFLAGS += $(INCLUDES) -pthread
+COMMONFLAGS += $(INCLUDES)
 NVCCFLAGS += $(COMMONFLAGS)
 CXXFLAGS += $(COMMONFLAGS)
 
