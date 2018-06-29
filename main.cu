@@ -30,12 +30,6 @@ std::vector< boost::circular_buffer<ublas::vector<int>> > SimAnneal::chargeStore
 std::vector< boost::circular_buffer<float> > SimAnneal::energyStore = {};
 std::vector<int> SimAnneal::numElecStore = {};
 
-__global__
-void add(int n, float *x, float *y)
-{
-  for (int i = 0; i < n; i++)
-    y[i] = x[i] + y[i];
-}
 
 // temporary main function for testing the xml parsing functionality
 int main(int argc, char *argv[])
@@ -174,7 +168,7 @@ int main(int argc, char *argv[])
   }
 
 
-  
+
 
   int N = 1<<20;
   float *x, *y;
@@ -190,7 +184,7 @@ int main(int argc, char *argv[])
   }
 
   // Run kernel on 1M elements on the GPU
-  add<<<10, 256>>>(N, x, y);
+  sim_accessor.add<<<10, 256>>>(N, x, y);
 
   // Wait for GPU to finish before accessing on host
   cudaDeviceSynchronize();
