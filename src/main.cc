@@ -6,7 +6,7 @@
 //
 // @desc:     Main function for physics engine
 
-#include "sim_anneal.h"
+#include "include/sim_anneal.h"
 #include <iostream>
 #include <string>
 
