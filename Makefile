@@ -12,7 +12,7 @@ COMMONFLAGS += $(INCLUDES)
 NVCCFLAGS += $(COMMONFLAGS)
 CXXFLAGS += $(COMMONFLAGS)
 
-LIB_CUDA := -L$(CUDA_INSTALL_PATH)/lib64 -lcudart -pthread
+LIB_CUDA := -L$(CUDA_INSTALL_PATH)/lib64 -lcudart -pthread 
 
 OBJS = sim_anneal.cu.o siqadconn.cc.o main.cc.o
 TARGET = simanneal 
