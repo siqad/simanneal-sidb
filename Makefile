@@ -12,19 +12,19 @@ COMMONFLAGS += $(INCLUDES) -pthread
 NVCCFLAGS += $(COMMONFLAGS)
 CXXFLAGS += $(COMMONFLAGS)
 
-LIB_CUDA := -L$(CUDA_INSTALL_PATH)/lib64 -lcudart
+LIB_CUDA := -L$(CUDA_INSTALL_PATH)/lib64 -lcudart -pthread
 
 OBJS = sim_anneal.cu.o siqadconn.cc.o main.cc.o
-TARGET = exec
+TARGET = simanneal
 LINKLINE = $(LINK) -o $(TARGET) $(OBJS) $(LIB_CUDA)
 
 
-.SUFFIXES: .cpp .cu .o
+.SUFFIXES: .cc .cu .o
 
 %.cu.o: %.cu
 	$(NVCC) $(NVCCFLAGS) -c $< -o $@
 
-%.cpp.o: %.cpp
+%.cc.o: %.cc
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 $(TARGET): $(OBJS) Makefile
