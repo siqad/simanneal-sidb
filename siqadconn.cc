@@ -6,7 +6,7 @@
 //
 // @desc:     Convenient functions for interacting with SiQAD
 
-#include "include/siqadconn.h"
+#include "siqadconn.h"
 #include <iostream>
 #include <stdexcept>
 #include <boost/property_tree/ptree.hpp>
