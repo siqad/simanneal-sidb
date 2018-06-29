@@ -1,7 +1,6 @@
 CUDA_INSTALL_PATH ?= /usr/lib/cuda
 
 CXX := g++
-CC := gcc
 LINK := g++ -fPIC
 NVCC  := nvcc -ccbin /usr/bin
 
@@ -9,10 +8,9 @@ NVCC  := nvcc -ccbin /usr/bin
 INCLUDES = -I. -I$(CUDA_INSTALL_PATH)/include
 
 # Common flags
-COMMONFLAGS += $(INCLUDES)
+COMMONFLAGS += $(INCLUDES) -pthread
 NVCCFLAGS += $(COMMONFLAGS)
 CXXFLAGS += $(COMMONFLAGS)
-CFLAGS += $(COMMONFLAGS)
 
 LIB_CUDA := -L$(CUDA_INSTALL_PATH)/lib64 -lcudart
 
@@ -22,9 +20,6 @@ LINKLINE = $(LINK) -o $(TARGET) $(OBJS) $(LIB_CUDA)
 
 
 .SUFFIXES: .cpp .cu .o
-
-%.c.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
 
 %.cu.o: %.cu
 	$(NVCC) $(NVCCFLAGS) -c $< -o $@
