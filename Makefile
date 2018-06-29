@@ -41,22 +41,22 @@ LINKLINE = $(LINK) -o $(TARGET) $(OBJS_CU) $(OBJS) $(LIB_CUDA)
 .SUFFIXES: .c .cc .h .cu .cuh .o
 
 $(OBJ)/%.cuh.o: $(SRC)/%.cu $(INC)/%.cuh
-    $(NVCC) $(NVCCFLAGS) -dc $< -o $@
+	$(NVCC) $(NVCCFLAGS) -dc $< -o $@
 
 $(OBJ)/%.ch.o: $(SRC)/%.cu $(INC)/%.h
-    $(NVCC) $(NVCCFLAGS) -dc $< -o $@
+	$(NVCC) $(NVCCFLAGS) -dc $< -o $@
 
 $(OBJ)/%.cu.o: $(SRC)/%.cu
-    $(NVCC) $(NVCCFLAGS) -dc $< -o $@
+	$(NVCC) $(NVCCFLAGS) -dc $< -o $@
 
 $(OBJ)/link.o:
-    $(NVCC) $(NVCCFLAGS) -dlink $(OBJS_CU) -o $@
+	$(NVCC) $(NVCCFLAGS) -dlink $(OBJS_CU) -o $@
 
 $(OBJ)/%.cc.o: $(SRC)/%.cc $(INC)/%.h
-    $(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 $(TARGET): $(OBJS_CU) $(OBJS) Makefile
-    $(LINKLINE)
+	$(LINKLINE)
 
 clean:
-    rm -rf *.o log.txt
+	rm -rf *.o log.txt
