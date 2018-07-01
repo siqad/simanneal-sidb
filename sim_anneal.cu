@@ -137,54 +137,6 @@ void SimAnneal::simAnneal()
 
   //steadyPopCount = 0;           //Variable for restarting. Uncomment when restarting.
 
-  /* NOTE cuBLAS attempt, incomplete
-  cudaError_t cuda_stat;
-  cublasStatus_t stat;
-  cublasHandle_t handle;
-  float *dev_n, *dev_v_local, *dev_v_ij, *dev_v_temp;
-
-  cuda_stat = cudaMalloc((void**)&dev_n, n_dbs*sizeof(float));
-  if (cuda_stat != cudaSuccess) {
-    std::cout << "device memory allocation for n failed" << std::endl;
-    return;
-  }
-  cuda_stat = cudaMalloc((void**)&dev_v_ij, n_dbs*n_dbs*sizeof(float));
-  if (cuda_stat != cudaSuccess) {
-    std::cout << "device memory allocation for v_ij failed" << std::endl;
-    return;
-  }
-
-  stat = cublasCreate(&handle);
-  if (stat != CUBLAS_STATUS_SUCCESS) {
-    std::cout << "CUBLAS initialization failed" << std::endl;
-    return;
-  }
-
-  stat = cublasSetMatrix(n_dbs, n_dbs, sizeof(*n_arr), n_arr, dev_n, n_dbs);
-  if (stat != CUBLAS_STATUS_SUCCESS) {
-    std::cout << "data download failed" << std::endl;
-    cudaFree(dev_n);
-    cublasDestroy(handle);
-    return;
-  }
-  // TODO set vector
-
-  // TODO matrix multiplication
-  float alf=1.0;
-  float beta=1.0;
-  stat = cublasSgemv(handle, CUBLAS_OP_T, n_dbs, n_dbs, &alf, dev_v_ij, n_dbs, dev_n, 1, &beta, v_temp, 1);
-
-  stat = cublasGetMatrix(n_dbs, n_dbs, sizeof(*n_arr), dev_n, n_dbs, n_arr, n_dbs);
-  if (stat != CUBLAS_STATUS_SUCCESS) {
-    std::cout << "data upload failed" << std::endl;
-    cudaFree(dev_n);
-    cublasDestroy(handle);
-    return;
-  }
-
-  cudaFree(dev_n);
-  cublasDestroy(handle);
-  */
   
   // arrays for CUDA code
   float *n_arr, *v_ext_arr, *v_ij_arr, *cuda_v, *dn_arr;
@@ -243,9 +195,83 @@ void SimAnneal::simAnneal()
 
       cudaDeviceSynchronize();
 
-      std::cout << "total coulomb potential c++ : " << c_ver << std::endl;
-      std::cout << "total coulomb potential cuda: " << *cuda_v << std::endl;
+      std::cout << "total coulomb potential c++ :   " << c_ver << std::endl;
+      std::cout << "total coulomb potential cuda:   " << *cuda_v << std::endl;
 
+      // copy vector data to array with 0-based cuBLAS index
+      for (int i=0; i<n_dbs; i++) {
+        dn_arr[i] = dn[i];
+        n_arr[i] = n[i];
+        v_ext_arr[i] = v_ext[i];
+        for (int j=0; j<n_dbs; j++) {
+          v_ij_arr[IDX2C(i,j,n_dbs)] = v_ij(i,j);
+        }
+      }
+
+      ///* NOTE cuBLAS attempt, incomplete
+      cudaError_t cuda_stat;
+      cublasStatus_t stat;
+      cublasHandle_t handle;
+      float *dev_n, *dev_v_ij, *dev_v_temp;
+
+      cuda_stat = cudaMalloc((void**)&dev_n, n_dbs*sizeof(float));
+      if (cuda_stat != cudaSuccess) {
+          std::cout << "device memory allocation for n failed" << std::endl;
+          return;
+      }
+      cuda_stat = cudaMalloc((void**)&dev_v_ij, n_dbs*n_dbs*sizeof(float));
+      if (cuda_stat != cudaSuccess) {
+          std::cout << "device memory allocation for v_ij failed" << std::endl;
+          return;
+      }
+      cuda_stat = cudaMalloc((void**)&dev_v_temp, n_dbs*sizeof(float));
+      if (cuda_stat != cudaSuccess) {
+          std::cout << "device memory allocation for v_temp failed" << std::endl;
+          return;
+      }
+
+      stat = cublasCreate(&handle);
+      if (stat != CUBLAS_STATUS_SUCCESS) {
+          std::cout << "CUBLAS initialization failed" << std::endl;
+          return;
+      }
+
+      stat = cublasSetMatrix(n_dbs, n_dbs, sizeof(float), v_ij_arr, n_dbs, dev_v_ij, n_dbs);
+      if (stat != CUBLAS_STATUS_SUCCESS) {
+          std::cout << "data download failed" << std::endl;
+          cudaFree(dev_n);
+          cublasDestroy(handle);
+          return;
+      }
+      stat = cublasSetVector(n_dbs, sizeof(float), dn_arr, 1, dev_n, 1);
+      if (stat != CUBLAS_STATUS_SUCCESS) {
+          std::cout << "data download failed" << std::endl;
+          cudaFree(dev_n);
+          cublasDestroy(handle);
+          return;
+      }
+
+      // TODO matrix multiplication
+      float alpha=0.5;  // apply 0.5 scaling here instead of doing another multiplication later
+      float beta=0;
+      *cuda_v = 0;
+      stat = cublasSgemv(handle, CUBLAS_OP_N, n_dbs, n_dbs, &alpha, dev_v_ij, n_dbs, dev_n, 1, &beta, dev_v_temp, 1);
+      stat = cublasSdot(handle, n_dbs, dev_n, 1, dev_v_temp, 1, cuda_v);
+
+      /*stat = cublasGetVector(n_dbs, sizeof(float), dev_v_temp, 1, temp, 1);
+        if (stat != CUBLAS_STATUS_SUCCESS) {
+        std::cout << "data upload failed" << std::endl;
+        cudaFree(dev_n);
+        cublasDestroy(handle);
+        return;
+        }*/
+
+      cudaDeviceSynchronize();
+      std::cout << "total coulomb potential cublas: " << *cuda_v << std::endl << std::endl;
+
+      cudaFree(dev_n);
+      cublasDestroy(handle);
+      //*/
     }
 
 

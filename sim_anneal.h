@@ -27,6 +27,9 @@
 #define CUDA_HOSTDEV
 #endif
 
+// 0-based index for cuBLAS
+#define IDX2C(i,j,ld) (((j)*(ld))+(i))
+
 namespace constants{
   const float Q0 = 1.602E-19;
   const float PI = 3.14159;
