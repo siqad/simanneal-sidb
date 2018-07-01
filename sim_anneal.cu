@@ -18,6 +18,28 @@ using namespace phys;
 
 std::mutex siqadMutex;
 
+// Test CUDA code
+__global__ void add(int n, float *x, float *y)
+{
+  for (int i = 0; i < n; i++)
+    y[i] = x[i] + y[i];
+}
+
+// System energy
+__global__ void systemEnergy(int n_dbs, float *v, float *n, float *v_ext, float *v_ij)
+{
+  int index = blockIdx.x * blockDim.x + threadIdx.x;
+  int stride = blockDim.x * gridDim.x;
+
+  *v=0;
+  for (int i=index; i<n_dbs; i+=stride) {
+    *v -= v_ext[i] * n[i];
+    for (int j=i+1; j<n_dbs; j++)
+      *v += v_ij[i*n_dbs + j] * n[i] * n[j];
+  }
+}
+
+
 //Global method for writing to vectors (global in order to avoid thread clashing).
 void writeStore(SimAnneal *object, int threadId){
   siqadMutex.lock();
@@ -53,12 +75,38 @@ void SimAnneal::runSim()
 
   // SIM ANNEAL
   simAnneal();
+
+  /*// CUDA test code
+  int N = 1<<20;
+  float *x, *y;
+
+  // Allocate Unified Memory – accessible from CPU or GPU
+  cudaMallocManaged(&x, N*sizeof(float));
+  cudaMallocManaged(&y, N*sizeof(float));
+
+  // initialize x and y arrays on the host
+  for (int i = 0; i < N; i++) {
+    x[i] = 1.0f;
+    y[i] = 2.0f;
+  }
+
+  // Run kernel on 1M elements on the GPU
+  add<<<1, 256>>>(N, x, y);
+
+  // Wait for GPU to finish before accessing on host
+  cudaDeviceSynchronize();
+
+  // Check for errors (all values should be 3.0f)
+  float maxError = 0.0f;
+  for (int i = 0; i < N; i++) {
+    maxError = fmax(maxError, fabs(y[i]-3.0f));
+    std::cout << "Max error: " << maxError << std::endl;
+  }
+
+  // Free memory
+  cudaFree(x);
+  cudaFree(y);*/
 }
-
-
-
-
-
 
 
 void SimAnneal::simAnneal()
@@ -151,6 +199,42 @@ void SimAnneal::simAnneal()
     // perform time-step if not pre-annealing
     timeStep();
   }
+
+  // CUDA test code
+  float *n_arr, *v_ext_arr, *v_ij_arr, *cuda_v;
+
+  // Allocate Unified Memory – accessible from CPU or GPU
+  cudaMallocManaged(&n_arr, n_dbs*sizeof(float));
+  cudaMallocManaged(&v_ext_arr, n_dbs*sizeof(float));
+  cudaMallocManaged(&v_ij_arr, n_dbs*n_dbs*sizeof(float));
+  cudaMallocManaged(&cuda_v, sizeof(float));
+
+  // copy vector data to array
+  for (int i=0; i<n_dbs; i++) {
+    n_arr[i] = n[i];
+    v_ext_arr[i] = v_ext[i];
+    std::cout << "n_arr[" << i << "] = " << n_arr[i] << std::endl;
+    std::cout << "v_ext_arr[" << i << "] = " << v_ext_arr[i] << std::endl;
+    for (int j=0; j<n_dbs; j++) {
+      v_ij_arr[i*n_dbs + j] = v_ij(i,j);
+      std::cout << "v_ij_arr[" << i*n_dbs+j << "] = " << v_ij_arr[i*n_dbs+j] << std::endl;
+    }
+  }
+
+  // Run kernel on 1M elements on the GPU
+  ::systemEnergy<<<1, 1>>>(n_dbs, cuda_v, n_arr, v_ext_arr, v_ij_arr);
+
+  // Wait for GPU to finish before accessing on host
+  cudaDeviceSynchronize();
+
+  // Check for errors (all values should be 3.0f)
+  std::cout << "Host systemEnergy()=" << systemEnergy() << std::endl;
+  std::cout << "CUDA systemEnergy()=" << *cuda_v << std::endl;
+
+  // Free memory
+  cudaFree(n_arr);
+  cudaFree(v_ext_arr);
+  cudaFree(v_ij_arr);
 
   writeStore(this, threadId);
 }

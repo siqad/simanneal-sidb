@@ -37,6 +37,7 @@ namespace constants{
 }
 
 namespace phys {
+
   namespace ublas = boost::numeric::ublas;
   class SimAnneal
   {
@@ -89,12 +90,6 @@ namespace phys {
     // VARIABLES
     //const float har_to_ev = 27.2114; // hartree to eV conversion factor
     const float db_distance_scale = 1E-10; // TODO move this to xml
-
-    CUDA_HOSTDEV void add(int n, float *x, float *y)
-    {
-      for (int i = 0; i < n; i++)
-        y[i] = x[i] + y[i];
-    }
 
   private:
 

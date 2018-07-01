@@ -30,7 +30,6 @@ std::vector< boost::circular_buffer<ublas::vector<int>> > SimAnneal::chargeStore
 std::vector< boost::circular_buffer<float> > SimAnneal::energyStore = {};
 std::vector<int> SimAnneal::numElecStore = {};
 
-
 // temporary main function for testing the xml parsing functionality
 int main(int argc, char *argv[])
 {
@@ -166,41 +165,6 @@ int main(int argc, char *argv[])
   for (auto &th : threads) {
     th.join();
   }
-
-
-
-
-  int N = 1<<20;
-  float *x, *y;
-
-  // Allocate Unified Memory – accessible from CPU or GPU
-  cudaMallocManaged(&x, N*sizeof(float));
-  cudaMallocManaged(&y, N*sizeof(float));
-
-  // initialize x and y arrays on the host
-  for (int i = 0; i < N; i++) {
-    x[i] = 1.0f;
-    y[i] = 2.0f;
-  }
-
-  // Run kernel on 1M elements on the GPU
-  sim_accessor.add<<<10, 256>>>(N, x, y);
-
-  // Wait for GPU to finish before accessing on host
-  cudaDeviceSynchronize();
-
-  // Check for errors (all values should be 3.0f)
-  float maxError = 0.0f;
-  for (int i = 0; i < N; i++)
-    maxError = fmax(maxError, fabs(y[i]-3.0f));
-    std::cout << "Max error: " << maxError << std::endl;
-
-  // Free memory
-  cudaFree(x);
-  cudaFree(y);
-
-
-
 
   std::cout << std::endl << "*** Write Result to Output ***" << std::endl;
 

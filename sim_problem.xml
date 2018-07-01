@@ -7,7 +7,7 @@
         <date>2018-06-03 21:19:46</date>
     </program>
     <sim_params>
-	      <num_threads>100</num_threads>
+	      <num_threads>1</num_threads>
         <anneal_cycles>10000</anneal_cycles>
         <debye_length>5</debye_length>
         <global_v0>0.25</global_v0>

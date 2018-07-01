@@ -2,7 +2,7 @@ CUDA_INSTALL_PATH ?= /usr/lib/cuda
 
 CXX := g++
 LINK := g++ -fPIC
-NVCC  := nvcc -ccbin /usr/bin
+NVCC  := nvcc
 
 # Includes
 INCLUDES = -I. -I$(CUDA_INSTALL_PATH)/include
