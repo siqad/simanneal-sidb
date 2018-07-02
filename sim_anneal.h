@@ -22,7 +22,8 @@
 #include <boost/numeric/ublas/matrix_proxy.hpp>
 
 #include <cuda_runtime.h>
-#include "cublas_v2.h"
+#include <cublas_v2.h>
+#include <curand_kernel.h>
 
 #ifndef __SIM_ANNEAL_H__
 #define __SIM_ANNEAL_H__
@@ -49,7 +50,7 @@ namespace constants{
 // CUDA functions
 
 // Run the SimAnneal algorithm on the GPU
-__global__ void simAnnealAlg(int n_dbs, float *v_ext, float *v_ij, float *mu, int t_max, float kT_init);
+__global__ void simAnnealAlg(int n_dbs, float *v_ext, float *v_ij, int t_max, float kT_init);
 
 // Initialize cublas handle in device memory.
 __global__ void initCublasHandle();
@@ -58,13 +59,16 @@ __global__ void initCublasHandle();
 __global__ void destroyCublasHandle();
 
 // Initialize simanneal constants
-__global__ void initSimAnnealConsts(float *mu_in, float kT0_in, float v_freeze_step_in);
+__global__ void initSimAnnealConsts(float mu_in, float kT0_in, float v_freeze_step_in);
 
 // Initialize v_local
 __device__ void initVLocal(int n_dbs, float *n, float *v_ext, float *v_ij, float *v_local);
 
+// Update v_local after hopping from site i to site j.
+__device__ void updateVLocal(int from_ind, int to_ind, int n_dbs, float *v_ij, float *v_local);
+
 // Generate population delta (array of -1, 0 or 1 indicating the change in electron count at each site).
-__device__ void genPopulationDelta(int n_dbs, float *n, float *v_local, float *v_freeze, float *kT, float *mu, float *randnum, float *dn, bool *pop_changed);
+__device__ void genPopulationDelta(int n_dbs, float *n, float *v_local, float *v_freeze, float *kT, float *randnum, float *dn, bool *pop_changed);
 
 // Total system energy including Coulombic repulsion and external voltage.
 __device__ void systemEnergy(int n_dbs, float *n, float *v_ext, float *v_ij, float *output);
@@ -75,8 +79,14 @@ __device__ void populationChangeEnergyDelta(int n_dbs, float *dn, float *v_ij, f
 // Total potential from Coulombic repulsion in the system.
 __device__ void totalCoulombPotential(int n_dbs, float *n, float *v_ij, float *v);
 
+// Hop acceptance function.
+__device__ void acceptHop(float *v_diff, float *kT, bool *accept);
+
 // Energy change due to an electron hopping from site i to j.
 __device__ void hopEnergyDelta(int i, int j, int n_dbs, float *v_local, float *v_ij, float *v_del);
+
+// Generate an array of random floats.
+__device__ void randomFloats(int len, float *arr);
 
 // Time step.
 __device__ void timeStep(int *t, float *kT, float *v_freeze);

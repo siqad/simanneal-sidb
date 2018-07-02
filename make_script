@@ -1,8 +1,8 @@
 #!/bin/bash
 
 nvcc -arch=sm_50 -I. -I/opt/cuda/include -dc -c sim_anneal.cu main.cu
-nvcc -arch=sm_50 -dlink -rdc=true sim_anneal.o -o sim_anneal_link.o -L/opt/cuda/lib64 -lcudadevrt -lcudart -lcublas -lcublas_device
+nvcc -arch=sm_50 -dlink -rdc=true sim_anneal.o -o sim_anneal_link.o -L/opt/cuda/lib64 -lcudadevrt -lcudart -lcublas -lcublas_device -lcurand
 nvcc -arch=sm_50 -dlink -rdc=true main.o -o main_link.o -L/opt/cuda/lib64 -lcudart -lcublas
 g++ -I. -I/opt/cuda/include -c siqadconn.cc -o siqadconn.cc.o
-g++ -fPIC -o simanneal sim_anneal.o sim_anneal_link.o siqadconn.cc.o main.o main_link.o -L/opt/cuda/lib64 -lcudadevrt -lcudart -lcublas -lcublas_device -pthread
+g++ -fPIC -o simanneal sim_anneal.o sim_anneal_link.o siqadconn.cc.o main.o main_link.o -L/opt/cuda/lib64 -lcudadevrt -lcudart -lcublas -lcublas_device -lcurand -pthread
 rm -rf sim_anneal.cu.o siqadconn.cc.o main.cu.o
