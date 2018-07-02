@@ -158,7 +158,7 @@ int main(int argc, char *argv[])
   std::vector<std::thread> threads;
   for (int i=0; i<sim_accessor.num_threads; i++) {
     SimAnneal sim(i);
-    std::thread th(&SimAnneal::runSim, sim);
+    std::thread th(&SimAnneal::runSimCUDA, sim);
     threads.push_back(std::move(th));
   }
 

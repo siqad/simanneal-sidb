@@ -21,6 +21,13 @@
 #include <boost/numeric/ublas/matrix.hpp>
 #include <boost/numeric/ublas/matrix_proxy.hpp>
 
+#include <cuda_runtime.h>
+#include "cublas_v2.h"
+
+#ifndef __SIM_ANNEAL_H__
+#define __SIM_ANNEAL_H__
+
+
 #ifdef __CUDACC__
 #define CUDA_HOSTDEV __host__ __device__
 #else
@@ -39,6 +46,43 @@ namespace constants{
   const float ERFDB = 5E-10;
 }
 
+// CUDA functions
+
+// Run the SimAnneal algorithm on the GPU
+__global__ void simAnnealAlg(int n_dbs, float *v_ext, float *v_ij, float *mu, int t_max, float kT_init);
+
+// Initialize cublas handle in device memory.
+__global__ void initCublasHandle();
+
+// Destroy cublas handle in device memory.
+__global__ void destroyCublasHandle();
+
+// Initialize simanneal constants
+__global__ void initSimAnnealConsts(float *mu_in, float kT0_in, float v_freeze_step_in);
+
+// Initialize v_local
+__device__ void initVLocal(int n_dbs, float *n, float *v_ext, float *v_ij, float *v_local);
+
+// Generate population delta (array of -1, 0 or 1 indicating the change in electron count at each site).
+__device__ void genPopulationDelta(int n_dbs, float *n, float *v_local, float *v_freeze, float *kT, float *mu, float *randnum, float *dn, bool *pop_changed);
+
+// Total system energy including Coulombic repulsion and external voltage.
+__device__ void systemEnergy(int n_dbs, float *n, float *v_ext, float *v_ij, float *output);
+
+// Energy change from population change.
+__device__ void populationChangeEnergyDelta(int n_dbs, float *dn, float *v_ij, float *v_local, float *output);
+
+// Total potential from Coulombic repulsion in the system.
+__device__ void totalCoulombPotential(int n_dbs, float *n, float *v_ij, float *v);
+
+// Energy change due to an electron hopping from site i to j.
+__device__ void hopEnergyDelta(int i, int j, int n_dbs, float *v_local, float *v_ij, float *v_del);
+
+// Time step.
+__device__ void timeStep(int *t, float *kT, float *v_freeze);
+
+
+
 namespace phys {
 
   namespace ublas = boost::numeric::ublas;
@@ -54,6 +98,9 @@ namespace phys {
 
     // run simulation
     void runSim();
+
+    // run CUDA version of simanneal
+    void runSimCUDA();
 
     static std::vector< boost::circular_buffer<ublas::vector<int>> > chargeStore; //Vector for storing db_charges
     static std::vector< boost::circular_buffer<float> > energyStore; //Vector for storing config_energies
@@ -146,3 +193,5 @@ namespace phys {
 */
   };
 }
+
+#endif
