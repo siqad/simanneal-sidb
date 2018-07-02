@@ -72,8 +72,6 @@ __global__ void simAnnealAlg(int n_dbs, float *v_ext, float *v_ij, int t_max, fl
   bool pop_changed;             // indicate whether population has changed during this cycle
   float v_freeze=0;             // current freeze out voltage (population)
   float kT=kT_init;             // current temperature (population)
-  float *randnums;              // random numbers for probability evaluation
-  randnums = (float*)malloc(n_dbs*sizeof(float));
 
   // hop related vars
   int *occ;                     // first n_elec elements are indices of occupied sites in the n array; the rest are unoccupied indices.
@@ -101,17 +99,18 @@ __global__ void simAnnealAlg(int n_dbs, float *v_ext, float *v_ij, int t_max, fl
   // initialize system energy and local energy
   printf("Initializing system energy and local energy\n");
   float E_sys;
+  float E_del;
   systemEnergy(n_dbs, n, v_ext, v_ij, &E_sys);
   initVLocal(n_dbs, n, v_ext, v_ij, v_local);
 
   printf("\n***Beginning simanneal***\n\n");
+  // TODO learn how to do curand state offsets
   while (t < t_max) {
     // Population
     pop_changed = false;
-    randomFloats(n_dbs, randnums);
-    print1DArrayFloat("randnums", randnums, n_dbs);
-    genPopulationDelta(n_dbs, n, v_local, &v_freeze, &kT, randnums, dn, &pop_changed);
+    genPopulationDelta(n_dbs, n, v_local, &v_freeze, &kT, dn, &pop_changed);
     __syncthreads();
+    printf("sync up\n");
     if (pop_changed) {
       // n + dn
       float alpha=1;
@@ -119,8 +118,9 @@ __global__ void simAnnealAlg(int n_dbs, float *v_ext, float *v_ij, int t_max, fl
       __syncthreads();
 
       // E_sys += energy delta from population change
-      populationChangeEnergyDelta(n_dbs, dn, v_ij, v_local, &E_sys);
+      populationChangeEnergyDelta(n_dbs, dn, v_ij, v_local, &E_del);
       __syncthreads();
+      E_sys += E_del;
 
       // v_local = - prod(v_ij, dn) + v_local 
       alpha=-1;
@@ -129,9 +129,9 @@ __global__ void simAnnealAlg(int n_dbs, float *v_ext, float *v_ij, int t_max, fl
           &beta, v_local, 1);
       __syncthreads();
 
-      print1DArrayFloat("Population changed, dn", dn, n_dbs);
+      /*print1DArrayFloat("Population changed, dn", dn, n_dbs);
       print1DArrayFloat("v_local", v_local, n_dbs);
-      print1DArrayFloat("n", n, n_dbs);
+      print1DArrayFloat("n", n, n_dbs);*/
 
       // occupation list update
       // TODO parallelize
@@ -143,34 +143,33 @@ __global__ void simAnnealAlg(int n_dbs, float *v_ext, float *v_ij, int t_max, fl
           occ[unocc_ind--] = db_ind;
       }
       n_elec = occ_ind;
-      print1DArrayInt("occ", occ, n_dbs);
+      //print1DArrayInt("occ", occ, n_dbs);
     }
-    printf("\n");
+    //printf("\n");
 
     
     // Hopping
     // TODO try to get multiple attempts to go in parallel, then pick the best
     // TODO probably want to move all of the variable declarations to the top
     // TODO currently arbitrary hop attempts, make configurable
-    // TODO more efficient way to gen ints
-    if (n_elec != 0) {
-      printf("Hopping\n\n");
+    /*if (n_elec != 0) {
+      //printf("Hopping\n\n");
       hop_attempts = 0;
       int max_hop_attempts = (n_dbs-n_elec)*5;  
       while (hop_attempts < max_hop_attempts) {
-        randomInts(n_elec, 1, &from_occ_ind);
-        randomInts(n_dbs-n_elec, 1, &to_occ_ind);
+        // TODO make sure that all indices have a chance of being picked.
+        randInt(n_elec, &from_occ_ind);
+        randInt(n_dbs-n_elec, &to_occ_ind);
         to_occ_ind += n_elec;
         from_ind = occ[from_occ_ind];
         to_ind = occ[to_occ_ind];
 
-        float E_del;
         bool accept_hop;
         hopEnergyDelta(from_ind, to_ind, n_dbs, v_local, v_ij, &E_del);
         __syncthreads();
         acceptHop(&E_del, &kT, &accept_hop);
         __syncthreads();
-        printf("Attempting hop from sites %d to %d with E_del=%f...\n", from_ind, to_ind, E_del);
+        //printf("Attempting hop from sites %d to %d with E_del=%f...\n", from_ind, to_ind, E_del);
         if (accept_hop) {
           // TODO maybe fold the following into one simple function
           n[from_ind] = 0.;
@@ -183,22 +182,27 @@ __global__ void simAnnealAlg(int n_dbs, float *v_ext, float *v_ij, int t_max, fl
           updateVLocal(from_ind, to_ind, n_dbs, v_ij, v_local);
           __syncthreads();
 
-          print1DArrayFloat("Accepted. New v_local=", v_local, n_dbs);
+          //print1DArrayFloat("Accepted. New v_local=", v_local, n_dbs);
         }
         hop_attempts++;
       }
-    }
-    printf("\n");
+    }*/
+    //printf("\n");
 
     // TODO store new arrangement
 
     // time step
     timeStep(&t, &kT, &v_freeze);
     __syncthreads();
-    printf("\n");
+    printf("Cycle: %d, ending energy: %f\n\n", t, E_sys);
   }
 
-  free(randnums);
+  print1DArrayFloat("Final n\n", n, n_dbs);
+  printf("Ending energy (delta): %f\n", E_sys);
+
+  systemEnergy(n_dbs, n, v_ext, v_ij, &E_sys);
+  printf("Ending energy (actua): %f\n", E_sys);
+
   free(occ);
   free(v_i_temp);
   free(v_j_temp);
@@ -232,8 +236,6 @@ __global__ void initSimAnnealConsts(float mu_in, float kT0_in,
   kT0 = kT0_in;
   kT_step = kT_step_in;
   v_freeze_step = v_freeze_step_in;
-  printf("setting mu = %f", mu);
-  // TODO time step constants
 }
 
 __device__ void initVLocal(int n_dbs, float *n, float *v_ext, float *v_ij, float *v_local)
@@ -267,35 +269,36 @@ __device__ void updateVLocal(int from_ind, int to_ind, int n_dbs, float *v_ij, f
 }
 
 __device__ void genPopulationDelta(int n_dbs, float *n, float *v_local, 
-    float *v_freeze, float *kT, float *randnum, float *dn, 
+    float *v_freeze, float *kT, float *dn, 
     bool *pop_changed)
 {
   int tId = threadIdx.x + (blockIdx.x * blockDim.x);
-  if (tId != 0) return;
+  //int stride = blockDim.x * gridDim.x;
+  //if (tId != 0) return;
 
-  // TODO try to parallelize this function
+  curandState curand_state;
+  curand_init((unsigned long long)clock() + tId, 0, 0, &curand_state);
 
-  // initialize rng
-  curandState state;
-  curand_init((unsigned long long)clock() + tId, 0, 0, &state);
-
-  printf("Generating population delta. v_freeze=%f, kT=%f, mu=%f\n", *v_freeze, *kT, mu);
-  printf("prob=[");
+  //printf("Generating population delta. v_freeze=%f, kT=%f, mu=%f\n", *v_freeze, *kT, mu);
+  //printf("rand_num=[");
+  //for (int i=tId; i<n_dbs; i+=stride) {
   for (int i=0; i<n_dbs; i++) {
+    printf("genPopulationDelta for tId=%d\n", i);
     // TODO consider replacing expf with __expf for faster perf
     float prob = 1. / ( 1. + expf( ((2.*n[i]-1.)*(v_local[i]+mu) + *v_freeze ) / *kT ));
+    float rand_num = curand_uniform(&curand_state);
     //if (randnum[i] < prob) {
-    if (randnum[i] < prob) {
+    if (rand_num < prob) {
       dn[i] = 1. - 2.*n[i];
       *pop_changed = true;
     } else {
       dn[i] = 0.;
     }
-    printf("%f", prob);
+    /*printf("%f", rand_num);
     if (i != n_dbs-1)
-      printf(", ");
+      printf(", ");*/
   }
-  printf("]\n");
+  //printf("]\n");
 }
 
 // Total system energy including Coulombic repulsion and external voltage.
@@ -366,15 +369,14 @@ __device__ void acceptHop(float *v_diff, float *kT, bool *accept)
   int tId = threadIdx.x + (blockIdx.x * blockDim.x);
   if (tId != 0) return;
 
+  curandState curand_state;
+  curand_init((unsigned long long)clock() + tId, 0, 0, &curand_state);
+
   if (*v_diff <= 0.) {
     *accept = true;
   } else {
-    // TODO change random number to parallel (as many rand nums as there are parallel attempts)
-    float *randn = (float*)malloc(sizeof(float));
     float prob = expf( -(*v_diff) / (*kT) );
-    randomFloats(1, randn);
-    *accept = *randn < prob;
-    free(randn);
+    *accept = curand_uniform(&curand_state) < prob;
   }
 }
 
@@ -385,35 +387,16 @@ __device__ void hopEnergyDelta(int i, int j, int n_dbs, float *v_local, float *v
     *v_del = v_local[i] - v_local[j] - v_ij[IDX2C(i,j,n_dbs)];
 }
 
-__device__ void randomFloats(int len, float *arr)
+__device__ void randInt(int cap, int *output)
 {
   int tId = threadIdx.x + (blockIdx.x * blockDim.x);
-  int stride = blockDim.x * gridDim.x;
+  if (tId !=0) return;
 
-  // TODO try to initialize curand outside and see if the performance improves
-  for (int i=tId; i<len; i+=stride) {
-    // initialize rng
-    curandState state;
-    curand_init((unsigned long long)clock() + tId, 0, 0, &state);
-    arr[i] = curand_uniform(&state);
-  }
-}
-
-__device__ void randomInts(int cap, int len, int *arr)
-{
-  int tId = threadIdx.x + (blockIdx.x * blockDim.x);
-  int stride = blockDim.x * gridDim.x;
-
-  // TODO try to initialize curand outside and see if the performance improves
-  for (int i=tId; i<len; i+=stride) {
-    arr[i] = cap;
-    while (arr[i] == cap) {
-      // initialize rng
-      curandState state;
-      curand_init((unsigned long long)clock() + tId, 0, 0, &state);
-      arr[i] = static_cast<int>(cap * curand_uniform(&state));  // floor by cast
-    }
-  }
+  curandState curand_state;
+  curand_init((unsigned long long)clock() + tId, 0, 0, &curand_state);
+  *output = cap;
+  while (*output == cap)
+    *output = static_cast<int>(cap * curand_uniform(&curand_state));  // floor by cast
 }
 
 __device__ void timeStep(int *t, float *kT, float *v_freeze)

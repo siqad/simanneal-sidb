@@ -68,7 +68,7 @@ __device__ void initVLocal(int n_dbs, float *n, float *v_ext, float *v_ij, float
 __device__ void updateVLocal(int from_ind, int to_ind, int n_dbs, float *v_ij, float *v_local);
 
 // Generate population delta (array of -1, 0 or 1 indicating the change in electron count at each site).
-__device__ void genPopulationDelta(int n_dbs, float *n, float *v_local, float *v_freeze, float *kT, float *randnum, float *dn, bool *pop_changed);
+__device__ void genPopulationDelta(int n_dbs, float *n, float *v_local, float *v_freeze, float *kT, float *dn, bool *pop_changed);
 
 // Total system energy including Coulombic repulsion and external voltage.
 __device__ void systemEnergy(int n_dbs, float *n, float *v_ext, float *v_ij, float *output);
@@ -89,7 +89,7 @@ __device__ void hopEnergyDelta(int i, int j, int n_dbs, float *v_local, float *v
 __device__ void randomFloats(int len, float *arr);
 
 // Generate an array of random ints within the range 0 <= num < cap.
-__device__ void randomInts(int cap, int len, int *arr);
+__device__ void randInt(int cap, int *output);
 
 // Time step.
 __device__ void timeStep(int *t, float *kT, float *v_freeze);
