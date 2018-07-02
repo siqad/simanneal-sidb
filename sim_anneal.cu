@@ -151,14 +151,16 @@ __global__ void simAnnealAlg(int n_dbs, float *v_ext, float *v_ij, int t_max, fl
     // Hopping
     // TODO try to get multiple attempts to go in parallel, then pick the best
     // TODO probably want to move all of the variable declarations to the top
-    // TODO arbitrary, make configurable
+    // TODO currently arbitrary hop attempts, make configurable
+    // TODO more efficient way to gen ints
     if (n_elec != 0) {
       printf("Hopping\n\n");
       hop_attempts = 0;
       int max_hop_attempts = (n_dbs-n_elec)*5;  
       while (hop_attempts < max_hop_attempts) {
-        from_occ_ind = 0;       // TODO change to random int
-        to_occ_ind = n_dbs-1;   // TODO change to random int
+        randomInts(n_elec, 1, &from_occ_ind);
+        randomInts(n_dbs-n_elec, 1, &to_occ_ind);
+        to_occ_ind += n_elec;
         from_ind = occ[from_occ_ind];
         to_ind = occ[to_occ_ind];
 
@@ -388,11 +390,29 @@ __device__ void randomFloats(int len, float *arr)
   int tId = threadIdx.x + (blockIdx.x * blockDim.x);
   int stride = blockDim.x * gridDim.x;
 
+  // TODO try to initialize curand outside and see if the performance improves
   for (int i=tId; i<len; i+=stride) {
     // initialize rng
     curandState state;
     curand_init((unsigned long long)clock() + tId, 0, 0, &state);
     arr[i] = curand_uniform(&state);
+  }
+}
+
+__device__ void randomInts(int cap, int len, int *arr)
+{
+  int tId = threadIdx.x + (blockIdx.x * blockDim.x);
+  int stride = blockDim.x * gridDim.x;
+
+  // TODO try to initialize curand outside and see if the performance improves
+  for (int i=tId; i<len; i+=stride) {
+    arr[i] = cap;
+    while (arr[i] == cap) {
+      // initialize rng
+      curandState state;
+      curand_init((unsigned long long)clock() + tId, 0, 0, &state);
+      arr[i] = static_cast<int>(cap * curand_uniform(&state));  // floor by cast
+    }
   }
 }
 

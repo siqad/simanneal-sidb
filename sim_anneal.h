@@ -85,8 +85,11 @@ __device__ void acceptHop(float *v_diff, float *kT, bool *accept);
 // Energy change due to an electron hopping from site i to j.
 __device__ void hopEnergyDelta(int i, int j, int n_dbs, float *v_local, float *v_ij, float *v_del);
 
-// Generate an array of random floats.
+// Generate an array of random floats within the range 0.0 < num <= 1.0.
 __device__ void randomFloats(int len, float *arr);
+
+// Generate an array of random ints within the range 0 <= num < cap.
+__device__ void randomInts(int cap, int len, int *arr);
 
 // Time step.
 __device__ void timeStep(int *t, float *kT, float *v_freeze);
