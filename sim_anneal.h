@@ -73,7 +73,7 @@ __global__ void cleanUpDeviceVars();
 __device__ void initVLocal(int n_dbs, float *n, float *v_ext, float *v_local);
 
 // Update v_local after hopping from site i to site j.
-__global__ void updateVLocal(int from_ind, int to_ind, int n_dbs, float *v_local);
+__device__ void updateVLocal(int from_ind, int to_ind, int n_dbs, float *v_local);
 
 // Generate population delta (array of -1, 0 or 1 indicating the change in electron count at each site).
 __global__ void genPopulationDelta(int n_dbs, float *n, float *v_local, float *v_freeze, float *kT, float *dn, bool *pop_changed);

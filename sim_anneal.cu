@@ -213,11 +213,11 @@ __global__ void simAnnealAlg(int n_dbs, float *v_ext, int t_max, float kT_init)
     //printf("Cycle: %d, ending energy: %f\n\n", t, E_sys);
   }
 
-  print1DArrayFloat("Final n\n", n, n_dbs);
+  /*print1DArrayFloat("Final n\n", n, n_dbs);
   printf("Ending energy (delta): %f\n", E_sys);
 
   systemEnergy(n_dbs, n, v_ext, &E_sys);
-  printf("Ending energy (actua): %f\n", E_sys);
+  printf("Ending energy (actua): %f\n", E_sys);*/
 
   free(pop_changed);
   free(v_freeze);
@@ -239,7 +239,6 @@ __global__ void parallelHops(int n_dbs, int n_elec, int max_hops, float *kT,
 
   // thread specific offsets
   int i_offset = tId*n_dbs;                   // index offset for n_ph and v_local_ph
-  //printf("i_offset=%d\n", i_offset);
 
   // hop variables
   int hop_attempts=0;                         // number of hops attempted
@@ -295,9 +294,9 @@ __global__ void parallelHops(int n_dbs, int n_elec, int max_hops, float *kT,
     hopEnergyDelta(from_ind, to_ind, n_dbs, v_local, &E_del);
     //E_del = v_local_ph[from_ind+i_offset] - v_local_ph[to_ind+i_offset] - v_ij[IDX2C(from_ind,to_ind,n_dbs)];
     //E_del = v_local[from_ind] - v_local[to_ind] - v_ij[IDX2C(from_ind,to_ind,n_dbs)];
-    __syncthreads();
+    //__syncthreads();
     acceptHop(&curand_state, &E_del, kT, &accept_hop);
-    __syncthreads();
+    //__syncthreads();
 
     //printf("Attempting hop from sites %d to %d with E_del=%f...\n", from_ind, to_ind, E_del);
     if (accept_hop) {
@@ -311,12 +310,13 @@ __global__ void parallelHops(int n_dbs, int n_elec, int max_hops, float *kT,
       // update energy
       E_del_ph[tId] += E_del;
       //E_del_accum += E_del;
-      updateVLocal<<<1,n_dbs>>>(from_ind, to_ind, n_dbs, v_local);
+      //updateVLocal<<<1,n_dbs>>>(from_ind, to_ind, n_dbs, v_local);
+      updateVLocal(from_ind, to_ind, n_dbs, v_local);
       cudaDeviceSynchronize();
       /*for (int i=0; i<n_dbs; i++) {
         v_local[i] += v_ij[IDX2C(i, from_ind, n_dbs)] - v_ij[IDX2C(i, to_ind, n_dbs)];
       }*/
-      __syncthreads();
+      //__syncthreads();
       //print1DArrayFloat("Accepted. New v_local=", v_local, n_dbs);
       //print1DArrayFloat("New n=", n, n_dbs);
     }
@@ -403,15 +403,15 @@ __device__ void initVLocal(int n_dbs, float *n, float *v_ext, float *v_local)
   __syncthreads();
 }
 
-__global__ void updateVLocal(int from_ind, int to_ind, int n_dbs, float *v_local)
+__device__ void updateVLocal(int from_ind, int to_ind, int n_dbs, float *v_local)
 {
   //v_local += v_ij(from-th col) - v_ij(to-th col);
 
-  int tId = threadIdx.x + (blockIdx.x * blockDim.x);
-  int stride = blockDim.x * gridDim.x;
+  //int tId = threadIdx.x + (blockIdx.x * blockDim.x);
+  //int stride = blockDim.x * gridDim.x;
 
-  for (int i=tId; i<n_dbs; i+=stride) {
-  //for (int i=0; i<n_dbs; i++) {
+  //for (int i=tId; i<n_dbs; i+=stride) {
+  for (int i=0; i<n_dbs; i++) {
     v_local[i] += v_ij[IDX2C(i, from_ind, n_dbs)] - v_ij[IDX2C(i, to_ind, n_dbs)];
   }
 }
