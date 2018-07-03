@@ -98,9 +98,6 @@ __global__ void simAnnealAlg(int n_dbs, float *v_ext, int t_max, float kT_init)
   // hop related vars
   const int hop_threads=32;     // number of threads to run hop attempts in parallel
   int *occ;                     // first n_elec elements are indices of occupied sites in the n array; the rest are unoccupied indices.
-  //int from_occ_ind, to_occ_ind; // hopping from n[occ[from_ind]]
-  //int from_ind, to_ind;         // hopping from n[from_ind] to n[to_ind]
-  //int hop_attempts;             // number of hop attempts so far within a SimAnneal cycle
   float *n_ph;                  // pointer of size n_dbs*hop_threads*sizeof(float) that stores the electron config from all parallel hop paths
   float *v_local_ph;            // pointer of size n_dbs*hop_threads*sizeof(float) that stores the v_local of all parallel hop paths
   float *E_del_ph;              // energy delta from parallel hop attempts
@@ -175,8 +172,6 @@ __global__ void simAnnealAlg(int n_dbs, float *v_ext, int t_max, float kT_init)
 
     
     // Hopping
-    // TODO try to get multiple attempts to go in parallel, then pick the best
-    // TODO probably want to move all of the variable declarations to the top
     // TODO currently arbitrary hop attempts, make configurable
     if (n_elec != 0 && n_elec != n_dbs) {
       int max_hops = (n_dbs-n_elec)*5;  
@@ -207,85 +202,6 @@ __global__ void simAnnealAlg(int n_dbs, float *v_ext, int t_max, float kT_init)
       //print1DArrayFloat("Best n", n, n_dbs);
       //print1DArrayFloat("Best v_local", v_local, n_dbs);
       //printf("\n");
-      /*
-      int n_empty = n_dbs - n_elec;               // number of empty sites
-      bool accept_hop;
-      float E_del_accum=0;
-      curandState curand_state;
-      curand_init((unsigned long long)clock() + tId, 0, 0, &curand_state);
-      hop_attempts=0;
-      while (hop_attempts < max_hops) {
-        randInt(&curand_state, n_elec, &from_occ_ind);
-        randInt(&curand_state, n_empty, &to_occ_ind);
-        to_occ_ind += n_elec;
-        from_ind = occ[from_occ_ind];
-        to_ind = occ[to_occ_ind];
-
-        printf("from_occ_ind=%d, to_occ_ind=%d\n", from_occ_ind, to_occ_ind);
-
-        hopEnergyDelta(from_ind, to_ind, n_dbs, v_local, &E_del);
-        __syncthreads();
-        acceptHop(&curand_state, &E_del, kT, &accept_hop);
-        __syncthreads();
-
-        printf("Attempting hop from sites %d to %d with E_del=%f...\n", from_ind, to_ind, E_del);
-        if (accept_hop) {
-          // update relevant arrays to keep track of hops
-          n[from_ind] = 0.;
-          n[to_ind] = 1.;
-          occ[from_occ_ind] = to_ind;
-          occ[to_occ_ind] = from_ind;
-          printf("Post hop:\nn[%d]=%f, n[%d]=%f\nocc[%d]=%d,occ[%d]=%d\n", from_ind, n[from_ind], to_ind, n[to_ind], from_occ_ind, occ[from_occ_ind], to_occ_ind, occ[to_occ_ind]);
-
-          // update energy
-          E_del_accum += E_del;
-          updateVLocal<<<1,n_dbs>>>(from_ind, to_ind, n_dbs, v_local);
-          cudaDeviceSynchronize();
-          __syncthreads();
-          print1DArrayFloat("Accepted. New v_local=", v_local, n_dbs);
-          print1DArrayFloat("New n=", n, n_dbs);
-        }
-        hop_attempts++;
-      }
-      E_sys += E_del_accum;
-      */
-      /*
-      //printf("Hopping\n\n");
-      hop_attempts = 0;
-      int max_hop_attempts = (n_dbs-n_elec)*5;  
-      while (hop_attempts < max_hop_attempts) {
-        // TODO make sure that all indices have a chance of being picked.
-        curandState curand_state;
-        curand_init((unsigned long long)clock() + tId, 0, 0, &curand_state);
-        randInt(&curand_state, n_elec, &from_occ_ind);
-        randInt(&curand_state, n_dbs-n_elec, &to_occ_ind);
-        to_occ_ind += n_elec;
-        from_ind = occ[from_occ_ind];
-        to_ind = occ[to_occ_ind];
-
-        bool accept_hop;
-        hopEnergyDelta(from_ind, to_ind, n_dbs, v_local, &E_del);
-        __syncthreads();
-        acceptHop(&curand_state, &E_del, kT, &accept_hop);
-        __syncthreads();
-        //printf("Attempting hop from sites %d to %d with E_del=%f...\n", from_ind, to_ind, E_del);
-        if (accept_hop) {
-          // TODO maybe fold the following into one simple function
-          n[from_ind] = 0.;
-          n[to_ind] = 1.;
-          occ[from_occ_ind] = to_ind;
-          occ[to_occ_ind] = from_ind;
-
-          // update energy
-          E_sys += E_del;
-          updateVLocal<<<1,n_dbs>>>(from_ind, to_ind, n_dbs, v_local);
-          cudaDeviceSynchronize();
-          __syncthreads();
-
-          //print1DArrayFloat("Accepted. New v_local=", v_local, n_dbs);
-        }
-        hop_attempts++;
-      }*/
     }
     //printf("\n");
 
