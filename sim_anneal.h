@@ -35,6 +35,7 @@
 #define CUDA_HOSTDEV
 #endif
 
+
 // 0-based index for cuBLAS
 #define IDX2C(i,j,ld) (((j)*(ld))+(i))
 
@@ -45,21 +46,23 @@ namespace constants{
   const float EPS_SURFACE = 6.35;
   const float Kb = 8.617E-5;
   const float ERFDB = 5E-10;
+  const float DB_SCALE = 1E-10;
 }
 
 // CUDA functions
 
 // Run the SimAnneal algorithm on the GPU
-__global__ void simAnnealAlg(int n_dbs, float *v_ext, float *v_ij, int t_max, float kT_init);
-
-// Initialize cublas handle in device memory.
-__global__ void initCublasHandle();
-
-// Destroy cublas handle in device memory.
-__global__ void destroyCublasHandle();
+__global__ void simAnnealAlg(int n_dbs, float *v_ext, int t_max, float kT_init);
 
 // Initialize simanneal constants
-__global__ void initSimAnnealConsts(float mu_in, float kT0_in, float v_freeze_step_in);
+__global__ void initDeviceVars(float n_dbs, float debye_length, float mu_in, 
+    float kT0_in, float kT_step_in, float v_freeze_step_in, float *db_locs);
+
+// Initialize v_ij array
+__global__ void initVij(int n_dbs, float debye_length, float *db_locs, float *v_ij);
+
+// Destroy device variables
+__global__ void cleanUpDeviceVars();
 
 // Initialize v_local
 __device__ void initVLocal(int n_dbs, float *n, float *v_ext, float *v_ij, float *v_local);

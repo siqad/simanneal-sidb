@@ -98,7 +98,6 @@ int main(int argc, char *argv[])
 
   sim_accessor.kT0 = constants::Kb;
   sim_accessor.kT0 *= std::stof(sqconn->getParameter("min_T"));
-  std::cout << "kT0 retrieved: " << std::stof(sqconn->getParameter("min_T"));
 
   sim_accessor.result_queue_size = std::stoi(sqconn->getParameter("result_queue_size"));
   sim_accessor.result_queue_size = sim_accessor.t_max < sim_accessor.result_queue_size ? sim_accessor.t_max : sim_accessor.result_queue_size;
@@ -155,8 +154,10 @@ int main(int argc, char *argv[])
   std::cout << "Pre-calculation complete" << std::endl << std::endl;
 
 
+  // TODO test for CUDA, removed multithreading
   std::vector<std::thread> threads;
-  for (int i=0; i<sim_accessor.num_threads; i++) {
+  //for (int i=0; i<sim_accessor.num_threads; i++) {
+  for (int i=0; i<1; i++) {
     SimAnneal sim(i);
     std::thread th(&SimAnneal::runSimCUDA, sim);
     threads.push_back(std::move(th));
@@ -166,7 +167,7 @@ int main(int argc, char *argv[])
     th.join();
   }
 
-  std::cout << std::endl << "*** Write Result to Output ***" << std::endl;
+  /*std::cout << std::endl << "*** Write Result to Output ***" << std::endl;
 
   //Selecting the best simmulated annealing calculation if more threads were run in parallel.
   float bestThread = 0;
@@ -213,5 +214,5 @@ int main(int argc, char *argv[])
 
   sqconn->setExport("db_charge", db_dist_data);
 
-  sqconn->writeResultsXml();
+  sqconn->writeResultsXml();*/
 }

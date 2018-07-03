@@ -21,21 +21,24 @@ std::mutex siqadMutex;
 
 __device__ cublasHandle_t cb_hdl;
 __device__ float mu, kT0, kT_step, v_freeze_step;
+__device__ float *v_ij;
 
 // CUDA error checking
-#define cudaCheckErrors(msg) \
-  if (cudaGetLastError() != cudaSuccess) { \
-    std::cerr << "CUDA error: " << msg << "(" << cudaGetErrorString(cudaGetLastError()) \
-      << " at " << __FILE__ << ":" << __LINE__ << ")" << std::endl; \
-    exit(1); \
-  }
+#define gpuErrChk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
+inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
+{
+   if (code != cudaSuccess) 
+   {
+      fprintf(stderr,"GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
+      if (abort) exit(code);
+   }
+}
 
 // cuBLAS error checking
 #define cublasCheckErrors(cublas_status) \
   if (cublas_status != CUBLAS_STATUS_SUCCESS) { \
-    std::cerr << "Fatal cuBLAS error: " << (int)(cublas_status) << "(at " << \
-      __FILE__ << ":" << __LINE__ << ")" << std::endl; \
-    exit(1); \
+    printf("Fatal cuBLAS error: %d (at %s, %d)\n", (int)(cublas_status), \
+        __FILE__, __LINE__); \
   }
 
 // print 1d float array content in device
@@ -58,9 +61,24 @@ __device__ float mu, kT0, kT_step, v_freeze_step;
   } \
   printf("]\n");
 
+// print 2d float square array content in device in cublas indices
+#define print2DArrayFloat(name, arr, size) \
+  printf("%s=[", name); \
+  for (int i=0; i<size; i++) {\
+    for (int j=0; j<size; j++) {\
+      printf("%f", arr[IDX2C(i,j,size)]);\
+      if (j != size-1) \
+        printf(", "); \
+    }\
+    if (i != size-1) \
+      printf(",\n"); \
+  }\
+  printf("]\n");
 
-__global__ void simAnnealAlg(int n_dbs, float *v_ext, float *v_ij, int t_max, float kT_init)
+
+__global__ void simAnnealAlg(int n_dbs, float *v_ext, int t_max, float kT_init)
 {
+  // only one thread of the main loop should be run (not to be confused with streams)
   int tId = threadIdx.x + (blockIdx.x * blockDim.x);
   if (tId != 0) return;
 
@@ -69,9 +87,14 @@ __global__ void simAnnealAlg(int n_dbs, float *v_ext, float *v_ij, int t_max, fl
 
   // population related vars
   int n_elec;                   // number of electrons in the system
-  bool pop_changed;             // indicate whether population has changed during this cycle
-  float v_freeze=0;             // current freeze out voltage (population)
-  float kT=kT_init;             // current temperature (population)
+  bool *pop_changed;            // indicate whether population has changed during this cycle
+  float *v_freeze;              // current freeze out voltage (population)
+  float *kT;                    // current temperature (population)
+  cudaMalloc(&pop_changed, sizeof(bool));
+  cudaMalloc(&v_freeze, sizeof(float));
+  cudaMalloc(&kT, sizeof(float));
+  *v_freeze = 0;
+  *kT = kT_init;
 
   // hop related vars
   int *occ;                     // first n_elec elements are indices of occupied sites in the n array; the rest are unoccupied indices.
@@ -79,22 +102,24 @@ __global__ void simAnnealAlg(int n_dbs, float *v_ext, float *v_ij, int t_max, fl
   int from_ind, to_ind;         // hopping from n[from_ind] to n[to_ind]
   int hop_attempts;             // number of hop attempts so far within a SimAnneal cycle
   float *v_i_temp, *v_j_temp;   // temporary storage of columns i and j from v_ij
-  occ = (int*)malloc(n_dbs*sizeof(int));
-  v_i_temp = (float*)malloc(n_dbs*sizeof(float));
-  v_j_temp = (float*)malloc(n_dbs*sizeof(float));
+  cudaMalloc(&occ, n_dbs*sizeof(int));
+  cudaMalloc(&v_i_temp, n_dbs*sizeof(float));
+  cudaMalloc(&v_j_temp, n_dbs*sizeof(float));
 
   float *n;                     // current occupation of DB sites
   float *dn;                    // change of occupation for population update
   float *v_local;               // local potential at each site
-  n = (float*)malloc(n_dbs*sizeof(float));
-  dn = (float*)malloc(n_dbs*sizeof(float));
-  v_local = (float*)malloc(n_dbs*sizeof(float));
+  cudaMalloc(&n, n_dbs*sizeof(float));
+  cudaMalloc(&dn, n_dbs*sizeof(float));
+  cudaMalloc(&v_local, n_dbs*sizeof(float));
 
   for (int i=0; i<n_dbs; i++) {
     n[i] = 0.;
     dn[i] = 0.;
     v_local[i] = 0.;
   }
+
+  //print2DArrayFloat("v_ij", v_ij, n_dbs);
 
   // initialize system energy and local energy
   printf("Initializing system energy and local energy\n");
@@ -104,17 +129,15 @@ __global__ void simAnnealAlg(int n_dbs, float *v_ext, float *v_ij, int t_max, fl
   initVLocal(n_dbs, n, v_ext, v_ij, v_local);
 
   printf("\n***Beginning simanneal***\n\n");
-  // TODO learn how to do curand state offsets
   while (t < t_max) {
     // Population
-    pop_changed = false;
-    genPopulationDelta(n_dbs, n, v_local, &v_freeze, &kT, dn, &pop_changed);
+    *pop_changed = false;
+    genPopulationDelta(n_dbs, n, v_local, v_freeze, kT, dn, pop_changed);
     __syncthreads();
-    printf("sync up\n");
-    if (pop_changed) {
+    if (*pop_changed) {
       // n + dn
       float alpha=1;
-      cublasSaxpy(cb_hdl, n_dbs, &alpha, dn, 1, n, 1);
+      cublasCheckErrors(cublasSaxpy(cb_hdl, n_dbs, &alpha, dn, 1, n, 1));
       __syncthreads();
 
       // E_sys += energy delta from population change
@@ -125,13 +148,13 @@ __global__ void simAnnealAlg(int n_dbs, float *v_ext, float *v_ij, int t_max, fl
       // v_local = - prod(v_ij, dn) + v_local 
       alpha=-1;
       float beta=1;
-      cublasSgemv(cb_hdl, CUBLAS_OP_N, n_dbs, n_dbs, &alpha, v_ij, n_dbs, dn, 1,
-          &beta, v_local, 1);
+      cublasCheckErrors(cublasSgemv(cb_hdl, CUBLAS_OP_N, n_dbs, n_dbs, &alpha, v_ij, n_dbs, dn, 1,
+          &beta, v_local, 1));
       __syncthreads();
 
-      /*print1DArrayFloat("Population changed, dn", dn, n_dbs);
-      print1DArrayFloat("v_local", v_local, n_dbs);
-      print1DArrayFloat("n", n, n_dbs);*/
+      //print1DArrayFloat("Population changed, dn", dn, n_dbs);
+      //print1DArrayFloat("v_local", v_local, n_dbs);
+      //print1DArrayFloat("n", n, n_dbs);
 
       // occupation list update
       // TODO parallelize
@@ -152,7 +175,7 @@ __global__ void simAnnealAlg(int n_dbs, float *v_ext, float *v_ij, int t_max, fl
     // TODO try to get multiple attempts to go in parallel, then pick the best
     // TODO probably want to move all of the variable declarations to the top
     // TODO currently arbitrary hop attempts, make configurable
-    /*if (n_elec != 0) {
+    if (n_elec != 0) {
       //printf("Hopping\n\n");
       hop_attempts = 0;
       int max_hop_attempts = (n_dbs-n_elec)*5;  
@@ -167,7 +190,7 @@ __global__ void simAnnealAlg(int n_dbs, float *v_ext, float *v_ij, int t_max, fl
         bool accept_hop;
         hopEnergyDelta(from_ind, to_ind, n_dbs, v_local, v_ij, &E_del);
         __syncthreads();
-        acceptHop(&E_del, &kT, &accept_hop);
+        acceptHop(&E_del, kT, &accept_hop);
         __syncthreads();
         //printf("Attempting hop from sites %d to %d with E_del=%f...\n", from_ind, to_ind, E_del);
         if (accept_hop) {
@@ -186,15 +209,15 @@ __global__ void simAnnealAlg(int n_dbs, float *v_ext, float *v_ij, int t_max, fl
         }
         hop_attempts++;
       }
-    }*/
+    }
     //printf("\n");
 
     // TODO store new arrangement
 
     // time step
-    timeStep(&t, &kT, &v_freeze);
+    timeStep(&t, kT, v_freeze);
     __syncthreads();
-    printf("Cycle: %d, ending energy: %f\n\n", t, E_sys);
+    //printf("Cycle: %d, ending energy: %f\n\n", t, E_sys);
   }
 
   print1DArrayFloat("Final n\n", n, n_dbs);
@@ -209,61 +232,86 @@ __global__ void simAnnealAlg(int n_dbs, float *v_ext, float *v_ij, int t_max, fl
   free(n);
   free(dn);
   free(v_local);
+  //cublasCheckErrors(cublasDestroy_v2(cb_hdl_2));
 }
 
-
-__global__ void initCublasHandle()
+__global__ void initDeviceVars(float n_dbs, float debye_length, float mu_in, 
+    float kT0_in, float kT_step_in, float v_freeze_step_in, float *db_locs)
 {
-  int tId = threadIdx.x + (blockIdx.x * blockDim.x);
-  if (tId == 0)
-    cublasCreate(&cb_hdl);
-}
+  // create cublas handle
+  printf("Initializing cublas handle\n");
+  cublasCreate_v2(&cb_hdl);
 
-__global__ void destroyCublasHandle()
-{
-  int tId = threadIdx.x + (blockIdx.x * blockDim.x);
-  if (tId == 0)
-    cublasDestroy(cb_hdl);
-}
-
-__global__ void initSimAnnealConsts(float mu_in, float kT0_in, 
-    float kT_step_in, float v_freeze_step_in)
-{
-  int tId = threadIdx.x + (blockIdx.x * blockDim.x);
-  if (tId != 0) return;
-
+  // assign simple variables
+  printf("Assigning variables\n");
   mu = mu_in;
   kT0 = kT0_in;
   kT_step = kT_step_in;
   v_freeze_step = v_freeze_step_in;
+
+  // calculate v_ij using db_locs
+  printf("Initializing v_ij\n");
+  cudaMalloc(&v_ij, n_dbs*n_dbs*sizeof(float));
+  initVij<<<1,n_dbs>>>(n_dbs, debye_length, db_locs, v_ij);
+  __syncthreads();
+
+  printf("Device vars initialized\n");
+}
+
+__global__ void initVij(int n_dbs, float debye_length, float *db_locs, float *v_ij)
+{
+  int tId = threadIdx.x + (blockIdx.x * blockDim.x);
+  int stride = blockDim.x * gridDim.x;
+  
+  float Kc = 1./(4. * constants::PI * constants::EPS_SURFACE * constants::EPS0);
+  //for (int i=tId; i<n_dbs; i++) {
+  for (int i=tId; i<n_dbs; i+=stride) {
+    for (int j=i; j<n_dbs; j++) {
+      if (i==j) {
+        v_ij[IDX2C(i,j,n_dbs)] = 0;
+        continue;
+      }
+      float r = sqrtf( powf(fabsf(db_locs[IDX2C(i,0,n_dbs)] - db_locs[IDX2C(j,0,n_dbs)]),2) 
+                      +powf(fabsf(db_locs[IDX2C(i,1,n_dbs)] - db_locs[IDX2C(j,1,n_dbs)]),2) );
+      v_ij[IDX2C(i,j,n_dbs)] = constants::Q0 * Kc * erff(r/constants::ERFDB) * expf(-r/debye_length) / r;
+      v_ij[IDX2C(j,i,n_dbs)] = v_ij[IDX2C(i,j,n_dbs)];
+      //printf("r[%d,%d]=%.10e, v_ij[%d,%d]=%f\n", i, j, r, i, j, v_ij[IDX2C(i,j,n_dbs)]);
+    }
+  }
+}
+
+__global__ void cleanUpDeviceVars()
+{
+  cublasCheckErrors(cublasDestroy_v2(cb_hdl));
+  free(v_ij);
 }
 
 __device__ void initVLocal(int n_dbs, float *n, float *v_ext, float *v_ij, float *v_local)
 {
-  int tId = threadIdx.x + (blockIdx.x * blockDim.x);
-  if (tId != 0) return;
   // v_local = v_ext - dot(v_ij, n)
 
   // dot(v_ij, n)
   float alpha=1;
   float beta=0;
-  cublasSgemv(cb_hdl, CUBLAS_OP_N, n_dbs, n_dbs, &alpha, v_ij, n_dbs, n, 1, 
-      &beta, v_local, 1);
+  cublasCheckErrors(cublasSgemv(cb_hdl, CUBLAS_OP_N, n_dbs, n_dbs, &alpha, v_ij, n_dbs, n, 1, 
+      &beta, v_local, 1));
   __syncthreads();
 
   // v_ext - above
   alpha=-1;
-  cublasSaxpy(cb_hdl, n_dbs, &alpha, v_local, 1, v_ext, 1);
+  cublasCheckErrors(cublasSaxpy(cb_hdl, n_dbs, &alpha, v_local, 1, v_ext, 1));
   __syncthreads();
 }
 
 __device__ void updateVLocal(int from_ind, int to_ind, int n_dbs, float *v_ij, float *v_local)
 {
   //v_local += v_ij(from-th col) - v_ij(to-th col);
-  int tId = threadIdx.x + (blockIdx.x * blockDim.x);
-  int stride = blockDim.x * gridDim.x;
 
-  for (int i=tId; i<n_dbs; i+=stride) {
+  //int tId = threadIdx.x + (blockIdx.x * blockDim.x);
+  //int stride = blockDim.x * gridDim.x;
+
+  //for (int i=tId; i<n_dbs; i+=stride) {
+  for (int i=0; i<n_dbs; i++) {
     v_local[i] += v_ij[IDX2C(i, from_ind, n_dbs)] - v_ij[IDX2C(i, to_ind, n_dbs)];
   }
 }
@@ -273,8 +321,7 @@ __device__ void genPopulationDelta(int n_dbs, float *n, float *v_local,
     bool *pop_changed)
 {
   int tId = threadIdx.x + (blockIdx.x * blockDim.x);
-  //int stride = blockDim.x * gridDim.x;
-  //if (tId != 0) return;
+  int stride = blockDim.x * gridDim.x;
 
   curandState curand_state;
   curand_init((unsigned long long)clock() + tId, 0, 0, &curand_state);
@@ -283,11 +330,9 @@ __device__ void genPopulationDelta(int n_dbs, float *n, float *v_local,
   //printf("rand_num=[");
   //for (int i=tId; i<n_dbs; i+=stride) {
   for (int i=0; i<n_dbs; i++) {
-    printf("genPopulationDelta for tId=%d\n", i);
     // TODO consider replacing expf with __expf for faster perf
     float prob = 1. / ( 1. + expf( ((2.*n[i]-1.)*(v_local[i]+mu) + *v_freeze ) / *kT ));
     float rand_num = curand_uniform(&curand_state);
-    //if (randnum[i] < prob) {
     if (rand_num < prob) {
       dn[i] = 1. - 2.*n[i];
       *pop_changed = true;
@@ -317,14 +362,12 @@ __device__ void genPopulationDelta(int n_dbs, float *n, float *v_local,
 
 __device__ void systemEnergy(int n_dbs, float *n, float *v_ext, float *v_ij, float *output)
 {
-  int tId = threadIdx.x + (blockIdx.x * blockDim.x);
-  if (tId != 0) return;
-
   // TODO might be able to merge this function with population change energy delta with the similarity
-  float *coulomb_v = (float*)malloc(sizeof(float));
+  float *coulomb_v;
+  cudaMalloc(&coulomb_v, sizeof(float));
   totalCoulombPotential(n_dbs, n, v_ij, coulomb_v);
   __syncthreads();
-  cublasSdot(cb_hdl, n_dbs, v_ext, 1, n, 1, output);
+  cublasCheckErrors(cublasSdot(cb_hdl, n_dbs, v_ext, 1, n, 1, output));
   __syncthreads();
   *output *= -1;
   *output += *coulomb_v;
@@ -334,14 +377,11 @@ __device__ void systemEnergy(int n_dbs, float *n, float *v_ext, float *v_ij, flo
 // Energy change from population change.
 __device__ void populationChangeEnergyDelta(int n_dbs, float *dn, float *v_ij, float *v_local, float *output)
 {
-  int tId = threadIdx.x + (blockIdx.x * blockDim.x);
-  if (tId != 0) return;
-
   // delta E = -1 * dot(v_local, dn) + dn^T * V_ij * dn
   float *coulomb_v = (float*)malloc(sizeof(float));
   totalCoulombPotential(n_dbs, dn, v_ij, coulomb_v);
   __syncthreads();
-  cublasSdot(cb_hdl, n_dbs, v_local, 1, dn, 1, output);
+  cublasCheckErrors(cublasSdot(cb_hdl, n_dbs, v_local, 1, dn, 1, output));
   __syncthreads();
   *output *= -1;
   *output += *coulomb_v;
@@ -351,15 +391,13 @@ __device__ void populationChangeEnergyDelta(int n_dbs, float *dn, float *v_ij, f
 // Total potential from Coulombic repulsion in the system.
 __device__ void totalCoulombPotential(int n_dbs, float *n, float *v_ij, float *v)
 {
-  int tId = threadIdx.x + (blockIdx.x * blockDim.x);
-  if (tId != 0) return;
-
   float alpha=0.5;
   float beta=0;
-  float *v_temp = (float*)malloc(n_dbs);
-  cublasStatus_t status = cublasSgemv(cb_hdl, CUBLAS_OP_N, n_dbs, n_dbs, &alpha, v_ij, n_dbs, n, 1, &beta, v_temp, 1);
+  float *v_temp;
+  cudaMalloc(&v_temp, n_dbs*sizeof(float));
+  cublasCheckErrors(cublasSgemv(cb_hdl, CUBLAS_OP_N, n_dbs, n_dbs, &alpha, v_ij, n_dbs, n, 1, &beta, v_temp, 1));
   __syncthreads();
-  status = cublasSdot(cb_hdl, n_dbs, n, 1, v_temp, 1, v);
+  cublasSdot(cb_hdl, n_dbs, n, 1, v_temp, 1, v);
   __syncthreads();
   free(v_temp);
 }
@@ -367,8 +405,6 @@ __device__ void totalCoulombPotential(int n_dbs, float *n, float *v_ij, float *v
 __device__ void acceptHop(float *v_diff, float *kT, bool *accept)
 {
   int tId = threadIdx.x + (blockIdx.x * blockDim.x);
-  if (tId != 0) return;
-
   curandState curand_state;
   curand_init((unsigned long long)clock() + tId, 0, 0, &curand_state);
 
@@ -382,16 +418,12 @@ __device__ void acceptHop(float *v_diff, float *kT, bool *accept)
 
 __device__ void hopEnergyDelta(int i, int j, int n_dbs, float *v_local, float *v_ij, float *v_del)
 {
-  int tId = threadIdx.x + (blockIdx.x * blockDim.x);
-  if (tId == 0)
-    *v_del = v_local[i] - v_local[j] - v_ij[IDX2C(i,j,n_dbs)];
+  *v_del = v_local[i] - v_local[j] - v_ij[IDX2C(i,j,n_dbs)];
 }
 
 __device__ void randInt(int cap, int *output)
 {
   int tId = threadIdx.x + (blockIdx.x * blockDim.x);
-  if (tId !=0) return;
-
   curandState curand_state;
   curand_init((unsigned long long)clock() + tId, 0, 0, &curand_state);
   *output = cap;
@@ -401,9 +433,6 @@ __device__ void randInt(int cap, int *output)
 
 __device__ void timeStep(int *t, float *kT, float *v_freeze)
 {
-  int tId = threadIdx.x + (blockIdx.x * blockDim.x);
-  if (tId != 0) return;
-
   *t += 1;
   *kT = kT0 + (*kT - kT0) * kT_step;
   *v_freeze = (float)(*t) * v_freeze_step;
@@ -449,41 +478,56 @@ void SimAnneal::runSim()
 
 void SimAnneal::runSimCUDA()
 {
+  cudaFree(0);  // does nothing, absorbs the startup delay when profiling
+
   // initialize variables & perform pre-calculations
   float kT = 300*constants::Kb; // kT = Boltzmann constant (eV/K) * 300K
   
-  float *d_v_ext, *d_v_ij;
-  cudaMallocManaged(&d_v_ext, n_dbs*sizeof(float));
-  cudaMallocManaged(&d_v_ij, n_dbs*n_dbs*sizeof(float));
+  //float *v_ext_arr, *db_locs_arr;
+  float *d_v_ext, *d_db_locs;//, *d_v_ij;
+  gpuErrChk(cudaMallocManaged(&d_v_ext, n_dbs*sizeof(float)));
+  gpuErrChk(cudaMallocManaged(&d_db_locs, 2*n_dbs*sizeof(float)));
 
   for (int i=0; i<n_dbs; i++) {
     d_v_ext[i] = v_ext[i];
-    for (int j=0; j<n_dbs; j++) {
-      d_v_ij[IDX2C(i,j,n_dbs)] = v_ij(i,j);
-    }
+    d_db_locs[IDX2C(i,0,n_dbs)] = db_locs[i].first * db_distance_scale;   // x
+    d_db_locs[IDX2C(i,1,n_dbs)] = db_locs[i].second * db_distance_scale;  // y
   }
+  gpuErrChk(cudaDeviceSynchronize());
 
-  std::cout << "initializing cublas handle" << std::endl;
-  ::initCublasHandle<<<1,1>>>();
-  cudaDeviceSynchronize();
+  const int num_streams = 1;
+  cudaStream_t streams[num_streams];
 
   std::cout << "initializing CUDA SimAnneal constants" << std::endl;
-  ::initSimAnnealConsts<<<1,1>>>(mu, kT0, kT_step, v_freeze_step);
-  cudaDeviceSynchronize();
+  ::initDeviceVars<<<1,1>>>(n_dbs, debye_length, mu, kT0, kT_step, v_freeze_step, d_db_locs);
+  gpuErrChk(cudaPeekAtLastError());
+  gpuErrChk(cudaDeviceSynchronize());
 
-  std::cout << "invoking CUDA SimAnneal..." << std::endl;
-  ::simAnnealAlg<<<1,1>>>(n_dbs, d_v_ext, d_v_ij, t_max, kT);
-  cudaDeviceSynchronize();
+  for (int i=0; i < num_streams; i++) {
+    cudaStreamCreateWithFlags(&streams[i], cudaStreamNonBlocking);
+    std::cout << "invoking CUDA SimAnneal..." << std::endl;
+    ::simAnnealAlg<<<1,1,0,streams[i]>>>(n_dbs, d_v_ext, t_max, kT);
+  }
+  gpuErrChk(cudaPeekAtLastError());
+  gpuErrChk(cudaDeviceSynchronize());
+
+  for (int i=0; i < num_streams; i++) {
+    cudaStreamDestroy(streams[i]);
+  }
+  gpuErrChk(cudaDeviceSynchronize());
 
   std::cout << "destroying cublas handle" << std::endl;
-  ::destroyCublasHandle<<<1,1>>>();
-  cudaDeviceSynchronize();
+  ::cleanUpDeviceVars<<<1,1>>>();
+  gpuErrChk(cudaPeekAtLastError());
+  gpuErrChk(cudaDeviceSynchronize());
 
   // TODO move results to a form understood by SiQADConn
   
   // clean up
-  cudaFree(d_v_ext);
-  cudaFree(d_v_ij);
+  gpuErrChk(cudaFree(d_v_ext));
+  gpuErrChk(cudaFree(d_db_locs));
+
+  gpuErrChk(cudaDeviceReset());
 }
 
 

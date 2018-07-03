@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# TODO -G and -g and debug flags
+#nvcc -arch=sm_50 -G -g -I. -I/opt/cuda/include -dc -c sim_anneal.cu main.cu
 nvcc -arch=sm_50 -I. -I/opt/cuda/include -dc -c sim_anneal.cu main.cu
 nvcc -arch=sm_50 -dlink -rdc=true sim_anneal.o -o sim_anneal_link.o -L/opt/cuda/lib64 -lcudadevrt -lcudart -lcublas -lcublas_device -lcurand
 nvcc -arch=sm_50 -dlink -rdc=true main.o -o main_link.o -L/opt/cuda/lib64 -lcudart -lcublas
