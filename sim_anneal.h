@@ -59,9 +59,12 @@ __global__ void parallelHops(int n_dbs, int n_elec, int max_hops, float *kT,
     float *n_start, float *n_ph, 
     float *v_local_start, float *v_local_ph, float *E_del_ph);
 
+__global__ void simAnnealParallel(int num_threads);
+
 // Initialize simanneal constants
-__global__ void initDeviceVars(float n_dbs, float debye_length, float mu_in, 
-    float kT0_in, float kT_step_in, float v_freeze_step_in, float *db_locs);
+__global__ void initDeviceVars(float n_dbs_in, float debye_length, float mu_in, 
+    float kT0_in, float kT_step_in, float v_freeze_step_in, int t_max_in, 
+    float *v_ext_in, float *db_locs);
 
 // Initialize v_ij array
 __global__ void initVij(int n_dbs, float debye_length, float *db_locs, float *v_ij);
@@ -77,6 +80,7 @@ __device__ void updateVLocal(int from_ind, int to_ind, int n_dbs, float *v_local
 
 // Generate population delta (array of -1, 0 or 1 indicating the change in electron count at each site).
 __global__ void genPopulationDelta(int n_dbs, float *n, float *v_local, float *v_freeze, float *kT, float *dn, bool *pop_changed);
+__device__ void genPopulationDelta(curandState *curand_state, int n_dbs, float *n, float *v_local, float *v_freeze, float *kT, float *dn, bool *pop_changed);
 
 // Total system energy including Coulombic repulsion and external voltage.
 __device__ void systemEnergy(int n_dbs, float *n, float *v_ext, float *output);
