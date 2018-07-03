@@ -78,7 +78,7 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
 
 __global__ void simAnnealAlg(int n_dbs, float *v_ext, int t_max, float kT_init)
 {
-  // only one thread of the main loop should be run (not to be confused with streams)
+  // only one thread deals with population
   int tId = threadIdx.x + (blockIdx.x * blockDim.x);
   if (tId != 0) return;
 
@@ -321,7 +321,7 @@ __device__ void genPopulationDelta(int n_dbs, float *n, float *v_local,
     bool *pop_changed)
 {
   int tId = threadIdx.x + (blockIdx.x * blockDim.x);
-  int stride = blockDim.x * gridDim.x;
+  //int stride = blockDim.x * gridDim.x;
 
   curandState curand_state;
   curand_init((unsigned long long)clock() + tId, 0, 0, &curand_state);
@@ -495,8 +495,9 @@ void SimAnneal::runSimCUDA()
   }
   gpuErrChk(cudaDeviceSynchronize());
 
-  const int num_streams = 1;
+  const int num_streams = 100;
   cudaStream_t streams[num_streams];
+  cudaStream_t *streams;
 
   std::cout << "initializing CUDA SimAnneal constants" << std::endl;
   ::initDeviceVars<<<1,1>>>(n_dbs, debye_length, mu, kT0, kT_step, v_freeze_step, d_db_locs);
