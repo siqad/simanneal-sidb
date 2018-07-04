@@ -26,8 +26,10 @@ ublas::matrix<float> SimAnneal::db_r = { };  // distance between all dbs
 ublas::vector<float> SimAnneal::v_ext = { }; // keep track of voltages at each DB
 ublas::matrix<float> SimAnneal::v_ij = { };     // coulombic repulsion
 
-std::vector< boost::circular_buffer<ublas::vector<int>> > SimAnneal::chargeStore = {};
-std::vector< boost::circular_buffer<float> > SimAnneal::energyStore = {};
+//std::vector< boost::circular_buffer<ublas::vector<int>> > SimAnneal::chargeStore = {};
+//std::vector< boost::circular_buffer<float> > SimAnneal::energyStore = {};
+std::vector< std::vector<ublas::vector<int>> > SimAnneal::chargeStore = {};
+std::vector< std::vector<float> > SimAnneal::energyStore = {};
 std::vector<int> SimAnneal::numElecStore = {};
 
 // temporary main function for testing the xml parsing functionality
@@ -147,9 +149,12 @@ int main(int argc, char *argv[])
     }
   }
 
-  sim_accessor.chargeStore.resize(sim_accessor.num_threads);
+  /*sim_accessor.chargeStore.resize(sim_accessor.num_threads);
   sim_accessor.energyStore.resize(sim_accessor.num_threads);
-  sim_accessor.numElecStore.resize(sim_accessor.num_threads);
+  sim_accessor.numElecStore.resize(sim_accessor.num_threads);*/
+  sim_accessor.chargeStore.resize(1);
+  sim_accessor.energyStore.resize(1);
+  sim_accessor.numElecStore.resize(1);
 
   std::cout << "Pre-calculation complete" << std::endl << std::endl;
 
@@ -167,10 +172,10 @@ int main(int argc, char *argv[])
     th.join();
   }
 
-  /*std::cout << std::endl << "*** Write Result to Output ***" << std::endl;
+  std::cout << std::endl << "*** Write Result to Output ***" << std::endl;
 
   //Selecting the best simmulated annealing calculation if more threads were run in parallel.
-  float bestThread = 0;
+  /*float bestThread = 0;
   if (sim_accessor.num_threads > 1){
     //Rounding to the nearest integer of the most popular doubly-occupied DBs.
     float occSum = 0;
@@ -191,7 +196,7 @@ int main(int argc, char *argv[])
 
   std::cout << " LOWEST ENERGY FOUND: " << sim_accessor.energyStore[bestThread][sim_accessor.energyStore[bestThread].size() - 1] << std::endl;
   std::cout << " BEST THREAD ID: " << bestThread << std::endl;
-  std::cout << " NUM THREADS USED: " << sim_accessor.num_threads << std::endl;
+  std::cout << " NUM THREADS USED: " << sim_accessor.num_threads << std::endl;*/
 
 
   // create the vector of strings for the db locations
@@ -202,7 +207,7 @@ int main(int argc, char *argv[])
   }
   sqconn->setExport("db_loc", dbl_data);
 
-  std::vector<std::pair<std::string, std::string>> db_dist_data(sim_accessor.chargeStore[bestThread].size());
+  /*std::vector<std::pair<std::string, std::string>> db_dist_data(sim_accessor.chargeStore[bestThread].size());
   for (unsigned int i = 0; i < sim_accessor.chargeStore[bestThread].size(); i++) {
     std::string dbc_link;
     for(auto chg : sim_accessor.chargeStore[bestThread][i]){
@@ -210,9 +215,18 @@ int main(int argc, char *argv[])
     }
     db_dist_data[i].first = dbc_link;
     db_dist_data[i].second = std::to_string(sim_accessor.energyStore[bestThread][i]);
+  }*/
+  std::vector<std::pair<std::string, std::string>> db_dist_data(sim_accessor.chargeStore[0].size());
+  for (unsigned int i = 0; i < sim_accessor.chargeStore[0].size(); i++) {
+    std::string dbc_link;
+    for(auto chg : sim_accessor.chargeStore[0][i]){
+      dbc_link.append(std::to_string(chg));
+    }
+    db_dist_data[i].first = dbc_link;
+    db_dist_data[i].second = std::to_string(sim_accessor.energyStore[0][i]);
   }
 
   sqconn->setExport("db_charge", db_dist_data);
 
-  sqconn->writeResultsXml();*/
+  sqconn->writeResultsXml();
 }

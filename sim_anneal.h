@@ -51,14 +51,6 @@ namespace constants{
 
 // CUDA functions
 
-// Run the SimAnneal algorithm on the GPU
-__global__ void simAnnealAlg(int n_dbs, float *v_ext, int t_max, float kT_init);
-
-// Attempt multiple hops in parallel.
-__global__ void parallelHops(int n_dbs, int n_elec, int max_hops, float *kT, 
-    float *n_start, float *n_ph, 
-    float *v_local_start, float *v_local_ph, float *E_del_ph);
-
 __global__ void simAnnealParallel(int num_threads);
 
 // Initialize simanneal constants
@@ -76,8 +68,7 @@ __global__ void cleanUpDeviceVars();
 __device__ void initVLocal(int n_dbs, float *n, float *v_ext, float *v_local);
 
 // Update v_local after hopping from site i to site j.
-__global__ void updateVLocalK(int from_ind, int to_ind, int n_dbs, float *v_local);
-__device__ void updateVLocal(int from_ind, int to_ind, int n_dbs, float *v_local);
+__global__ void updateVLocal(int from_ind, int to_ind, int n_dbs, float *v_local);
 
 // Generate population delta (array of -1, 0 or 1 indicating the change in electron count at each site).
 __global__ void genPopulationDelta(int n_dbs, float *n, float *v_local, float *v_freeze, float *kT, float *dn, bool *pop_changed);
@@ -107,6 +98,9 @@ __device__ void randInt(curandState *state, int cap, int *output);
 // Time step.
 __device__ void timeStep(int *t, float *kT, float *v_freeze);
 
+// Return configuration to the array provided by host.
+__device__ void returnN(float *n_local, float *n_out);
+
 
 
 namespace phys {
@@ -128,8 +122,10 @@ namespace phys {
     // run CUDA version of simanneal
     void runSimCUDA();
 
-    static std::vector< boost::circular_buffer<ublas::vector<int>> > chargeStore; //Vector for storing db_charges
-    static std::vector< boost::circular_buffer<float> > energyStore; //Vector for storing config_energies
+    //static std::vector< boost::circular_buffer<ublas::vector<int>> > chargeStore; //Vector for storing db_charges
+    //static std::vector< boost::circular_buffer<float> > energyStore; //Vector for storing config_energies
+    static std::vector< std::vector<ublas::vector<int>> > chargeStore; //Vector for storing db_charges
+    static std::vector< std::vector<float> > energyStore; //Vector for storing config_energies
     static std::vector<int> numElecStore;
 
     //Total calculations
@@ -146,8 +142,10 @@ namespace phys {
     static ublas::matrix<float> v_ij;     // coulombic repulsion
     static int result_queue_size;
     static std::vector<std::pair<float,float>> db_locs; // location of free dbs
-    boost::circular_buffer<ublas::vector<int>> db_charges;
-    boost::circular_buffer<float> config_energies;  // energies in line with db_charges
+    //boost::circular_buffer<ublas::vector<int>> db_charges;
+    std::vector<ublas::vector<int>> db_charges;
+    //boost::circular_buffer<float> config_energies;  // energies in line with db_charges
+    std::vector<float> config_energies;  // energies in line with db_charges
 
     static int num_threads;    // number of threads used in simmulation
     int threadId;              // the thread id of each class object
@@ -183,6 +181,7 @@ namespace phys {
 
     // CALCULATIONS
     float systemEnergy();
+    static float systemEnergy(ublas::vector<int> config);
     float totalCoulombPotential(ublas::vector<int> config);
     float hopEnergyDelta(const int &i, const int &j);
 

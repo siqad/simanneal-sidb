@@ -76,275 +76,12 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
   }\
   printf("]\n");
 
-__global__ void dummy()
-{
-}
-
-__global__ void simAnnealAlg(int n_dbs, float *v_ext, int t_max, float kT_init)
-{
-  int tId = threadIdx.x + (blockIdx.x * blockDim.x);
-  if (tId != 0) return;
-
-  // cycle tracking
-  int t=0;                      // current anneal cycle
-
-  // population related vars
-  int n_elec;                   // number of electrons in the system
-  bool *pop_changed;            // indicate whether population has changed during this cycle
-  float *v_freeze;              // current freeze out voltage (population)
-  float *kT;                    // current temperature (population)
-  cudaMalloc(&pop_changed, sizeof(bool));
-  cudaMalloc(&v_freeze, sizeof(float));
-  cudaMalloc(&kT, sizeof(float));
-  *v_freeze = 0;
-  *kT = kT_init;
-
-  // hop related vars
-  const int hop_threads=32;     // number of threads to run hop attempts in parallel
-  int *occ;                     // first n_elec elements are indices of occupied sites in the n array; the rest are unoccupied indices.
-  float *n_ph;                  // pointer of size n_dbs*hop_threads*sizeof(float) that stores the electron config from all parallel hop paths
-  float *v_local_ph;            // pointer of size n_dbs*hop_threads*sizeof(float) that stores the v_local of all parallel hop paths
-  float *E_del_ph;              // energy delta from parallel hop attempts
-  cudaMalloc(&occ, n_dbs*sizeof(int));
-  cudaMalloc(&n_ph, n_dbs*hop_threads*sizeof(float));
-  cudaMalloc(&v_local_ph, n_dbs*hop_threads*sizeof(float));
-  cudaMalloc(&E_del_ph, hop_threads*sizeof(float));
-
-  float *n;                     // current occupation of DB sites
-  float *dn;                    // change of occupation for population update
-  float *v_local;               // local potential at each site
-  cudaMalloc(&n, n_dbs*sizeof(float));
-  cudaMalloc(&dn, n_dbs*sizeof(float));
-  cudaMalloc(&v_local, n_dbs*sizeof(float));
-
-  for (int i=0; i<n_dbs; i++) {
-    n[i] = 0.;
-    dn[i] = 0.;
-    v_local[i] = 0.;
-  }
-
-  //print2DArrayFloat("v_ij", v_ij, n_dbs);
-
-  // initialize system energy and local energy
-  printf("Initializing system energy and local energy\n");
-  float E_sys;
-  float E_del;
-  systemEnergy(n_dbs, n, v_ext, &E_sys);
-  initVLocal(n_dbs, n, v_ext, v_local);
-
-  printf("\n***Beginning simanneal***\n\n");
-  while (t < t_max) {
-    // Population
-    *pop_changed = false;
-    genPopulationDelta<<<1,n_dbs>>>(n_dbs, n, v_local, v_freeze, kT, dn, pop_changed);
-    cudaDeviceSynchronize();
-    __syncthreads();
-    if (*pop_changed) {
-      // n + dn
-      float alpha=1;
-      cublasCheckErrors(cublasSaxpy(cb_hdl, n_dbs, &alpha, dn, 1, n, 1));
-      __syncthreads();
-
-      // E_sys += energy delta from population change
-      populationChangeEnergyDelta(n_dbs, dn, v_local, &E_del);
-      __syncthreads();
-      E_sys += E_del;
-
-      // v_local = - prod(v_ij, dn) + v_local 
-      alpha=-1;
-      float beta=1;
-      cublasCheckErrors(cublasSgemv(cb_hdl, CUBLAS_OP_N, n_dbs, n_dbs, &alpha, v_ij, n_dbs, dn, 1,
-          &beta, v_local, 1));
-      __syncthreads();
-
-      //print1DArrayFloat("Population changed, dn", dn, n_dbs);
-      //print1DArrayFloat("v_local", v_local, n_dbs);
-      //print1DArrayFloat("n", n, n_dbs);
-
-      // occupation list update
-      int occ_ind=0, unocc_ind=n_dbs-1;
-      for (int db_ind=0; db_ind<n_dbs; db_ind++) {
-        if (n[db_ind] == 1.0)
-          occ[occ_ind++] = db_ind;
-        else
-          occ[unocc_ind--] = db_ind;
-      }
-      n_elec = occ_ind;
-      //print1DArrayInt("occ", occ, n_dbs);
-    }
-    //printf("\n");
-
-    
-    // Hopping
-    // TODO currently arbitrary hop attempts, make configurable
-    if (n_elec != 0 && n_elec != n_dbs) {
-      int max_hops = (n_dbs-n_elec)*5;  
-      parallelHops<<<1,hop_threads>>>(n_dbs, n_elec, max_hops, kT,
-          n, n_ph, v_local, v_local_ph, E_del_ph);
-      cudaDeviceSynchronize();
-
-      // find best hop path amongst the attempted
-      float best_E_del=E_del_ph[0];
-      float best_ind=0;
-      for (int i=1; i<hop_threads; i++) {
-        //printf("i=%d, n_dbs=%d", i, n_dbs);
-        if (E_del_ph[i] < best_E_del) {
-          best_E_del = E_del_ph[i];
-          best_ind=i;
-        }
-      }
-      
-      // assign best output to n and v_local
-      E_sys += best_E_del;
-      int i_offset = best_ind * n_dbs;
-      for (int i=0; i<n_dbs; i++) {
-        n[i] = n_ph[i+i_offset];
-        v_local[i] = v_local_ph[i+i_offset];
-      }
-      //printf("Best index=%d, i_offset=%d\n", best_ind, i_offset);
-      //printf("Best E_del=%f\n", best_E_del);
-      //print1DArrayFloat("Best n", n, n_dbs);
-      //print1DArrayFloat("Best v_local", v_local, n_dbs);
-      //printf("\n");
-    }
-    //printf("\n");
-
-    // TODO store new arrangement
-
-    // time step
-    timeStep(&t, kT, v_freeze);
-    __syncthreads();
-    //printf("Cycle: %d, ending energy: %f\n\n", t, E_sys);
-  }
-
-  /*print1DArrayFloat("Final n\n", n, n_dbs);
-  printf("Ending energy (delta): %f\n", E_sys);
-
-  systemEnergy(n_dbs, n, v_ext, &E_sys);
-  printf("Ending energy (actua): %f\n", E_sys);*/
-
-  free(pop_changed);
-  free(v_freeze);
-  free(kT);
-  free(occ);
-  free(n_ph);
-  free(v_local_ph);
-  free(E_del_ph);
-  free(n);
-  free(dn);
-  free(v_local);
-  //cublasCheckErrors(cublasDestroy_v2(cb_hdl_2));
-}
-
-__global__ void parallelHops(int n_dbs, int n_elec, int max_hops, float *kT, 
-    float *n_start, float *n_ph, float *v_local_start, float *v_local_ph, float *E_del_ph)
-{
-  int tId = threadIdx.x + (blockIdx.x * blockDim.x);
-
-  // thread specific offsets
-  int i_offset = tId*n_dbs;                   // index offset for n_ph and v_local_ph
-
-  // hop variables
-  int hop_attempts=0;                         // number of hops attempted
-  int from_occ_ind, to_occ_ind;               // from & to indices in the occ array, where the first n_elec elements are indices of occupied sites in n or n_start
-  int from_ind, to_ind;                       // hop from & to indicated sites
-  int n_empty = n_dbs - n_elec;               // number of empty sites
-  bool accept_hop;
-  float E_del;                                // delta E of an attempted hop
-
-  // copy elements from n_start to n, v_local_start to v_local
-  //float *n=&n_ph[i_offset];                   // electron configurations after all successful hops
-  //float *v_local=&v_local_ph[i_offset];       // accumulated changes to v_local of all successful hops in this path
-  //float *E_del_total=&E_del_ph[tId];          // accumulated delta E of all successful hops in this path
-  //*E_del_total = 0;
-  //float *n, *v_local;
-  float *v_local;
-  float E_del_accum = 0;
-  int *occ;
-  //float E_del_accum=0;
-  //cudaMalloc(&n, n_dbs*sizeof(float));
-  cudaMalloc(&v_local, n_dbs*sizeof(float));
-  cudaMalloc(&occ, n_dbs*sizeof(int));
-  E_del_ph[tId]=0;
-  for (int i=0; i<n_dbs; i++) {
-    //n[i] = n_start[i];
-    n_ph[i+i_offset] = n_start[i];
-    v_local[i] = v_local_start[i];
-  }
-  int occ_ind=0, unocc_ind=n_dbs-1;
-  for (int db_ind=0; db_ind<n_dbs; db_ind++) {
-    if (n_start[db_ind] == 1.0)
-      occ[occ_ind++] = db_ind;
-    else
-      occ[unocc_ind--] = db_ind;
-  }
-  n_elec = occ_ind;
-  //print1DArrayFloat("\ncopy_n", n, n_dbs);
-  //print1DArrayFloat("copy_v_local", v_local, n_dbs);
-
-  // RNG
-  curandState curand_state;
-  curand_init((unsigned long long)clock() + tId, 0, 0, &curand_state);
-
-  // hop loop
-  while (hop_attempts < max_hops) {
-    randInt(&curand_state, n_elec, &from_occ_ind);
-    randInt(&curand_state, n_empty, &to_occ_ind);
-    to_occ_ind += n_elec;
-    from_ind = occ[from_occ_ind];
-    to_ind = occ[to_occ_ind];
-
-    //printf("from_occ_ind=%d, to_occ_ind=%d\n", from_occ_ind, to_occ_ind);
-
-    hopEnergyDelta(from_ind, to_ind, n_dbs, v_local, &E_del);
-    //__syncthreads();
-    acceptHop(&curand_state, &E_del, kT, &accept_hop);
-    //__syncthreads();
-
-    //printf("Attempting hop from sites %d to %d with E_del=%f...\n", from_ind, to_ind, E_del);
-    if (accept_hop) {
-      // update relevant arrays to keep track of hops
-      n_ph[from_ind+i_offset] = 0.;
-      n_ph[to_ind+i_offset] = 1.;
-      occ[from_occ_ind] = to_ind;
-      occ[to_occ_ind] = from_ind;
-      //printf("Post hop:\nn[%d]=%f, n[%d]=%f\nocc[%d]=%d,occ[%d]=%d\n", from_ind, n[from_ind], to_ind, n[to_ind], from_occ_ind, occ[from_occ_ind], to_occ_ind, occ[to_occ_ind]);
-
-      // update energy
-      //E_del_ph[tId] += E_del;
-      E_del_accum += E_del;
-      //updateVLocal<<<1,n_dbs>>>(from_ind, to_ind, n_dbs, v_local);
-      updateVLocal(from_ind, to_ind, n_dbs, v_local);
-      //cudaDeviceSynchronize();
-      /*for (int i=0; i<n_dbs; i++) {
-        v_local[i] += v_ij[IDX2C(i, from_ind, n_dbs)] - v_ij[IDX2C(i, to_ind, n_dbs)];
-      }*/
-      //__syncthreads();
-      //print1DArrayFloat("Accepted. New v_local=", v_local, n_dbs);
-      //print1DArrayFloat("New n=", n, n_dbs);
-    }
-    hop_attempts++;
-  }
-  E_del_ph[tId] = E_del_accum;
-  for (int i=0; i<n_dbs; i++) {
-    v_local_ph[i+i_offset] = v_local[i];
-    //n_ph[i+i_offset] = n[i];
-    //E_del_ph[tId] = E_del_accum;
-  }
-
-  //printf("Hop result for tId=%d:\n", tId);
-  //print1DArrayFloat("n", n, n_dbs);
-  //free(n);
-  free(v_local);
-  free(occ);
-}
-
 // *v_freeze and *kT are shared within the stream, pre-initialize them.
 // *pop_changed should be an array of bools with num_threads elements.
 // *E_sys should be an array of floats with num_threads elements.
 // *n, *dn and *v_local should be arrays of floats with num_thread*n_dbs elements.
 // TODO add float *n_g back in for final passing back
-__global__ void simAnnealParallel(int num_threads)
+__global__ void simAnnealParallel(int results_to_return, float *n_out)
 {
   // TODO add n_dbs, *v_ext, t_max and kT_init to device memory. Maybe even add n_dbs to shared memory for testing
   int tId = threadIdx.x + (blockIdx.x * blockDim.x);
@@ -360,6 +97,10 @@ __global__ void simAnnealParallel(int num_threads)
   cudaMalloc(&kT, sizeof(float));
   *v_freeze=0;
   *kT=kT_start;
+
+  // result return tracking
+  int t_return_results = t_max - results_to_return;
+  int return_i = tId * n_dbs;   // start returning at this index
   
   // population related vars
   int n_elec, n_empty;    // number of electrons, number of vacant DBs
@@ -455,7 +196,7 @@ __global__ void simAnnealParallel(int num_threads)
 
           // update energy
           E_sys += E_del;
-          updateVLocalK<<<1,64>>>(from_ind, to_ind, n_dbs, v_local);
+          updateVLocal<<<1,64>>>(from_ind, to_ind, n_dbs, v_local);
           //print1DArrayFloat("Accepted. New v_local=", v_local, n_dbs);
           //print1DArrayFloat("New n=", n, n_dbs);
         }
@@ -464,6 +205,14 @@ __global__ void simAnnealParallel(int num_threads)
       }
     }
     cudaDeviceSynchronize();
+
+    // write result to return array if the schedule is near the end
+    if (t >= t_return_results) {
+      for (int i=0; i<n_dbs; i++) {
+        n_out[i+return_i] = n[i];
+      }
+      return_i += n_dbs;
+    }
 
     // time step
     timeStep(&t, kT, v_freeze);
@@ -481,6 +230,8 @@ __global__ void simAnnealParallel(int num_threads)
   float E_sys_actual;
   systemEnergy(n_dbs, n, v_ext, &E_sys_actual);
   printf("tId=%d\t\tn_elec=%d\tDelta energy=%f\tActual energy: %f\n", tId, n_elec, E_sys, E_sys_actual);
+
+  returnN(n, n_out);
 
   free(v_freeze);
   free(kT);
@@ -572,7 +323,7 @@ __device__ void initVLocal(int n_dbs, float *n, float *v_ext, float *v_local)
   __syncthreads();
 }
 
-__global__ void updateVLocalK(int from_ind, int to_ind, int n_dbs, float *v_local)
+__global__ void updateVLocal(int from_ind, int to_ind, int n_dbs, float *v_local)
 {
   //v_local += v_ij(from-th col) - v_ij(to-th col);
 
@@ -581,19 +332,6 @@ __global__ void updateVLocalK(int from_ind, int to_ind, int n_dbs, float *v_loca
 
   for (int i=tId; i<n_dbs; i+=stride) {
   //for (int i=0; i<n_dbs; i++) {
-    v_local[i] += v_ij[IDX2C(i, from_ind, n_dbs)] - v_ij[IDX2C(i, to_ind, n_dbs)];
-  }
-}
-
-__device__ void updateVLocal(int from_ind, int to_ind, int n_dbs, float *v_local)
-{
-  //v_local += v_ij(from-th col) - v_ij(to-th col);
-
-  //int tId = threadIdx.x + (blockIdx.x * blockDim.x);
-  //int stride = blockDim.x * gridDim.x;
-
-  //for (int i=tId; i<n_dbs; i+=stride) {
-  for (int i=0; i<n_dbs; i++) {
     v_local[i] += v_ij[IDX2C(i, from_ind, n_dbs)] - v_ij[IDX2C(i, to_ind, n_dbs)];
   }
 }
@@ -731,6 +469,15 @@ __device__ void timeStep(int *t, float *kT, float *v_freeze)
   *v_freeze = (float)(*t) * v_freeze_step;
 }
 
+__device__ void returnN(float *n_local, float *n_out)
+{
+  int tId = threadIdx.x + (blockIdx.x * blockDim.x);
+  int offset = tId*n_dbs;
+  for (int i=0; i<n_dbs; i++) {
+    n_out[i+offset] = n_local[i];
+  }
+}
+
 
 
 //Global method for writing to vectors (global in order to avoid thread clashing).
@@ -759,11 +506,11 @@ void SimAnneal::runSim()
   // resize vectors
   v_local.resize(n_dbs);
 
-  db_charges.resize(result_queue_size);
+  //db_charges.resize(result_queue_size);
   n.resize(n_dbs);
   occ.resize(n_dbs);
 
-  config_energies.resize(result_queue_size);
+  //config_energies.resize(result_queue_size);
 
   // SIM ANNEAL
   simAnneal();
@@ -775,11 +522,19 @@ void SimAnneal::runSimCUDA()
 
   // initialize variables & perform pre-calculations
   float kT = 300*constants::Kb; // kT = Boltzmann constant (eV/K) * 300K
+
+  const int threads_per_stream=32;
   
-  //float *v_ext_arr, *db_locs_arr;
   float *d_v_ext, *d_db_locs;//, *d_v_ij;
   gpuErrChk(cudaMallocManaged(&d_v_ext, n_dbs*sizeof(float)));
   gpuErrChk(cudaMallocManaged(&d_db_locs, 2*n_dbs*sizeof(float)));
+
+  std::vector<float*> return_arrays;
+  for (int i=0; i<num_threads; i++) {
+    float *n_out_set;
+    gpuErrChk(cudaMallocManaged(&n_out_set, threads_per_stream * result_queue_size * n_dbs * sizeof(float)));
+    return_arrays.push_back(n_out_set);
+  }
 
   for (int i=0; i<n_dbs; i++) {
     d_v_ext[i] = v_ext[i];
@@ -799,9 +554,7 @@ void SimAnneal::runSimCUDA()
   for (int i=0; i < num_threads; i++) {
     cudaStreamCreateWithFlags(&streams[i], cudaStreamNonBlocking);
     std::cout << "Invoking CUDA SimAnneal Stream #" << i << std::endl;
-    //::simAnnealAlg<<<1,1,0,streams[i]>>>(n_dbs, d_v_ext, t_max, kT);
-    ::simAnnealParallel<<<1,32,0,streams[i]>>>(32);
-    //::simAnnealParallel<<<1,1,0,streams[i]>>>(32);
+    ::simAnnealParallel<<<1,threads_per_stream,0,streams[i]>>>(result_queue_size, return_arrays[i]);
   }
   gpuErrChk(cudaPeekAtLastError());
   gpuErrChk(cudaDeviceSynchronize());
@@ -818,12 +571,31 @@ void SimAnneal::runSimCUDA()
   std::cout << "clean up complete" << std::endl;
 
   // TODO move results to a form understood by SiQADConn
+  // return all sets of n_out
+  for (float *n_out_set : return_arrays) {
+    // loop through each set
+    for (int i=0; i<result_queue_size; i++) {
+      ublas::vector<int> charges;
+      charges.resize(n_dbs);
+
+      // loop through DBs within each set
+      for (int j=0; j<n_dbs; j++)
+        charges[j] = static_cast<int>(n_out_set[i*n_dbs+j]);
+
+      db_charges.push_back(charges);
+      config_energies.push_back(systemEnergy(charges));
+    }
+    gpuErrChk(cudaFree(n_out_set));
+  }
   
   // clean up
   gpuErrChk(cudaFree(d_v_ext));
   gpuErrChk(cudaFree(d_db_locs));
 
-  //gpuErrChk(cudaDeviceReset());
+  gpuErrChk(cudaDeviceReset());
+
+  // export
+  writeStore(this, threadId);
 }
 
 
@@ -1129,6 +901,20 @@ float SimAnneal::systemEnergy()
     v -= v_ext[i] * n[i];
     for(int j=i+1; j<n_dbs; j++)
       v += v_ij(i,j) * n[i] * n[j];
+  }
+  return v;
+}
+
+
+float SimAnneal::systemEnergy(ublas::vector<int> config)
+{
+  assert(n_dbs > 0);
+  float v = 0;
+  for(int i=0; i<n_dbs; i++) {
+    //v -= mu + v_ext[i] * n[i];
+    v -= v_ext[i] * config[i];
+    for(int j=i+1; j<n_dbs; j++)
+      v += v_ij(i,j) * config[i] * config[j];
   }
   return v;
 }
