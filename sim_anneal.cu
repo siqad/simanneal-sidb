@@ -19,7 +19,7 @@ using namespace phys;
 
 std::mutex siqadMutex;
 
-__device__ cublasHandle_t cb_hdl;
+__device__ cublasHandle_t *cb_hdl;
 __device__ int n_dbs;
 __device__ float mu, kT_start, kT0, kT_step, v_freeze_step, t_max;
 __device__ float *v_ij, *v_ext;
@@ -81,7 +81,7 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
 // *E_sys should be an array of floats with num_threads elements.
 // *n, *dn and *v_local should be arrays of floats with num_thread*n_dbs elements.
 // TODO add float *n_g back in for final passing back
-__global__ void simAnnealParallel(int results_to_return, float *n_out)
+__global__ void simAnnealParallel(int stream_id, int results_to_return, float *n_out)
 {
   // TODO add n_dbs, *v_ext, t_max and kT_init to device memory. Maybe even add n_dbs to shared memory for testing
   int tId = threadIdx.x + (blockIdx.x * blockDim.x);
@@ -89,6 +89,10 @@ __global__ void simAnnealParallel(int results_to_return, float *n_out)
   // RNG
   curandState curand_state;
   curand_init((unsigned long long)clock() + tId, 0, 0, &curand_state);
+
+  /*cublasHandle_t cublas_handle;
+  cublasCheckErrors(cublasCreate_v2(&cublas_handle));*/
+  cublasHandle_t cublas_handle = cb_hdl[stream_id];
 
   // cycle tracking
   int t=0;                // current anneal cycle
@@ -129,8 +133,8 @@ __global__ void simAnnealParallel(int results_to_return, float *n_out)
   // initialize system and local energies
   //printf("Initializing system energy and local energy\n");
   float E_sys, E_del;
-  systemEnergy(n_dbs, n, v_ext, &E_sys);
-  initVLocal(n_dbs, n, v_ext, v_local);
+  systemEnergy(cublas_handle, n_dbs, n, v_ext, &E_sys);
+  initVLocal(cublas_handle, n_dbs, n, v_ext, v_local);
 
   while (t < t_max) {
     // Population
@@ -142,16 +146,16 @@ __global__ void simAnnealParallel(int results_to_return, float *n_out)
     if (*pop_changed) {
       // n + dn
       float alpha=1;
-      cublasCheckErrors(cublasSaxpy(cb_hdl, n_dbs, &alpha, dn, 1, n, 1));
+      cublasCheckErrors(cublasSaxpy(cublas_handle, n_dbs, &alpha, dn, 1, n, 1));
 
       // E_sys += energy delta from population change
-      populationChangeEnergyDelta(n_dbs, dn, v_local, &E_del);
+      populationChangeEnergyDelta(cublas_handle, n_dbs, dn, v_local, &E_del);
       E_sys += E_del;
 
       // v_local = - prod(v_ij, dn) + v_local 
       alpha=-1;
       float beta=1;
-      cublasCheckErrors(cublasSgemv(cb_hdl, CUBLAS_OP_N, n_dbs, n_dbs, &alpha, 
+      cublasCheckErrors(cublasSgemv(cublas_handle, CUBLAS_OP_N, n_dbs, n_dbs, &alpha, 
             v_ij, n_dbs, dn, 1, &beta, v_local, 1));
 
       //print1DArrayFloat("Population changed, dn", dn, n_dbs);
@@ -228,11 +232,12 @@ __global__ void simAnnealParallel(int results_to_return, float *n_out)
   printf("Ending energy (actua): %f\n", E_sys);*/
 
   float E_sys_actual;
-  systemEnergy(n_dbs, n, v_ext, &E_sys_actual);
+  systemEnergy(cublas_handle, n_dbs, n, v_ext, &E_sys_actual);
   printf("tId=%d\t\tn_elec=%d\tDelta energy=%f\tActual energy: %f\n", tId, n_elec, E_sys, E_sys_actual);
 
   returnN(n, n_out);
 
+  //cublasCheckErrors(cublasDestroy_v2(cublas_handle));
   free(v_freeze);
   free(kT);
   free(n);
@@ -242,13 +247,38 @@ __global__ void simAnnealParallel(int results_to_return, float *n_out)
   free(occ);
 }
 
-__global__ void initDeviceVars(float n_dbs_in, float debye_length, float mu_in, 
+// one handle per stream
+__global__ void initCublasHandles(int num_streams)
+{
+  int tId = threadIdx.x + (blockIdx.x * blockDim.x);
+  int stride = blockDim.x * gridDim.x;
+  if (tId == 0)
+    cudaMalloc(&cb_hdl, num_streams*sizeof(cublasHandle_t));
+  cudaDeviceSynchronize();
+
+  for (int i=tId; i<num_streams; i+=stride)
+    cublasCheckErrors(cublasCreate_v2(&cb_hdl[tId]));
+  cudaDeviceSynchronize();
+}
+
+__global__ void destroyCublasHandles(int num_streams) {
+  int tId = threadIdx.x + (blockIdx.x * blockDim.x);
+  int stride = blockDim.x * gridDim.x;
+  for (int i=tId; i<num_streams; i+=stride) {
+    cublasCheckErrors(cublasDestroy_v2(cb_hdl[i]));
+  }
+}
+
+__global__ void initDeviceVars(int num_streams, float n_dbs_in, float debye_length, float mu_in, 
     float kT_start_in, float kT0_in, float kT_step_in, float v_freeze_step_in, int t_max_in, 
     float *v_ext_in, float *db_locs)
 {
   // create cublas handle
-  printf("Initializing cublas handle\n");
-  cublasCreate_v2(&cb_hdl);
+  /*printf("Initializing cublas handle\n");
+  cudaMalloc(&cb_hdl, num_streams*sizeof(cublasHandle_t));
+  for (int i=0; i<num_streams; i++) {
+    cublasCreate_v2(&cb_hdl[i]);
+  }*/
 
   // assign simple variables
   printf("Assigning variables\n");
@@ -296,14 +326,16 @@ __global__ void initVij(int n_dbs, float debye_length, float *db_locs, float *v_
   }
 }
 
-__global__ void cleanUpDeviceVars()
+__global__ void cleanUpDeviceVars(int num_streams)
 {
-  cublasCheckErrors(cublasDestroy_v2(cb_hdl));
+  /*for (int i=0; i<num_streams; i++) {
+    cublasCheckErrors(cublasDestroy_v2(cb_hdl[i]));
+  }*/
   free(v_ij);
   free(v_ext);
 }
 
-__device__ void initVLocal(int n_dbs, float *n, float *v_ext, float *v_local)
+__device__ void initVLocal(cublasHandle_t cublas_handle, int n_dbs, float *n, float *v_ext, float *v_local)
 {
   // v_local = v_ext - dot(v_ij, n)
   for (int i=0; i<n_dbs; i++) {
@@ -313,13 +345,13 @@ __device__ void initVLocal(int n_dbs, float *n, float *v_ext, float *v_local)
   // dot(v_ij, n)
   float alpha=1;
   float beta=0;
-  cublasCheckErrors(cublasSgemv(cb_hdl, CUBLAS_OP_N, n_dbs, n_dbs, &alpha, v_ij, n_dbs, n, 1, 
+  cublasCheckErrors(cublasSgemv(cublas_handle, CUBLAS_OP_N, n_dbs, n_dbs, &alpha, v_ij, n_dbs, n, 1, 
       &beta, v_local, 1));
   __syncthreads();
 
   // v_ext - above
   alpha=-1;
-  cublasCheckErrors(cublasSaxpy(cb_hdl, n_dbs, &alpha, v_local, 1, v_ext, 1));
+  cublasCheckErrors(cublasSaxpy(cublas_handle, n_dbs, &alpha, v_local, 1, v_ext, 1));
   __syncthreads();
 }
 
@@ -400,14 +432,14 @@ __device__ void genPopulationDelta(curandState *curand_state, int n_dbs, float *
   }
 }*/
 
-__device__ void systemEnergy(int n_dbs, float *n, float *v_ext, float *output)
+__device__ void systemEnergy(cublasHandle_t cublas_handle, int n_dbs, float *n, float *v_ext, float *output)
 {
   // TODO might be able to merge this function with population change energy delta with the similarity
   float *coulomb_v;
   cudaMalloc(&coulomb_v, sizeof(float));
-  totalCoulombPotential(n_dbs, n, coulomb_v);
+  totalCoulombPotential(cublas_handle, n_dbs, n, coulomb_v);
   __syncthreads();
-  cublasCheckErrors(cublasSdot(cb_hdl, n_dbs, v_ext, 1, n, 1, output));
+  cublasCheckErrors(cublasSdot(cublas_handle, n_dbs, v_ext, 1, n, 1, output));
   __syncthreads();
   *output *= -1;
   *output += *coulomb_v;
@@ -415,27 +447,27 @@ __device__ void systemEnergy(int n_dbs, float *n, float *v_ext, float *output)
 }
 
 // Energy change from population change.
-__device__ void populationChangeEnergyDelta(int n_dbs, float *dn, float *v_local, float *output)
+__device__ void populationChangeEnergyDelta(cublasHandle_t cublas_handle, int n_dbs, float *dn, float *v_local, float *output)
 {
   // delta E = -1 * dot(v_local, dn) + dn^T * V_ij * dn
   float *coulomb_v = (float*)malloc(sizeof(float));
-  totalCoulombPotential(n_dbs, dn, coulomb_v);
-  cublasCheckErrors(cublasSdot(cb_hdl, n_dbs, v_local, 1, dn, 1, output));
+  totalCoulombPotential(cublas_handle, n_dbs, dn, coulomb_v);
+  cublasCheckErrors(cublasSdot(cublas_handle, n_dbs, v_local, 1, dn, 1, output));
   *output *= -1;
   *output += *coulomb_v;
   free(coulomb_v);
 }
 
 // Total potential from Coulombic repulsion in the system.
-__device__ void totalCoulombPotential(int n_dbs, float *n, float *v)
+__device__ void totalCoulombPotential(cublasHandle_t cublas_handle, int n_dbs, float *n, float *v)
 {
   float alpha=0.5;
   float beta=0;
   float *v_temp;
   cudaMalloc(&v_temp, n_dbs*sizeof(float));
-  cublasCheckErrors(cublasSgemv(cb_hdl, CUBLAS_OP_N, n_dbs, n_dbs, &alpha, v_ij, n_dbs, n, 1, &beta, v_temp, 1));
+  cublasCheckErrors(cublasSgemv(cublas_handle, CUBLAS_OP_N, n_dbs, n_dbs, &alpha, v_ij, n_dbs, n, 1, &beta, v_temp, 1));
   __syncthreads();
-  cublasSdot(cb_hdl, n_dbs, n, 1, v_temp, 1, v);
+  cublasCheckErrors(cublasSdot(cublas_handle, n_dbs, n, 1, v_temp, 1, v));
   __syncthreads();
   free(v_temp);
 }
@@ -523,14 +555,20 @@ void SimAnneal::runSimCUDA()
   // initialize variables & perform pre-calculations
   float kT = 300*constants::Kb; // kT = Boltzmann constant (eV/K) * 300K
 
-  const int threads_per_stream=32;
+  const int max_blocks_per_stream = 8;
+  const int max_threads_per_block = 32;
+  int num_streams = ceil((float)num_threads / (max_blocks_per_stream * max_threads_per_block));
+  int num_blocks = num_streams > 1 ? max_blocks_per_stream : ceil((float)num_threads / max_threads_per_block);
+  int threads_per_block = num_blocks > 1 ? max_threads_per_block : num_threads;
+  int threads_per_stream = num_blocks * threads_per_block;
   
   float *d_v_ext, *d_db_locs;//, *d_v_ij;
   gpuErrChk(cudaMallocManaged(&d_v_ext, n_dbs*sizeof(float)));
   gpuErrChk(cudaMallocManaged(&d_db_locs, 2*n_dbs*sizeof(float)));
 
+  // one set of n_out per stream
   std::vector<float*> return_arrays;
-  for (int i=0; i<num_threads; i++) {
+  for (int i=0; i<num_streams; i++) {
     float *n_out_set;
     gpuErrChk(cudaMallocManaged(&n_out_set, threads_per_stream * result_queue_size * n_dbs * sizeof(float)));
     return_arrays.push_back(n_out_set);
@@ -544,31 +582,32 @@ void SimAnneal::runSimCUDA()
   gpuErrChk(cudaDeviceSynchronize());
 
   //cudaStream_t streams[num_streams];
-  cudaStream_t *streams = (cudaStream_t*)malloc(num_threads*sizeof(cudaStream_t));
+  cudaStream_t *streams = (cudaStream_t*)malloc(num_streams*sizeof(cudaStream_t));
 
-  std::cout << "initializing CUDA SimAnneal constants" << std::endl;
-  ::initDeviceVars<<<1,1>>>(n_dbs, debye_length, mu, kT, kT0, kT_step, v_freeze_step, t_max, d_v_ext, d_db_locs);
+  std::cout << "Initializing cublas handle and SimAnneal constants" << std::endl;
+  ::initCublasHandles<<<1,num_streams>>>(num_streams);
+  ::initDeviceVars<<<1,1>>>(num_streams, n_dbs, debye_length, mu, kT, kT0, kT_step, v_freeze_step, t_max, d_v_ext, d_db_locs);
   gpuErrChk(cudaPeekAtLastError());
   gpuErrChk(cudaDeviceSynchronize());
 
-  for (int i=0; i < num_threads; i++) {
+  for (int i=0; i < num_streams; i++) {
     cudaStreamCreateWithFlags(&streams[i], cudaStreamNonBlocking);
     std::cout << "Invoking CUDA SimAnneal Stream #" << i << std::endl;
-    ::simAnnealParallel<<<1,threads_per_stream,0,streams[i]>>>(result_queue_size, return_arrays[i]);
+    ::simAnnealParallel<<<num_blocks,threads_per_block,0,streams[i]>>>(i, result_queue_size, return_arrays[i]);
   }
   gpuErrChk(cudaPeekAtLastError());
   gpuErrChk(cudaDeviceSynchronize());
 
-  for (int i=0; i < num_threads; i++) {
+  for (int i=0; i < num_streams; i++) {
     cudaStreamDestroy(streams[i]);
   }
   gpuErrChk(cudaDeviceSynchronize());
 
   std::cout << "destroying cublas handle" << std::endl;
-  ::cleanUpDeviceVars<<<1,1>>>();
+  ::destroyCublasHandles<<<1,num_streams>>>(num_streams);
+  ::cleanUpDeviceVars<<<1,1>>>(num_streams);
   gpuErrChk(cudaPeekAtLastError());
-  gpuErrChk(cudaDeviceSynchronize());
-  std::cout << "clean up complete" << std::endl;
+  //gpuErrChk(cudaDeviceSynchronize());
 
   // TODO move results to a form understood by SiQADConn
   // return all sets of n_out
@@ -588,6 +627,8 @@ void SimAnneal::runSimCUDA()
     gpuErrChk(cudaFree(n_out_set));
   }
   
+  gpuErrChk(cudaDeviceSynchronize());
+
   // clean up
   gpuErrChk(cudaFree(d_v_ext));
   gpuErrChk(cudaFree(d_db_locs));

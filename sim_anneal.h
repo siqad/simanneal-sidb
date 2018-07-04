@@ -51,10 +51,16 @@ namespace constants{
 
 // CUDA functions
 
-__global__ void simAnnealParallel(int num_threads);
+__global__ void simAnnealParallel(int stream_id, int results_to_return, float *n_out);
+
+// Initialize cublas handles in parallel
+__global__ void initCublasHandles(int num_streams);
+
+// Destroy cublas handles in parallel
+__global__ void destroyCublasHandles(int num_streams);
 
 // Initialize simanneal constants
-__global__ void initDeviceVars(float n_dbs_in, float debye_length, float mu_in, 
+__global__ void initDeviceVars(int num_streams, float n_dbs_in, float debye_length, float mu_in, 
     float kT0_in, float kT_step_in, float v_freeze_step_in, int t_max_in, 
     float *v_ext_in, float *db_locs);
 
@@ -62,10 +68,10 @@ __global__ void initDeviceVars(float n_dbs_in, float debye_length, float mu_in,
 __global__ void initVij(int n_dbs, float debye_length, float *db_locs, float *v_ij);
 
 // Destroy device variables
-__global__ void cleanUpDeviceVars();
+__global__ void cleanUpDeviceVars(int num_streams);
 
 // Initialize v_local
-__device__ void initVLocal(int n_dbs, float *n, float *v_ext, float *v_local);
+__device__ void initVLocal(cublasHandle_t cublas_handle, int n_dbs, float *n, float *v_ext, float *v_local);
 
 // Update v_local after hopping from site i to site j.
 __global__ void updateVLocal(int from_ind, int to_ind, int n_dbs, float *v_local);
@@ -75,13 +81,13 @@ __global__ void genPopulationDelta(int n_dbs, float *n, float *v_local, float *v
 __device__ void genPopulationDelta(curandState *curand_state, int n_dbs, float *n, float *v_local, float *v_freeze, float *kT, float *dn, bool *pop_changed);
 
 // Total system energy including Coulombic repulsion and external voltage.
-__device__ void systemEnergy(int n_dbs, float *n, float *v_ext, float *output);
+__device__ void systemEnergy(cublasHandle_t cublas_handle, int n_dbs, float *n, float *v_ext, float *output);
 
 // Energy change from population change.
-__device__ void populationChangeEnergyDelta(int n_dbs, float *dn, float *v_local, float *output);
+__device__ void populationChangeEnergyDelta(cublasHandle_t cublas_handle, int n_dbs, float *dn, float *v_local, float *output);
 
 // Total potential from Coulombic repulsion in the system.
-__device__ void totalCoulombPotential(int n_dbs, float *n, float *v);
+__device__ void totalCoulombPotential(cublasHandle_t cublas_handle, int n_dbs, float *n, float *v);
 
 // Hop acceptance function.
 __device__ void acceptHop(curandState *curand_state, float *v_diff, float *kT, bool *accept);
