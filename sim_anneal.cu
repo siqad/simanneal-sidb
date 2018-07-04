@@ -555,6 +555,8 @@ void SimAnneal::runSimCUDA()
   // initialize variables & perform pre-calculations
   float kT = 300*constants::Kb; // kT = Boltzmann constant (eV/K) * 300K
 
+  const int max_handle_init_threads = 4;
+
   const int max_blocks_per_stream = 8;
   const int max_threads_per_block = 32;
   int num_streams = ceil((float)num_threads / (max_blocks_per_stream * max_threads_per_block));
@@ -563,14 +565,14 @@ void SimAnneal::runSimCUDA()
   int threads_per_stream = num_blocks * threads_per_block;
   
   float *d_v_ext, *d_db_locs;//, *d_v_ij;
-  gpuErrChk(cudaMallocManaged(&d_v_ext, n_dbs*sizeof(float)));
-  gpuErrChk(cudaMallocManaged(&d_db_locs, 2*n_dbs*sizeof(float)));
+  cudaMallocManaged(&d_v_ext, n_dbs*sizeof(float));
+  cudaMallocManaged(&d_db_locs, 2*n_dbs*sizeof(float));
 
   // one set of n_out per stream
   std::vector<float*> return_arrays;
   for (int i=0; i<num_streams; i++) {
     float *n_out_set;
-    gpuErrChk(cudaMallocManaged(&n_out_set, threads_per_stream * result_queue_size * n_dbs * sizeof(float)));
+    cudaMallocManaged(&n_out_set, threads_per_stream * result_queue_size * n_dbs * sizeof(float));
     return_arrays.push_back(n_out_set);
   }
 
@@ -579,34 +581,35 @@ void SimAnneal::runSimCUDA()
     d_db_locs[IDX2C(i,0,n_dbs)] = db_locs[i].first * db_distance_scale;   // x
     d_db_locs[IDX2C(i,1,n_dbs)] = db_locs[i].second * db_distance_scale;  // y
   }
-  gpuErrChk(cudaDeviceSynchronize());
+  cudaDeviceSynchronize();
 
   //cudaStream_t streams[num_streams];
   cudaStream_t *streams = (cudaStream_t*)malloc(num_streams*sizeof(cudaStream_t));
 
   std::cout << "Initializing cublas handle and SimAnneal constants" << std::endl;
-  ::initCublasHandles<<<1,num_streams>>>(num_streams);
+  int handle_init_threads = num_streams > max_handle_init_threads ? max_handle_init_threads : num_streams;
+  ::initCublasHandles<<<1,handle_init_threads>>>(num_streams);  // initializing too many cublas handles at once could crash the program
   ::initDeviceVars<<<1,1>>>(num_streams, n_dbs, debye_length, mu, kT, kT0, kT_step, v_freeze_step, t_max, d_v_ext, d_db_locs);
-  gpuErrChk(cudaPeekAtLastError());
-  gpuErrChk(cudaDeviceSynchronize());
+  cudaPeekAtLastError();
+  cudaDeviceSynchronize();
 
   for (int i=0; i < num_streams; i++) {
     cudaStreamCreateWithFlags(&streams[i], cudaStreamNonBlocking);
-    std::cout << "Invoking CUDA SimAnneal Stream #" << i << std::endl;
+    std::cout << "Invoking CUDA SimAnneal <<<" << num_blocks << "," << threads_per_block << ",0,streams[" << i << "]>>>" << std::endl;
     ::simAnnealParallel<<<num_blocks,threads_per_block,0,streams[i]>>>(i, result_queue_size, return_arrays[i]);
   }
-  gpuErrChk(cudaPeekAtLastError());
-  gpuErrChk(cudaDeviceSynchronize());
+  cudaPeekAtLastError();
+  cudaDeviceSynchronize();
 
   for (int i=0; i < num_streams; i++) {
     cudaStreamDestroy(streams[i]);
   }
-  gpuErrChk(cudaDeviceSynchronize());
+  cudaDeviceSynchronize();
 
   std::cout << "destroying cublas handle" << std::endl;
   ::destroyCublasHandles<<<1,num_streams>>>(num_streams);
   ::cleanUpDeviceVars<<<1,1>>>(num_streams);
-  gpuErrChk(cudaPeekAtLastError());
+  cudaPeekAtLastError();
   //gpuErrChk(cudaDeviceSynchronize());
 
   // TODO move results to a form understood by SiQADConn
@@ -627,13 +630,13 @@ void SimAnneal::runSimCUDA()
     gpuErrChk(cudaFree(n_out_set));
   }
   
-  gpuErrChk(cudaDeviceSynchronize());
+  cudaDeviceSynchronize();
 
   // clean up
-  gpuErrChk(cudaFree(d_v_ext));
-  gpuErrChk(cudaFree(d_db_locs));
+  cudaFree(d_v_ext);
+  cudaFree(d_db_locs);
 
-  gpuErrChk(cudaDeviceReset());
+  cudaDeviceReset();
 
   // export
   writeStore(this, threadId);
