@@ -257,7 +257,7 @@ __global__ void initCublasHandles(int num_streams)
   cudaDeviceSynchronize();
 
   for (int i=tId; i<num_streams; i+=stride)
-    cublasCheckErrors(cublasCreate_v2(&cb_hdl[tId]));
+    cublasCheckErrors(cublasCreate_v2(&cb_hdl[i]));
   cudaDeviceSynchronize();
 }
 
