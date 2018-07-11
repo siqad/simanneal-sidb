@@ -157,10 +157,10 @@ int main(int argc, char *argv[])
   std::cout << "Pre-calculation complete" << std::endl << std::endl;
 
 
-  std::vector<std::thread> threads;
+  std::vector<boost::thread> threads;
   for (int i=0; i<sim_accessor.num_threads; i++) {
     SimAnneal sim(i);
-    std::thread th(&SimAnneal::runSim, sim);
+    boost::thread th(&SimAnneal::runSim, sim);
     threads.push_back(std::move(th));
   }
 

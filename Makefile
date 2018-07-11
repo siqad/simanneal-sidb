@@ -19,7 +19,7 @@ DCOMPILE_FLAGS = -D DEBUG
 # Add additional include paths
 INCLUDES = -I $(SRC_PATH)
 # General linker settings
-LINK_FLAGS = -pthread
+LINK_FLAGS =
 # Additional release-specific linker settings
 RLINK_FLAGS =
 # Additional debug-specific linker settings
@@ -46,7 +46,7 @@ ifeq ($(FOR_OS),win32)
 	BIN_NAME=simanneal.exe
 	CXX=i686-w64-mingw32.static-g++ -I $(PYTHON_INCLUDE_PATH) -L $(PYTHON_LIB_PATH) -I $(BOOST_INCLUDE_PATH) -L $(BOOST_LIB_PATH)
 	LIBS=
-	LINK_FLAGS = -lboost_system-mt -lboost_filesystem-mt -lpython36
+	LINK_FLAGS = -lboost_system-mt -lboost_filesystem-mt -lboost_thread_win32-mt -lpython36
 	PKG_CONFIG=i686-w64-mingw32.static-pkg-config
 endif
 ifeq ($(FOR_OS),win64)
@@ -65,7 +65,7 @@ ifeq ($(FOR_OS),win64)
 	BIN_NAME=simanneal.exe
 	CXX=x86_64-w64-mingw32.static-g++ -I $(PYTHON_INCLUDE_PATH) -L $(PYTHON_LIB_PATH) -I $(BOOST_INCLUDE_PATH) -L $(BOOST_LIB_PATH)
 	LIBS=
-	LINK_FLAGS=-lboost_system-mt -lboost_filesystem-mt -lpython36
+	LINK_FLAGS=-lboost_system-mt -lboost_filesystem-mt -lboost_thread_win32-mt -lpython36
 	PKG_CONFIG=x86_64-w64-mingw32.static-pkg-config
 endif
 

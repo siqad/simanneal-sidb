@@ -13,8 +13,9 @@
 #include <tuple>
 #include <memory>
 #include <cmath>
-#include <thread>
-#include <mutex>
+//#include <thread>
+//#include <mutex>
+#include <boost/thread.hpp>
 
 #include <boost/random.hpp>
 #include <boost/circular_buffer.hpp>
