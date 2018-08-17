@@ -2,7 +2,7 @@
 // @author:   Samuel
 // @created:  2017.08.28
 // @editted:  2018-06-13 - Robert
-// @license:  GNU LGPL v3
+// @license:  Apache License 2.0
 //
 // @desc:     Main function for physics engine
 
