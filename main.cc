@@ -20,6 +20,7 @@ int SimAnneal::num_threads = 0;
 float SimAnneal::Kc = 0;
 float SimAnneal::debye_length = 0;
 float SimAnneal::mu = 0;
+float SimAnneal::epsilon_r = 0;
 float SimAnneal::kT0 = 0, SimAnneal::kT_step = 0, SimAnneal::v_freeze_step = 0;
 int SimAnneal::result_queue_size = 0;
 std::vector<std::pair<float,float>> SimAnneal::db_locs = { };
@@ -94,6 +95,7 @@ int main(int argc, char *argv[])
   sim_accessor.num_threads = std::stoi(sqconn->getParameter("num_threads"));
   sim_accessor.t_max = std::stoi(sqconn->getParameter("anneal_cycles"));
   sim_accessor.mu = std::stof(sqconn->getParameter("global_v0"));
+  sim_accessor.epsilon_r = std::stof(sqconn->getParameter("epsilon_r"));
   sim_accessor.debye_length = std::stof(sqconn->getParameter("debye_length"));
   sim_accessor.debye_length *= 1E-9; // TODO change the rest of the code to use nm / angstrom
                         //      instead of doing a conversion here.
@@ -105,7 +107,7 @@ int main(int argc, char *argv[])
   sim_accessor.result_queue_size = std::stoi(sqconn->getParameter("result_queue_size"));
   sim_accessor.result_queue_size = sim_accessor.t_max < sim_accessor.result_queue_size ? sim_accessor.t_max : sim_accessor.result_queue_size;
 
-  sim_accessor.Kc = 1/(4 * constants::PI * constants::EPS_SURFACE * constants::EPS0);
+  sim_accessor.Kc = 1/(4 * constants::PI * sim_accessor.epsilon_r * constants::EPS0);
   sim_accessor.kT_step = 0.999;    // kT = Boltzmann constant (eV/K) * 298 K, NOTE kT_step arbitrary
   sim_accessor.v_freeze_step = 0.001;  // NOTE v_freeze_step arbitrary
 

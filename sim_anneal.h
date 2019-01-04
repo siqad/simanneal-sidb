@@ -26,7 +26,7 @@ namespace constants{
   const float Q0 = 1.602E-19;
   const float PI = 3.14159;
   const float EPS0 = 8.854E-12;
-  const float EPS_SURFACE = 6.35;
+  //const float EPS_SURFACE = 6.35;
   const float Kb = 8.617E-5;
   const float ERFDB = 5E-10;
 }
@@ -77,9 +77,10 @@ namespace phys {
     static float kT0, kT_step, v_freeze_step;
 
     // handy constants or variables from problem file
-    static float Kc;           // 1 / (4 pi eps)
-    static float debye_length; // Silicon intrinsic Debye length in m
-    static float mu;          // global bias
+    static float Kc;            // 1 / (4 pi eps)
+    static float debye_length;  // Silicon intrinsic Debye length in m
+    static float mu;            // global bias
+    static float epsilon_r;     // surface relative permittivity
 
     //Other variables used for CALCULATIONS
     static int t_max;          // keep track of annealing cycles
