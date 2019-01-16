@@ -314,7 +314,8 @@ float SimAnneal::totalCoulombPotential(ublas::vector<int> config)
 float SimAnneal::interElecPotential(const float &r)
 {
   //return exp(-r/debye_length) / r;
-  return constants::Q0 * Kc * erf(r/constants::ERFDB) * exp(-r/debye_length) / r;
+  //return constants::Q0 * Kc * erf(r/constants::ERFDB) * exp(-r/debye_length) / r;
+  return constants::Q0 * Kc * exp(-r/debye_length) / r;
 }
 
 
