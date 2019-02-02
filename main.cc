@@ -1,7 +1,7 @@
 // @file:     main.cc
 // @author:   Samuel
 // @created:  2017.08.28
-// @editted:  2018-06-13 - Robert
+// @editted:  2019.02.01
 // @license:  Apache License 2.0
 //
 // @desc:     Main function for physics engine
