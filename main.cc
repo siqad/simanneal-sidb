@@ -6,13 +6,15 @@
 //
 // @desc:     Main function for physics engine
 
-#include "sim_anneal.h"
+#include "sim_anneal.h" // TODO remove this
+#include "interface.h"
 #include <unordered_map>
 #include <iostream>
 #include <string>
 
 using namespace phys;
 
+// TODO remove all that's no longer needed
 //initialization of static variables used in the SimAnneal class
 int SimAnneal::n_dbs = -1;
 int SimAnneal::t_max = 0;
@@ -63,14 +65,26 @@ int main(int argc, char *argv[])
   std::cout << "In File: " << if_name << std::endl;
   std::cout << "Out File: " << of_name << std::endl;
 
+  std::cout << "Initiate SimAnneal interface" << std::endl;
+  SimAnnealInterface interface(if_name, of_name);
+
+  std::cout << "Invoke simulation" << std::endl;
+  interface.runSimulation();
+
+  std::cout << "Write simulation results" << std::endl;
+  interface.writeSimResults();
+
+  /* TODO remove
   std::cout << std::endl << "*** Constructing Problem ***" << std::endl;
   SimAnneal sim_accessor(-1);
 
   std::cout << std::endl << "*** Run Simulation ***" << std::endl;
 
   sqconn = new SiQADConnector(std::string("SimAnneal"), if_name, of_name);
+  */
 
 
+  /* Moved to interface.cc, TODO remove from here
   // grab all physical locations (in original distance unit) (Used to be part of runSim)
   std::cout << "Grab all physical locations..." << std::endl;
   sim_accessor.n_dbs = 0;
@@ -88,8 +102,10 @@ int main(int argc, char *argv[])
     std::cout << "Simulation failed, aborting" << std::endl;
     return 0;
   }
+  */
 
 
+  /* Moved to interface.cc, TODO remove from here
   //Variable initialization
   std::cout << "Initializing variables..." << std::endl;
   sim_accessor.num_threads = std::stoi(sqconn->getParameter("num_threads"));
@@ -97,8 +113,7 @@ int main(int argc, char *argv[])
   sim_accessor.mu = std::stof(sqconn->getParameter("global_v0"));
   sim_accessor.epsilon_r = std::stof(sqconn->getParameter("epsilon_r"));
   sim_accessor.debye_length = std::stof(sqconn->getParameter("debye_length"));
-  sim_accessor.debye_length *= 1E-9; // TODO change the rest of the code to use nm / angstrom
-                        //      instead of doing a conversion here.
+  sim_accessor.debye_length *= 1E-9;
 
   sim_accessor.kT0 = constants::Kb;
   sim_accessor.kT0 *= std::stof(sqconn->getParameter("min_T"));
@@ -116,7 +131,9 @@ int main(int argc, char *argv[])
   sim_accessor.db_r.resize(sim_accessor.n_dbs,sim_accessor.n_dbs);
   sim_accessor.v_ext.resize(sim_accessor.n_dbs);
   sim_accessor.v_ij.resize(sim_accessor.n_dbs,sim_accessor.n_dbs);
+  */
 
+  /* TODO move this pre-calculations block to sim_anneal.cc
   std::cout << "Performing pre-calculation..." << std::endl;
 
   for (int i=0; i<sim_accessor.n_dbs; i++) {
@@ -157,6 +174,7 @@ int main(int argc, char *argv[])
   sim_accessor.numElecStore.resize(sim_accessor.num_threads);
 
   std::cout << "Pre-calculation complete" << std::endl << std::endl;
+  */
 
 
   std::vector<boost::thread> threads;
@@ -170,33 +188,11 @@ int main(int argc, char *argv[])
     th.join();
   }
 
+  /* Moved to interface.cc, TODO remove
   std::cout << std::endl << "*** Write Result to Output ***" << std::endl;
+  */
 
-  //Selecting the best simmulated annealing calculation if more threads were run in parallel.
-  /*float bestThread = 0;
-  if (sim_accessor.num_threads > 1){
-    //Rounding to the nearest integer of the most popular doubly-occupied DBs.
-    float occSum = 0;
-    int numCorrectElec = 0;
-
-    for(int i = 0; i< sim_accessor.num_threads; i++){
-      occSum += sim_accessor.numElecStore[i];
-    }
-    numCorrectElec = round(occSum/sim_accessor.num_threads);
-
-    //Searching for the lowest energy among the threads with the correct number of doubly-occupied DBs.
-    for(int i = 1; i < sim_accessor.num_threads; i++){
-      if((sim_accessor.energyStore[i][sim_accessor.energyStore[i].size() - 1] < sim_accessor.energyStore[bestThread][sim_accessor.energyStore[bestThread].size() - 1]) && sim_accessor.numElecStore[i] == numCorrectElec){
-        bestThread = i;
-      }
-    }
-  }
-
-  std::cout << " LOWEST ENERGY FOUND: " << sim_accessor.energyStore[bestThread][sim_accessor.energyStore[bestThread].size() - 1] << std::endl;
-  std::cout << " BEST THREAD ID: " << bestThread << std::endl;
-  std::cout << " NUM THREADS USED: " << sim_accessor.num_threads << std::endl;*/
-
-
+  /* Moved to interface.cc, TODO remove
   // create the vector of strings for the db locations
   std::vector<std::pair<std::string, std::string>> dbl_data(sim_accessor.db_locs.size());
   for (unsigned int i = 0; i < sim_accessor.db_locs.size(); i++) { //need the index
@@ -204,25 +200,9 @@ int main(int argc, char *argv[])
     dbl_data[i].second = std::to_string(sim_accessor.db_locs[i].second);
   }
   sqconn->setExport("db_loc", dbl_data);
+  */
 
-
-
-
-/*
-  std::vector<std::pair<std::string, std::string>> db_dist_data(sim_accessor.chargeStore[bestThread].size());
-  for (unsigned int i = 0; i < sim_accessor.chargeStore[bestThread].size(); i++) {
-    std::string dbc_link;
-    for(auto chg : sim_accessor.chargeStore[bestThread][i]){
-      dbc_link.append(std::to_string(chg));
-    }
-    db_dist_data[i].first = dbc_link;
-    db_dist_data[i].second = std::to_string(sim_accessor.energyStore[bestThread][i]);
-  }
-*/
-
-
-
-
+  /* Moved to interface.cc, TODO remove
   // save the results of all distributions to a map, with the vector of 
   // distribution as key and the count of occurances as value.
   // TODO move typedef to header, and make typedefs for the rest of the common types
@@ -264,4 +244,5 @@ int main(int argc, char *argv[])
   sqconn->setExport("db_charge", db_dist_data);
 
   sqconn->writeResultsXml();
+  */
 }

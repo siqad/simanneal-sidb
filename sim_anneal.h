@@ -33,6 +33,27 @@ namespace constants{
 
 namespace phys {
   namespace ublas = boost::numeric::ublas;
+
+  struct SimParams
+  {
+    // runtime params
+    int num_threads;        // Number of threads to spawn
+    int result_queue_size;  // Number of results to store (per thread)
+
+    // annealing params
+    int anneal_cycles;      // Total number of annealing cycles
+    float min_T;            // Minimum annealing temperature
+    float kT_step;          // kT decrement per cycle
+    float v_freeze_step;    // Freeze-out voltage increment per cycle
+
+    // physics params
+    float mu;               // Global Fermi level (eV)
+    float epsilon_r;        // Relative premittivity on the surface
+    float debye_length;     // Debye Length (nm)
+    int n_dbs;              // Number of DBs in the simulation
+    std::vector<std::pair<float,float>> db_locs;  // location of free dbs
+  };
+
   class SimAnneal
   {
   public:
