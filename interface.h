@@ -35,9 +35,6 @@ namespace phys {
     SiQADConnector *sqconn=nullptr;
     SimAnneal *annealer=nullptr;
 
-    // Loaded SimParams
-    SimParams sim_params;
-
     // variables
     std::string in_path;
     std::string out_path;

@@ -30,55 +30,41 @@ void SimAnnealInterface::loadSimParams()
 {
   // grab all physical locations (in original distance unit) (Used to be part of runSim)
   std::cout << "Grab all physical locations..." << std::endl;
-  sim_params.n_dbs = 0;
+  SimAnneal::sim_params.n_dbs = 0;
   for(auto db : *(sqconn->dbCollection())) {
-    sim_params.db_locs.push_back(std::make_pair(db->x, db->y));
-    sim_params.n_dbs++;
-    std::cout << "DB loc: x=" << sim_params.db_locs.back().first
-        << ", y=" << sim_params.db_locs.back().second << std::endl;
+    SimAnneal::sim_params.db_locs.push_back(std::make_pair(db->x, db->y));
+    SimAnneal::sim_params.n_dbs++;
+    std::cout << "DB loc: x=" << SimAnneal::sim_params.db_locs.back().first
+        << ", y=" << SimAnneal::sim_params.db_locs.back().second << std::endl;
   }
-  std::cout << "Free dbs, n_dbs=" << sim_params.n_dbs << std::endl << std::endl;
+  std::cout << "Free dbs, n_dbs=" << SimAnneal::sim_params.n_dbs << std::endl << std::endl;
 
   // exit if no dbs
-  if(sim_params.n_dbs == 0) {
+  if(SimAnneal::sim_params.n_dbs == 0) {
     std::cout << "No dbs found, nothing to simulate. Exiting." << std::endl;
     std::cout << "Simulation failed, aborting" << std::endl;
     throw "No DBs found in the input file, simulation aborted.";
   }
 
   //Variable initialization
-  std::cout << "Initializing variables..." << std::endl;
-  sim_params.num_threads = std::stoi(sqconn->getParameter("num_threads"));
-  sim_params.anneal_cycles = std::stoi(sqconn->getParameter("anneal_cycles"));
-  sim_params.mu = std::stof(sqconn->getParameter("global_v0"));
-  sim_params.epsilon_r = std::stof(sqconn->getParameter("epsilon_r"));
-  sim_params.debye_length = std::stof(sqconn->getParameter("debye_length"));
-  sim_params.debye_length *= 1E-9; // TODO change the rest of the code to use nm / angstrom
-                        //      instead of doing a conversion here.
+  std::cout << "Retrieving variables from SiQADConn..." << std::endl;
+  SimAnneal::sim_params.num_threads = std::stoi(sqconn->getParameter("num_threads"));
+  SimAnneal::sim_params.anneal_cycles = std::stoi(sqconn->getParameter("anneal_cycles"));
+  SimAnneal::sim_params.mu = std::stof(sqconn->getParameter("global_v0"));
+  SimAnneal::sim_params.epsilon_r = std::stof(sqconn->getParameter("epsilon_r"));
+  SimAnneal::sim_params.debye_length = std::stof(sqconn->getParameter("debye_length"));
+  SimAnneal::sim_params.debye_length *= 1E-9; // TODO change the rest of the code to use nm instead of converting here
 
-  /* TODO add the following to sim_anneal.cc
-  sim_params.kT0 = constants::Kb;
-  sim_params.kT0 *= std::stof(sqconn->getParameter("min_T"));
-  std::cout << "kT0 retrieved: " << std::stof(sqconn->getParameter("min_T"));
-  */
-  sim_params.min_T = std::stof(sqconn->getParameter("min_T"));
+  SimAnneal::sim_params.min_T = std::stof(sqconn->getParameter("min_T"));
 
-  sim_params.result_queue_size = std::stoi(sqconn->getParameter("result_queue_size"));
-  sim_params.result_queue_size = sim_params.anneal_cycles < sim_params.result_queue_size ? sim_params.anneal_cycles : sim_params.result_queue_size;
+  SimAnneal::sim_params.result_queue_size = std::stoi(sqconn->getParameter("result_queue_size"));
+  SimAnneal::sim_params.result_queue_size = SimAnneal::sim_params.anneal_cycles < SimAnneal::sim_params.result_queue_size ? SimAnneal::sim_params.anneal_cycles : SimAnneal::sim_params.result_queue_size;
 
-  /* TODO add the following to sim_anneal.cc
-  sim_params.Kc = 1/(4 * constants::PI * sim_accessor.epsilon_r * constants::EPS0);
-  */
-  sim_params.kT_step = 0.999;    // kT = Boltzmann constant (eV/K) * 298 K, NOTE kT_step arbitrary
-  sim_params.v_freeze_step = 0.001;  // NOTE v_freeze_step arbitrary
+  // TODO following variables should be calculated from user settings instead of hard-coded
+  SimAnneal::sim_params.kT_step = 0.999;    // kT = Boltzmann constant (eV/K) * 298 K, NOTE kT_step arbitrary
+  SimAnneal::sim_params.v_freeze_step = 0.001;  // NOTE v_freeze_step arbitrary
 
-  std::cout << "Variable initialization complete" << std::endl;
-
-  /* TODO add the following to sim_anneal.cc
-  sim_accessor.db_r.resize(sim_accessor.n_dbs,sim_accessor.n_dbs);
-  sim_accessor.v_ext.resize(sim_accessor.n_dbs);
-  sim_accessor.v_ij.resize(sim_accessor.n_dbs,sim_accessor.n_dbs);
-  */
+  std::cout << "Retrieval from SiQADConn complete." << std::endl;
 }
 
 void SimAnnealInterface::writeSimResults()
@@ -86,10 +72,10 @@ void SimAnnealInterface::writeSimResults()
   std::cout << std::endl << "*** Write Result to Output ***" << std::endl;
 
   // create the vector of strings for the db locations
-  std::vector<std::pair<std::string, std::string>> dbl_data(sim_params.db_locs.size());
-  for (unsigned int i = 0; i < sim_params.db_locs.size(); i++) { //need the index
-    dbl_data[i].first = std::to_string(sim_params.db_locs[i].first);
-    dbl_data[i].second = std::to_string(sim_params.db_locs[i].second);
+  std::vector<std::pair<std::string, std::string>> dbl_data(SimAnneal::sim_params.db_locs.size());
+  for (unsigned int i = 0; i < SimAnneal::sim_params.db_locs.size(); i++) { //need the index
+    dbl_data[i].first = std::to_string(SimAnneal::sim_params.db_locs[i].first);
+    dbl_data[i].second = std::to_string(SimAnneal::sim_params.db_locs[i].second);
   }
   sqconn->setExport("db_loc", dbl_data);
 
@@ -99,8 +85,7 @@ void SimAnnealInterface::writeSimResults()
   typedef std::unordered_map<std::string, int> ElecResultMapType;
   ElecResultMapType elec_result_map;
 
-  // TODO need new implementation of chargeStore
-  for (auto elec_result_set : annealer->chargeStore) {
+  for (auto elec_result_set : annealer->chargeResults()) {
     for (ublas::vector<int> elec_result : elec_result_set) {
       std::string elec_result_str;
       for (auto chg : elec_result)
@@ -122,8 +107,7 @@ void SimAnnealInterface::writeSimResults()
   for (auto result_it = elec_result_map.cbegin(); result_it != elec_result_map.cend(); ++result_it) {
     std::vector<std::string> db_dist;
     db_dist.push_back(result_it->first);                              // config
-    db_dist.push_back(std::to_string(annealer->
-          systemEnergy(result_it->first)));// energy
+    db_dist.push_back(std::to_string(annealer->systemEnergy(result_it->first, SimAnneal::sim_params.n_dbs)));// energy
     db_dist.push_back(std::to_string(result_it->second));             // count
     db_dist_data.push_back(db_dist);
     i++;
@@ -135,5 +119,7 @@ void SimAnnealInterface::writeSimResults()
 
 int SimAnnealInterface::runSimulation()
 {
+  SimAnneal master_annealer;
+  master_annealer.invokeSimAnneal();
   return 0;
 }
