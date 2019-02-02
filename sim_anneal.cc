@@ -49,20 +49,13 @@ void SimAnneal::initialize()
 
   // inter-db distances and voltages
   for (int i=0; i<sim_params.n_dbs; i++) {
-    for (int j=i; j<sim_params.n_dbs; j++) {
-      if (j==i) {
-        sim_params.db_r(i,j) = 0;
-        sim_params.v_ij(i,j) = 0;
-      } else {
-        sim_params.db_r(i,j) = db_distance_scale * 
-          distance(sim_params.db_locs[i].first, 
-                   sim_params.db_locs[i].second, 
-                   sim_params.db_locs[j].first, 
-                   sim_params.db_locs[j].second);
-        sim_params.v_ij(i,j) = interElecPotential(sim_params.db_r(i,j));
-        sim_params.db_r(j,i) = sim_params.db_r(i,j);
-        sim_params.v_ij(j,i) = sim_params.v_ij(i,j);
-      }
+    sim_params.db_r(i,i) = 0;
+    sim_params.v_ij(i,i) = 0;
+    for (int j=i+1; j<sim_params.n_dbs; j++) {
+      sim_params.db_r(i,j) = db_distance_scale * distance(i,j);
+      sim_params.v_ij(i,j) = interElecPotential(sim_params.db_r(i,j));
+      sim_params.db_r(j,i) = sim_params.db_r(i,j);
+      sim_params.v_ij(j,i) = sim_params.v_ij(i,j);
 
       std::cout << "db_r[" << i << "][" << j << "]=" << sim_params.db_r(i,j) 
         << ", v_ij[" << i << "][" << j << "]=" << sim_params.v_ij(i,j) << std::endl;
@@ -144,8 +137,12 @@ void SimAnneal::storeResults(SimAnnealThread *annealer, int thread_id){
   result_store_mutex.unlock();
 }
 
-float SimAnneal::distance(const float &x1, const float &y1, const float &x2, const float &y2)
+float SimAnneal::distance(const int &i, const int &j)
 {
+  int x1 = sim_params.db_locs[i].first;
+  int y1 = sim_params.db_locs[i].second;
+  int x2 = sim_params.db_locs[j].first;
+  int y2 = sim_params.db_locs[j].second;
   return sqrt(pow(x1-x2, 2.0) + pow(y1-y2, 2.0));
 }
 

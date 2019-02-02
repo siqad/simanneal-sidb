@@ -106,8 +106,9 @@ namespace phys {
 
   private:
 
-    //! Calculate the Euclidean distance between points (x1,y1) and (x2,y2).
-    float distance(const float &x1, const float &y1, const float &x2, const float &y2);
+    //! Calculate the Euclidean distance between the i th and j th DBs in the 
+    //! db_locs array.
+    float distance(const int &i, const int &j);
 
     //! Calculate the potential between two given point charges.
     float interElecPotential(const float &r);
