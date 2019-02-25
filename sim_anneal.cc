@@ -38,8 +38,11 @@ void SimAnneal::initialize()
 {
   std::cout << "Performing pre-calculations..." << std::endl;
 
+  if (sparams->preanneal_cycles > sparams->anneal_cycles)
+    throw "Preanneal cycles > Anneal cycles";
+
   // phys
-  sim_params.kT0 = constants::Kb * sim_params.min_T;
+  sim_params.kT_min = constants::Kb * sim_params.T_min;
   sim_params.Kc = 1/(4 * constants::PI * sim_params.epsilon_r * constants::EPS0);
 
   // DB distance and potentials
@@ -167,7 +170,7 @@ SimAnnealThread::SimAnnealThread(const int t_thread_id)
 void SimAnnealThread::run()
 {
   // initialize variables & perform pre-calculation
-  kT = 300*constants::Kb;    // kT = Boltzmann constant (eV/K) * 298 K
+  kT = sparams->T_init*constants::Kb;
   v_freeze = 0;
 
   // resize vectors
@@ -292,8 +295,10 @@ void SimAnnealThread::performHop(const int &from_ind, const int &to_ind)
 void SimAnnealThread::timeStep()
 {
   t++;
-  kT = sparams->kT0 + (kT - sparams->kT0) * sparams->kT_step;
-  v_freeze = t * sparams->v_freeze_step;
+  if (t > sparams->preanneal_cycles) {
+    kT = sparams->kT_min + (kT - sparams->kT_min) * sparams->alpha;
+    v_freeze = (t - sparams->preanneal_cycles) * sparams->v_freeze_step;
+  }
 }
 
 bool SimAnnealThread::acceptHop(const float &v_diff)

@@ -11,6 +11,12 @@
           <label>Number of threads</label>
           <tip>The number of threads used in multithreading. If left at -1, a number is automatically selected based on the DB layout.</tip>
         </num_threads>
+        <T_cycle_multiplier>
+          <T>float</T>
+          <val>0.999</val>
+          <label>Temperature cycle multiplier</label>
+          <tip>T(t) = alpha * T(t-1) + T_min</tip>
+        </T_cycle_multiplier>
         <result_queue_size>
           <T>int</T>
           <val>1000</val>
@@ -23,12 +29,24 @@
           <label>Anneal cycles</label>
           <tip>The number of simulated annealing cycles.</tip>
         </anneal_cycles>
-        <min_T>
+        <preanneal_cycles>
+          <T>int</T>
+          <val>0</val>
+          <label>Preanneal cycles</label>
+          <tip>Number of cycles in the beginning when the temperature doesn't change.</tip>
+        </preanneal_cycles>
+        <T_init>
+          <T>float</T>
+          <val>300</val>
+          <label>Initial temperature (K)</label>
+          <tip>Initial annealing temperature (K)</tip>
+        </T_init>
+        <T_min>
           <T>float</T>
           <val>4</val>
           <label>Minimum annealing temperature (K)</label>
           <tip>The minimum temperature at the end of the annealing schedule.</tip>
-        </min_T>
+        </T_min>
         <epsilon_r>
           <T>float</T>
           <val>5.6</val>

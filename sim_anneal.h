@@ -51,10 +51,12 @@ namespace phys {
 
     // annealing params
     int anneal_cycles;          // Total number of annealing cycles
-    float min_T;                // Minimum annealing temperature
+    int preanneal_cycles;       // Initial cycles where temperature doesn't change
+    float T_init;               // Initial annealing temperature
+    float T_min;                // Minimum annealing temperature
     float Kc;                   // 1 / (4 pi eps)
-    float kT0;                  // Initial annealing temperature
-    float kT_step;              // kT decrement per cycle
+    float kT_min;               // Initial annealing temperature
+    float alpha;                // T(t) = alpha * T(t-1) + T_min
     float v_freeze_step;        // Freeze-out voltage increment per cycle
 
     // physics params

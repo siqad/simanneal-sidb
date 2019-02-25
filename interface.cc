@@ -50,18 +50,20 @@ void SimAnnealInterface::loadSimParams()
   std::cout << "Retrieving variables from SiQADConn..." << std::endl;
   SimAnneal::sim_params.num_threads = std::stoi(sqconn->getParameter("num_threads"));
   SimAnneal::sim_params.anneal_cycles = std::stoi(sqconn->getParameter("anneal_cycles"));
+  SimAnneal::sim_params.preanneal_cycles = std::stoi(sqconn->getParameter("preanneal_cycles"));
   SimAnneal::sim_params.mu = std::stof(sqconn->getParameter("global_v0"));
   SimAnneal::sim_params.epsilon_r = std::stof(sqconn->getParameter("epsilon_r"));
   SimAnneal::sim_params.debye_length = std::stof(sqconn->getParameter("debye_length"));
   SimAnneal::sim_params.debye_length *= 1E-9; // TODO change the rest of the code to use nm instead of converting here
 
-  SimAnneal::sim_params.min_T = std::stof(sqconn->getParameter("min_T"));
+  SimAnneal::sim_params.T_init = std::stof(sqconn->getParameter("T_init"));
+  SimAnneal::sim_params.T_min = std::stof(sqconn->getParameter("T_min"));
 
   SimAnneal::sim_params.result_queue_size = std::stoi(sqconn->getParameter("result_queue_size"));
   SimAnneal::sim_params.result_queue_size = SimAnneal::sim_params.anneal_cycles < SimAnneal::sim_params.result_queue_size ? SimAnneal::sim_params.anneal_cycles : SimAnneal::sim_params.result_queue_size;
 
   // TODO following variables should be calculated from user settings instead of hard-coded
-  SimAnneal::sim_params.kT_step = 0.999;    // kT = Boltzmann constant (eV/K) * 298 K, NOTE kT_step arbitrary
+  SimAnneal::sim_params.alpha = std::stof(sqconn->getParameter("T_cycle_multiplier"));
   SimAnneal::sim_params.v_freeze_step = 0.001;  // NOTE v_freeze_step arbitrary
 
   std::cout << "Retrieval from SiQADConn complete." << std::endl;
