@@ -14,6 +14,7 @@
         <T_cycle_multiplier>
           <T>float</T>
           <val>0.999</val>
+          <dp>3</dp>
           <label>Temperature cycle multiplier</label>
           <tip>T(t) = alpha * T(t-1) + T_min</tip>
         </T_cycle_multiplier>
@@ -50,12 +51,14 @@
         <epsilon_r>
           <T>float</T>
           <val>5.6</val>
+          <dp>2</dp>
           <label>Relative permittivity</label>
           <tip>Surface relative permittivity. Original default was 6.35, changed to 5.6 after Huff's fitting in the paper Binary Atomic Silicon Logic on Nature Electronics.</tip>
         </epsilon_r>
         <global_v0>
           <T>float</T>
           <val>0.25</val>
+          <dp>2</dp>
           <label>Fermi level V0</label>
           <tip>The global Fermi level on the surface, higher value brings more electrons to the surface.</tip>
         </global_v0>
