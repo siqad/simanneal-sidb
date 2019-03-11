@@ -1,12 +1,39 @@
 <?xml version="1.0" encoding="UTF-8"?>
+
+<!-- 
+Available path/command replacements:
+    @INTERP@        : Interpreter command/path (cannot be used in the interpreter field).
+    @PYTHON@        : Use a Python interpreter command/path provided by SiQAD (either from the default settings or the user's overriden choice).
+    @BINPATH@       : Path to the binary or script path to the engine (cannot be used in the bin_path field).
+    @PHYSENGPATH@   : Path to the directory containing this *.physeng file.
+    @PROBLEMPATH@   : Path to the problem file describing the simulation problem and parameters.
+    @RESULTPATH@    : Path to the result file that will be read by SiQAD after the simulation is complete.
+    @JOBTMP@        : Temporary path for this simulation job to store generated files.
+
+These replacements are done on the following fields:
+    interpreter, bin_path, command
+-->
+
 <physeng>
     <name>SimAnneal</name>
     <version>0.1</version>
+    <!-- Interpreter field used for calling a script with python, java, etc. SiQAD attempts to find an interpreter suitable for running the command. Leave blank if this is a compiled binary which does not need an interpreter. -->
     <interpreter></interpreter> <!-- used for calling a script with python, java, etc. Leave blank otherwise -->
+    <!-- Path to the engine script or compiled binary. -->
+    <!--<bin_path>@PHYSENGPATH@/simanneal</bin_path> TODO switch to this form later-->
     <bin_path>simanneal</bin_path> <!-- path to binary or script, relative to the folder containing engine_description.xml -->
+    <!-- Selection of invocation commands to call this engine. The first one is the one that is shown in SiQAD by default. TODO tie this to presets in some ways. -->
     <commands>
-        <command label="Default">@BINPATH@ @PROBLEMPATH@ @RESULTPATH@</command>
+        <!-- Default command. -->
+        <command label="Default">
+            <program>@BINPATH@</program>
+            <arg>@PROBLEMPATH@</arg>
+            <arg>@RESULTPATH@</arg>
+        </command>
     </commands>
+    <!-- Python dependencies file path, relative to the directory containing this physeng file. -->
+    <dep_path></dep_path> 
+    <!-- Simulation parameters, read into SiQAD as a property map. -->
     <sim_params preserve_order="true">
         <num_threads>
           <T>int</T>
