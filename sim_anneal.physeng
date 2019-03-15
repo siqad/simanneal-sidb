@@ -17,6 +17,9 @@ These replacements are done on the following fields:
 <physeng>
     <name>SimAnneal</name>
     <version>0.1</version>
+    <description></description>
+    <!-- Services this plugin provides, used by SimManager and DesignAssistant classes to identify the type of simulation or assistance this plugin can provide. Comma separated, spaces are neither ignored nor truncated. -->
+    <services>ElectronGroundState</services>
     <!-- Path to the engine script or compiled binary. -->
     <!--<bin_path>@PHYSENGPATH@/simanneal</bin_path> TODO switch to this form later-->
     <bin_path>simanneal</bin_path> <!-- path to binary or script, relative to the folder containing engine_description.xml -->
