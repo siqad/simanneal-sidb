@@ -40,6 +40,9 @@ namespace phys {
   typedef std::vector<ThreadChargeResults> AllChargeResults;
   typedef std::vector<ThreadEnergyResults> AllEnergyResults;
 
+  // enums
+  enum TemperatureSchedule{LinearSchedule, ExponentialSchedule};
+
   // Forward declaration
   class SimAnnealThread;
 
@@ -52,12 +55,31 @@ namespace phys {
     // annealing params
     int anneal_cycles;          // Total number of annealing cycles
     int preanneal_cycles;       // Initial cycles where temperature doesn't change
+    TemperatureSchedule T_schedule;
+    float alpha;                // T(t) = alpha * T(t-1) + T_min
     float T_init;               // Initial annealing temperature
     float T_min;                // Minimum annealing temperature
+
+    // v_freeze params
+    // v_freeze increases from the v_freeze_init value to the v_freeze_threshold
+    // value over a course of v_freeze_cycles. After v_freeze_cycles is reached,
+    // the physical validity of the electron configuration is checked for 
+    // phys_validity_check_cycles consecutive cycles. If a majority of those 
+    // cycles have physically valid layouts, then v_freeze stays the same for 
+    // another v_freeze_cycles until the check is performed again. Otherwise, 
+    // v_freeze is reset to v_freeze_init.
+    float v_freeze_init;        // Initial freeze-out voltage
+    float v_freeze_threshold;   // Final freeze-out voltage
+    float v_freeze_reset;       // Freeze-out voltage to reset to
+    int v_freeze_cycles;        // Cycles per v_freeze_period, set to -1 to set to the same as anneal_cycles
+    int phys_validity_check_cycles;
+    bool strategic_v_freeze_reset;
+    bool reset_T_during_v_freeze_reset;
+
+    // calculated params (from annealing params)
     float Kc;                   // 1 / (4 pi eps)
-    float kT_min;               // Initial annealing temperature
-    float alpha;                // T(t) = alpha * T(t-1) + T_min
-    float v_freeze_step;        // Freeze-out voltage increment per cycle
+    float kT_min;               // Kb * T_min
+    float v_freeze_step;        // (v_freeze_threshold - v_freeze_init) / v_freeze_cycles
 
     // physics params
     float mu;                   // Global Fermi level (eV)
@@ -75,6 +97,7 @@ namespace phys {
   class SimAnneal
   {
   public:
+
     //! Constructor taking the simulation parameters.
     SimAnneal();
 
@@ -90,7 +113,13 @@ namespace phys {
     //! publically such that the interface can recalculate system energy 
     //! for configurations storage.
     //! TODO Make system energy recalculation optional.
-    static float systemEnergy(std::string n_in, int n_dbs);
+    static float systemEnergy(const std::string &n_in, int n_dbs);
+
+    //! Return whether the given configuration is physically valid. Validity is 
+    //! evaluated based on the following criteria:
+    //! 1. occupied DBs have local energy lower than mu;
+    //! 2. unoccupied DBs have local energy higher than mu.
+    static bool isPhysicallyValid(const std::string &n_in, int n_dbs);
 
     // ACCESSORS
 
@@ -134,6 +163,9 @@ namespace phys {
   {
   public:
 
+    enum PopulationSchedulePhase{PopulationUpdateMode, PhysicalValidityCheckMode,
+      PopulationUpdateFinished};
+
     // constructor
     SimAnnealThread(const int t_thread_id);
 
@@ -173,6 +205,9 @@ namespace phys {
     float totalCoulombPotential(ublas::vector<int> &config) const;
     float hopEnergyDelta(const int &i, const int &j);
 
+    // Return whether the current configuration is physically valid.
+    bool isPhysicallyValid();
+
     // ACCEPTANCE FUNCTIONS
     bool acceptHop(const float &v_diff); // acceptance function for hopping
     bool evalProb(const float &prob); // generate true or false based on given probaility
@@ -185,8 +220,14 @@ namespace phys {
 
     // other variables used for calculations
     int t=0;                      // current annealing cycle
+    int t_freeze=0;               // current v_freeze cycle
     float kT, v_freeze;           // current annealing temperature, freeze out potential
     ublas::vector<float> v_local; // local potetial at each site
+
+    int t_phys_validity_check=0;
+    PopulationSchedulePhase pop_schedule_phase;
+    int phys_valid_count;
+    int phys_invalid_count;
 
     float E_sys;                  // energy of the system
   };

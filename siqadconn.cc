@@ -1,7 +1,7 @@
 // @file:     siqadconn.cc
 // @author:   Samuel
 // @created:  2017.08.23
-// @editted:  2018.06.28 - Samuel
+// @editted:  2019.04.13 - Samuel
 // @license:  Apache License 2.0
 //
 // @desc:     Convenient functions for interacting with SiQAD
@@ -11,10 +11,13 @@
 #include <stdexcept>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/xml_parser.hpp>
+#include <boost/algorithm/string/join.hpp>
 
 
 using namespace phys;
 
+boost::bimap<SQCommand::CommandAction, std::string> SQCommand::command_action_string;
+boost::bimap<SQCommand::CommandItem, std::string> SQCommand::command_item_string;
 
 //CONSTRUCTOR
 SiQADConnector::SiQADConnector(const std::string &eng_name,
@@ -25,6 +28,7 @@ SiQADConnector::SiQADConnector(const std::string &eng_name,
   item_tree = std::make_shared<Aggregate>();
   start_time = std::chrono::system_clock::now();
   elec_col = new ElectrodeCollection(item_tree);
+  elec_poly_col = new ElectrodePolyCollection(item_tree);
   db_col = new DBCollection(item_tree);
 
   // read problem from input_path
@@ -53,6 +57,13 @@ void SiQADConnector::setExport(std::string type, std::vector< std::vector< std::
   else
     throw std::invalid_argument(std::string("No candidate for export type '") +
         type + std::string("' with class std::vector<std::vector<std::string>>"));
+}
+
+void SiQADConnector::addSQCommand(SQCommand *command)
+{
+  export_commands.push_back(command->finalCommand());
+  std::cout << "Command added to SiQADConnector: " << std::endl;
+  std::cout << export_commands.back() << std::endl;
 }
 
 
@@ -153,6 +164,9 @@ void SiQADConnector::readItemTree(const bpt::ptree &subtree, const std::shared_p
     } else if (!item_name.compare("electrode")) {
       // add Electrode to tree
       readElectrode(item_tree.second, agg_parent);
+    } else if (!item_name.compare("electrode_poly")) {
+      // add Electrode to tree
+      readElectrodePoly(item_tree.second, agg_parent);
     } else {
       std::cout << "Encountered unknown item node: " << item_tree.first << std::endl;
     }
@@ -161,8 +175,37 @@ void SiQADConnector::readItemTree(const bpt::ptree &subtree, const std::shared_p
 
 void SiQADConnector::readElectrode(const bpt::ptree &subtree, const std::shared_ptr<Aggregate> &agg_parent)
 {
-  double x1, x2, y1, y2, pixel_per_angstrom, potential, phase;
-  int layer_id, electrode_type;
+  double x1, x2, y1, y2, pixel_per_angstrom, potential, phase, angle;
+  int layer_id, electrode_type=0, net;
+  // read values from XML stream
+  layer_id = subtree.get<int>("layer_id");
+  angle = subtree.get<double>("angle");
+  potential = subtree.get<double>("property_map.potential.val");
+  phase = subtree.get<double>("property_map.phase.val");
+  std::string electrode_type_s = subtree.get<std::string>("property_map.type.val");
+  if (!electrode_type_s.compare("fixed")){
+    electrode_type = 0;
+  } else if (!electrode_type_s.compare("clocked")) {
+    electrode_type = 1;
+  }
+  net = subtree.get<int>("property_map.net.val");
+  pixel_per_angstrom = subtree.get<double>("pixel_per_angstrom");
+  x1 = subtree.get<double>("dim.<xmlattr>.x1");
+  x2 = subtree.get<double>("dim.<xmlattr>.x2");
+  y1 = subtree.get<double>("dim.<xmlattr>.y1");
+  y2 = subtree.get<double>("dim.<xmlattr>.y2");
+  agg_parent->elecs.push_back(std::make_shared<Electrode>(layer_id,x1,x2,y1,y2,potential,phase,electrode_type,pixel_per_angstrom,net,angle));
+
+  std::cout << "Electrode created with x1=" << agg_parent->elecs.back()->x1 << ", y1=" << agg_parent->elecs.back()->y1 <<
+    ", x2=" << agg_parent->elecs.back()->x2 << ", y2=" << agg_parent->elecs.back()->y2 <<
+    ", potential=" << agg_parent->elecs.back()->potential << std::endl;
+}
+
+void SiQADConnector::readElectrodePoly(const bpt::ptree &subtree, const std::shared_ptr<Aggregate> &agg_parent)
+{
+  double pixel_per_angstrom, potential, phase;
+  std::vector<std::pair<double, double>> vertices;
+  int layer_id, electrode_type=0, net;
   // read values from XML stream
   layer_id = subtree.get<int>("layer_id");
   potential = subtree.get<double>("property_map.potential.val");
@@ -174,15 +217,21 @@ void SiQADConnector::readElectrode(const bpt::ptree &subtree, const std::shared_
     electrode_type = 1;
   }
   pixel_per_angstrom = subtree.get<double>("pixel_per_angstrom");
-  x1 = subtree.get<double>("dim.<xmlattr>.x1");
-  x2 = subtree.get<double>("dim.<xmlattr>.x2");
-  y1 = subtree.get<double>("dim.<xmlattr>.y1");
-  y2 = subtree.get<double>("dim.<xmlattr>.y2");
-  agg_parent->elecs.push_back(std::make_shared<Electrode>(layer_id,x1,x2,y1,y2,potential,phase,electrode_type,pixel_per_angstrom));
+  net = subtree.get<int>("property_map.net.val");
+  //cycle through the vertices
+  std::pair<double, double> point;
+  for (auto val: subtree) {
+    if(val.first == "vertex") {
+      double x = std::stod(val.second.get_child("<xmlattr>.x").data());
+      double y = std::stod(val.second.get_child("<xmlattr>.y").data());
+      point = std::make_pair(x, y);
+      vertices.push_back(point);
+    }
+  }
+  agg_parent->elec_polys.push_back(std::make_shared<ElectrodePoly>(layer_id,vertices,potential,phase,electrode_type,pixel_per_angstrom,net));
 
-  std::cout << "Electrode created with x1=" << agg_parent->elecs.back()->x1 << ", y1=" << agg_parent->elecs.back()->y1 <<
-    ", x2=" << agg_parent->elecs.back()->x2 << ", y2=" << agg_parent->elecs.back()->y2 <<
-    ", potential=" << agg_parent->elecs.back()->potential << std::endl;
+  std::cout << "ElectrodePoly created with " << agg_parent->elec_polys.back()->vertices.size() <<
+    " vertices, potential=" << agg_parent->elec_polys.back()->potential << std::endl;
 }
 
 void SiQADConnector::readDBDot(const bpt::ptree &subtree, const std::shared_ptr<Aggregate> &agg_parent)
@@ -243,6 +292,12 @@ void SiQADConnector::writeResultsXml()
   if (!db_pot_data.empty())
     node_root.add_child("dbdots", dbPotentialPropertyTree());
 
+  // SQCommands
+  if (!export_commands.empty()) {
+    std::cout << "export commands not empty, starting to fill them in." << std::endl;
+    node_root.add_child("sqcommands", sqCommandsPropertyTree());
+  }
+
   // write full tree to file
   boost::property_tree::ptree tree;
   tree.add_child("sim_out", node_root);
@@ -298,6 +353,11 @@ bpt::ptree SiQADConnector::dbChargePropertyTree()
     node_dist.put("", db_charge_data[i][0]);
     node_dist.put("<xmlattr>.energy", db_charge_data[i][1]);
     node_dist.put("<xmlattr>.count", db_charge_data[i][2]);
+    // quick hack to add physically valid boolean support
+    // TODO in the future revamp SiQADConnector to use a class structure
+    if (db_charge_data[i].size() > 3) {
+      node_dist.put("<xmlattr>.physically_valid", db_charge_data[i][3]);
+    }
     node_elec_dist.add_child("dist", node_dist);
   }
   return node_elec_dist;
@@ -339,15 +399,32 @@ bpt::ptree SiQADConnector::dbPotentialPropertyTree()
   for (unsigned int i = 0; i < db_pot_data.size(); i++){
     bpt::ptree node_dbdot;
     bpt::ptree node_physloc;
-    node_physloc.put("<xmlattr>.x", db_pot_data[i][0].c_str());
-    node_physloc.put("<xmlattr>.y", db_pot_data[i][1].c_str());
+    boost::property_tree::ptree node_db_step;
+    node_db_step.put("", db_pot_data[i][0].c_str());
+    node_dbdot.add_child("step", node_db_step);
+    node_physloc.put("<xmlattr>.x", db_pot_data[i][1].c_str());
+    node_physloc.put("<xmlattr>.y", db_pot_data[i][2].c_str());
     node_dbdot.add_child("physloc", node_physloc);
     boost::property_tree::ptree node_db_pot;
-    node_db_pot.put("", db_pot_data[i][2].c_str());
+    node_db_pot.put("", db_pot_data[i][3].c_str());
     node_dbdot.add_child("potential", node_db_pot);
     node_dbdots.add_child("dbdot", node_dbdot);
   }
   return node_dbdots;
+}
+
+bpt::ptree SiQADConnector::sqCommandsPropertyTree()
+{
+  bpt::ptree node_sqcommands;
+  for (unsigned int i = 0; i < export_commands.size(); i++) {
+    std::cout << "command " << i << ": ";
+    std::cout << export_commands.at(i) << std::endl;
+    bpt::ptree node_sqc;
+    node_sqc.put("", export_commands.at(i).c_str());
+    //std::cout << export_commands.at(i)->finalCommand() << std::endl;
+    node_sqcommands.add_child("sqc", node_sqc);
+  }
+  return node_sqcommands;
 }
 
 //DB ITERATOR
@@ -454,6 +531,56 @@ void ElecIterator::pop()
   }
 }
 
+// ELECPOLY ITERATOR
+ElecPolyIterator::ElecPolyIterator(std::shared_ptr<Aggregate> root, bool begin)
+{
+  if(begin){
+    // keep finding deeper aggregates until one that contains dbs is found
+    while(root->elec_polys.empty() && !root->aggs.empty()) {
+      push(root);
+      root = root->aggs.front();
+    }
+    push(root);
+  }
+  else{
+    elec_poly_iter = root->elec_polys.cend();
+  }
+}
+
+ElecPolyIterator& ElecPolyIterator::operator++()
+{
+  // exhaust the current Aggregate DBs first
+  if(elec_poly_iter != curr->elec_polys.cend())
+    return ++elec_poly_iter != curr->elec_polys.cend() ? *this : ++(*this);
+
+  // if available, push the next aggregate onto the stack
+  if(agg_stack.top().second != curr->aggs.cend()){
+    push(*agg_stack.top().second);
+    return elec_poly_iter != curr->elec_polys.cend() ? *this : ++(*this);
+  }
+
+  // aggregate is complete, pop off stack
+  pop();
+  return agg_stack.size() == 0 ? *this : ++(*this);
+}
+
+void ElecPolyIterator::push(std::shared_ptr<Aggregate> agg)
+{
+  if(!agg_stack.empty())
+    ++agg_stack.top().second;
+  agg_stack.push(std::make_pair(agg, agg->aggs.cbegin()));
+  elec_poly_iter = agg->elec_polys.cbegin();
+  curr = agg;
+}
+
+void ElecPolyIterator::pop()
+{
+  agg_stack.pop();              // pop complete aggregate off stack
+  if(agg_stack.size() > 0){
+    curr = agg_stack.top().first; // update current to new top
+    elec_poly_iter = curr->elec_polys.cend();   // don't reread dbs
+  }
+}
 
 // AGGREGATE
 int Aggregate::size()
@@ -463,4 +590,109 @@ int Aggregate::size()
     for(auto agg : aggs)
       n_elecs += agg->size();
   return n_elecs;
+}
+
+
+
+// SQCommand implementation
+
+std::string SQCommand::commandItemString(CommandItem t_item)
+{
+  if (command_item_string.empty())
+    constructStatics();
+  return command_item_string.left.at(t_item);
+}
+
+std::string SQCommand::commandActionString(CommandAction t_action)
+{
+  if (command_action_string.empty())
+    constructStatics();
+  return command_action_string.left.at(t_action);
+}
+
+SQCommand::CommandItem SQCommand::commandItemEnum(std::string str_item)
+{
+  if (command_item_string.empty())
+    constructStatics();
+  return command_item_string.right.at(str_item);
+}
+
+SQCommand::CommandAction SQCommand::commandActionEnum(std::string str_action)
+{
+  if (command_action_string.empty())
+    constructStatics();
+  return command_action_string.right.at(str_action);
+}
+
+std::string SQCommand::finalCommand()
+{
+  /* TODO fill this in when more command actions are implemented
+  switch (action) {
+    case Add:
+      return addActionCommand();
+    default:
+      return "";
+  }
+  */
+  return addActionCommand();
+}
+
+std::string SQCommand::addActionCommand()
+{
+  // store the command in components and join them with spaces at the end
+  std::vector<std::string> command_components;
+
+  std::vector<std::string> command_args;
+
+  switch (item) {
+    case Aggregate:
+    {
+      AggregateCommand *agg_cmd = static_cast<AggregateCommand*>(this);
+      command_args = agg_cmd->addActionArguments();
+      break;
+    }
+    default:
+      break;
+  }
+
+  command_components.push_back(commandActionString(commandAction()));
+  command_components.push_back(commandItemString(commandItem()));
+  command_components.insert(command_components.end(), command_args.begin(), command_args.end());
+
+  return boost::algorithm::join(command_components, " ");
+}
+
+void SQCommand::constructStatics()
+{
+  typedef boost::bimap<CommandAction, std::string> ActionStringMap;
+  typedef ActionStringMap::value_type ASMEntry;
+  command_action_string.insert(ASMEntry(Add, "add"));
+  command_action_string.insert(ASMEntry(Remove, "remove"));
+  command_action_string.insert(ASMEntry(Echo, "echo"));
+  command_action_string.insert(ASMEntry(Run, "run"));
+  command_action_string.insert(ASMEntry(Move, "move"));
+
+  typedef boost::bimap<CommandItem, std::string> ItemStringMap;
+  typedef ItemStringMap::value_type ISMEntry;
+  command_item_string.insert(ISMEntry(NoItem, "NoItem"));
+  command_item_string.insert(ISMEntry(DBDot, "DBDot"));
+  command_item_string.insert(ISMEntry(Electrode, "Electrode"));
+  command_item_string.insert(ISMEntry(Aggregate, "Aggregate"));
+}
+
+
+// Aggregate command
+std::vector<std::string> AggregateCommand::addActionArguments()
+{
+  // store the command in components and join them with spaces at the end
+  std::vector<std::string> command_args;
+
+  command_args.push_back(layer == -1 ? "auto" : std::to_string(layer));
+
+  for (std::pair<float, float> db_loc : db_locs) {
+    command_args.push_back("(" + std::to_string(db_loc.first) + " " 
+        + std::to_string(db_loc.second) + ")");
+  }
+
+  return command_args;
 }

@@ -8,6 +8,7 @@
 
 #include "sim_anneal.h"
 #include <ctime>
+#include <algorithm>
 
 #include <boost/numeric/ublas/vector.hpp>
 #include <boost/numeric/ublas/io.hpp>
@@ -52,8 +53,8 @@ void SimAnneal::initialize()
 
   // inter-db distances and voltages
   for (int i=0; i<sim_params.n_dbs; i++) {
-    sim_params.db_r(i,i) = 0;
-    sim_params.v_ij(i,i) = 0;
+    sim_params.db_r(i,i) = 0.;
+    sim_params.v_ij(i,i) = 0.;
     for (int j=i+1; j<sim_params.n_dbs; j++) {
       sim_params.db_r(i,j) = db_distance_scale * distance(i,j);
       sim_params.v_ij(i,j) = interElecPotential(sim_params.db_r(i,j));
@@ -109,7 +110,7 @@ void SimAnneal::invokeSimAnneal()
   std::cout << "All simulations complete." << std::endl;
 }
 
-float SimAnneal::systemEnergy(std::string n_in, int n_dbs)
+float SimAnneal::systemEnergy(const std::string &n_in, int n_dbs)
 {
   assert(n_dbs > 0);
   assert(n_in.length() == n_dbs);
@@ -120,14 +121,42 @@ float SimAnneal::systemEnergy(std::string n_in, int n_dbs)
     n_int[i] = n_in.at(i) - '0';
   }
 
-  float v = 0;
-  for(int i=0; i<n_dbs; i++) {
-    //v -= mu + v_ext[i] * n[i];
-    v -= sim_params.v_ext[i] * n_int[i];
-    for(int j=i+1; j<n_dbs; j++)
-      v += sim_params.v_ij(i,j) * n_int[i] * n_int[j];
-  }
+  float v = 0.5 * ublas::inner_prod(n_int, ublas::prod(sim_params.v_ij, n_int))
+    - ublas::inner_prod(n_int, sim_params.v_ext);
+  std::cout << "Energy of " << n_in << ": " << v << std::endl;
   return v;
+}
+
+bool SimAnneal::isPhysicallyValid(const std::string &n_in, int n_dbs)
+{
+  assert(n_dbs > 0);
+  assert(n_in.length() == n_dbs);
+  // convert string of 0 and 1 to ublas vector
+  ublas::vector<int> n_int(n_in.length());
+  for (int i=0; i<n_dbs; i++) {
+    // ASCII char to int with the correct int
+    n_int[i] = n_in.at(i) - '0';
+  }
+
+  float v_i;
+  for (int i=0; i<n_dbs; i++) {
+    v_i = 0;
+    v_i -= sim_params.v_ext[i];
+    for (int j=0; j<n_dbs; j++) {
+      if (i == j) continue;
+      v_i += sim_params.v_ij(i,j) * n_int[j];
+    }
+
+    // return false if constraints not met
+    if ((n_int[i] == 1 && v_i > sim_params.mu)
+        || (n_int[i] == 0 && v_i < sim_params.mu)) {
+      std::cout << "config " << n_in << " is invalid, failed at index " << i << std::endl;
+      std::cout << "v_i=" << v_i << std::endl;
+      return false;
+    }
+  }
+  std::cout << "config " << n_in << " is valid." << std::endl;
+  return true;
 }
 
 void SimAnneal::storeResults(SimAnnealThread *annealer, int thread_id){
@@ -142,17 +171,15 @@ void SimAnneal::storeResults(SimAnnealThread *annealer, int thread_id){
 
 float SimAnneal::distance(const int &i, const int &j)
 {
-  int x1 = sim_params.db_locs[i].first;
-  int y1 = sim_params.db_locs[i].second;
-  int x2 = sim_params.db_locs[j].first;
-  int y2 = sim_params.db_locs[j].second;
+  float x1 = sim_params.db_locs[i].first;
+  float y1 = sim_params.db_locs[i].second;
+  float x2 = sim_params.db_locs[j].first;
+  float y2 = sim_params.db_locs[j].second;
   return sqrt(pow(x1-x2, 2.0) + pow(y1-y2, 2.0));
 }
 
 float SimAnneal::interElecPotential(const float &r)
 {
-  //return exp(-r/debye_length) / r;
-  //return constants::Q0 * Kc * erf(r/constants::ERFDB) * exp(-r/debye_length) / r;
   return constants::Q0 * sim_params.Kc * exp(-r/sim_params.debye_length) / r;
 }
 
@@ -171,7 +198,11 @@ void SimAnnealThread::run()
 {
   // initialize variables & perform pre-calculation
   kT = sparams->T_init*constants::Kb;
-  v_freeze = 0;
+  v_freeze = 0.;
+  t = 0;
+  t_freeze = 0;
+  t_phys_validity_check = 0;
+  pop_schedule_phase = PopulationUpdateMode;
 
   // resize vectors
   v_local.resize(sparams->n_dbs);
@@ -258,13 +289,22 @@ void SimAnnealThread::anneal()
     std::cout << "db_charges=";
     for (int charge : n)
       std::cout << charge;
-    std::cout << ", system energy=" << systemEnergy();
     std::cout << std::endl;
     */
 
     // perform time-step if not pre-annealing
     timeStep();
   }
+
+  /*
+  std::cout << "Final db_charges=";
+  for (int charge : n)
+    std::cout << charge;
+  std::cout << ", delta-based system energy=";
+  std::cout << E_sys,
+  std::cout << ", recalculated system energy=" << systemEnergy();
+  std::cout << std::endl;
+  */
 
   SimAnneal::storeResults(this, thread_id);
 }
@@ -275,6 +315,11 @@ ublas::vector<int> SimAnnealThread::genPopDelta(bool &changed)
   ublas::vector<int> dn(sparams->n_dbs);
   for (unsigned i=0; i<n.size(); i++) {
     float prob = 1. / ( 1 + exp( ((2*n[i]-1)*(v_local[i] + sparams->mu) + v_freeze) / kT ) );
+
+    /*
+    std::cout << "prob = 1. / ( 1 + exp( ((" << 2*n[i]-1 << ")*(" << v_local[i] << "+" << sparams->mu <<") + " << v_freeze << ") / kT ) )" << std::endl;
+    std::cout << prob << std::endl;
+    */
 
     if (evalProb(prob)) {
       dn[i] = 1 - 2*n[i];
@@ -294,11 +339,72 @@ void SimAnnealThread::performHop(const int &from_ind, const int &to_ind)
 
 void SimAnnealThread::timeStep()
 {
+  // always progress annealing schedule
   t++;
-  if (t > sparams->preanneal_cycles) {
-    kT = sparams->kT_min + (kT - sparams->kT_min) * sparams->alpha;
-    v_freeze = (t - sparams->preanneal_cycles) * sparams->v_freeze_step;
+
+  // if preannealing, stop here
+  if (t < sparams->preanneal_cycles)
+    return;
+
+  // decide what to do with v_freeze schedule
+  switch (pop_schedule_phase) {
+    case PopulationUpdateMode:
+    {
+      if (t_freeze < sparams->v_freeze_cycles) {
+        t_freeze++;
+      } else {
+        if (!sparams->strategic_v_freeze_reset
+            || (sparams->anneal_cycles - t) < sparams->v_freeze_cycles) {
+          // if there aren't enough cycles left for another full v_freeze cycles, then
+          // stop playing with t_freeze
+          pop_schedule_phase = PopulationUpdateFinished;
+        } else {
+          // initiate physical validity check for the next phys_validity_check_cycles
+          pop_schedule_phase = PhysicalValidityCheckMode;
+          t_phys_validity_check = 0;
+          phys_valid_count = 0;
+          phys_invalid_count = 0;
+        }
+      }
+      break;
+    }
+    case PhysicalValidityCheckMode:
+    {
+      if (t_phys_validity_check < sparams->phys_validity_check_cycles) {
+        isPhysicallyValid() ? phys_valid_count++ : phys_invalid_count++;
+        t_phys_validity_check++;
+      } else if (t_phys_validity_check >= sparams->phys_validity_check_cycles) {
+        pop_schedule_phase = PopulationUpdateMode;
+        t_freeze = 0;
+        if (phys_valid_count < phys_invalid_count) {
+          std::cout << "Thread " << thread_id << ": t=" << t << ", charge config is ";
+          for (int charge : n)
+            std::cout << charge;
+          std::cout << " which is physically invalid, resetting v_freeze." << std::endl;
+
+          // reset v_freeze and temperature
+          v_freeze = sparams->v_freeze_reset;
+          if (sparams->reset_T_during_v_freeze_reset)
+            kT = sparams->T_init*constants::Kb;
+        }
+      }
+      break;
+    }
+    case PopulationUpdateFinished:
+      break;
+    default:
+      throw "Invalid PopulationSchedulePhase.";
   }
+
+  // update parameters according to schedule
+  if (sparams->T_schedule == ExponentialSchedule)
+    kT = sparams->kT_min + (kT - sparams->kT_min) * sparams->alpha;
+  else if (sparams->T_schedule == LinearSchedule)
+    kT = std::max(sparams->kT_min, kT - sparams->alpha);
+
+  // update v_freeze
+  if (v_freeze < sparams->v_freeze_threshold)
+    v_freeze += sparams->v_freeze_step;
 }
 
 bool SimAnnealThread::acceptHop(const float &v_diff)
@@ -327,13 +433,8 @@ int SimAnnealThread::randInt(const int &min, const int &max)
 float SimAnnealThread::systemEnergy() const
 {
   assert(sparams->n_dbs > 0);
-  float v = 0;
-  for(int i=0; i<sparams->n_dbs; i++) {
-    v -= sparams->v_ext[i] * n[i];
-    for(int j=i+1; j<sparams->n_dbs; j++)
-      v += sparams->v_ij(i,j) * n[i] * n[j];
-  }
-  return v;
+  return 0.5 * ublas::inner_prod(n, ublas::prod(sparams->v_ij, n))
+    - ublas::inner_prod(n, sparams->v_ext);
 }
 
 float SimAnnealThread::totalCoulombPotential(ublas::vector<int> &config) const
@@ -344,4 +445,21 @@ float SimAnnealThread::totalCoulombPotential(ublas::vector<int> &config) const
 float SimAnnealThread::hopEnergyDelta(const int &i, const int &j)
 {
   return v_local[i] - v_local[j] - sparams->v_ij(i,j);
+}
+
+bool SimAnnealThread::isPhysicallyValid()
+{
+  assert(sparams->n_dbs > 0);
+
+  // check whether v_local at each site meets physically valid constraints
+  // (check the description of SimAnneal::isPhysicallyValid for what physically
+  // valid entails)
+  // Note that v_local components have flipped signs from E_sys
+  for (int i=0; i<sparams->n_dbs; i++) {
+    if ((n[i] == 1 && v_local[i] < -sparams->mu)
+        || (n[i] == 0 && v_local[i] > -sparams->mu)) {
+      return false;
+    }
+  }
+  return true;
 }
