@@ -354,7 +354,7 @@ void SimAnnealThread::timeStep()
         t_freeze++;
       } else {
         if (!sparams->strategic_v_freeze_reset
-            || (sparams->anneal_cycles - t) < sparams->v_freeze_cycles) {
+            || (sparams->anneal_cycles - t) < sparams->v_freeze_cycles + sparams->phys_validity_check_cycles) {
           // if there aren't enough cycles left for another full v_freeze cycles, then
           // stop playing with t_freeze
           pop_schedule_phase = PopulationUpdateFinished;

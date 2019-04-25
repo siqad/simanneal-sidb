@@ -111,6 +111,7 @@ void SimAnnealInterface::loadSimParams()
   sparams->result_queue_size = sparams->anneal_cycles * std::stof(sqconn->getParameter("result_queue_size"));
   sparams->result_queue_size = std::min(sparams->result_queue_size, sparams->anneal_cycles);
   sparams->result_queue_size = std::max(sparams->result_queue_size, 1);
+  std::cout << "Result queue size: " << sparams->result_queue_size << std::endl;
 
   std::cout << "Retrieval from SiQADConn complete." << std::endl;
 }
