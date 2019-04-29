@@ -10,6 +10,7 @@
 #define _PHYS_SIM_ANNEAL_H_
 
 // #include "phys_engine.h"
+#include "global.h"
 #include "siqadconn.h"
 #include <vector>
 #include <deque>
@@ -34,11 +35,6 @@ namespace constants{
 
 namespace phys {
   namespace ublas = boost::numeric::ublas;
-
-  typedef boost::circular_buffer<ublas::vector<int>> ThreadChargeResults;
-  typedef boost::circular_buffer<float> ThreadEnergyResults;
-  typedef std::vector<ThreadChargeResults> AllChargeResults;
-  typedef std::vector<ThreadEnergyResults> AllEnergyResults;
 
   // enums
   enum TemperatureSchedule{LinearSchedule, ExponentialSchedule};
@@ -92,6 +88,19 @@ namespace phys {
     ublas::vector<float> v_ext; // External potential influences
   };
 
+  struct TimeInfo
+  {
+    double wall_time=-1;
+    double cpu_time=-1;
+  };
+
+  // typedefs
+  typedef boost::circular_buffer<ublas::vector<int>> ThreadChargeResults;
+  typedef boost::circular_buffer<float> ThreadEnergyResults;
+  typedef std::vector<ThreadChargeResults> AllChargeResults;
+  typedef std::vector<ThreadEnergyResults> AllEnergyResults;
+  typedef std::vector<double> AllCPUTimes;
+  typedef std::vector<ublas::vector<int>> AllSuggestedConfigResults;
 
   //! Controller class which spawns SimAnneal threads for actual computation.
   class SimAnneal
@@ -127,10 +136,16 @@ namespace phys {
     static void storeResults(SimAnnealThread *annealer, int thread_id);
 
     //! Return the electron charge location results.
-    AllChargeResults& chargeResults() {return charge_results;}
+    AllChargeResults &chargeResults() {return charge_results;}
 
     //! Return the energy results.
-    AllEnergyResults& energyResults() {return energy_results;}
+    AllEnergyResults &energyResults() {return energy_results;}
+
+    //! Return CPU timing results.
+    AllCPUTimes &CPUTimeingResults() {return cpu_times;}
+
+    //! Return suggested config results.
+    AllSuggestedConfigResults &suggestedConfigResults() {return suggested_config_results;}
 
     //! Publically accessible simulation parameters
     static SimParams sim_params;
@@ -154,9 +169,10 @@ namespace phys {
     static float db_distance_scale;     //! convert db distances to m TODO make this configurable in user settings
 
     // Write-out variables
-    static AllChargeResults charge_results; //Vector for storing db_charges
-    static AllEnergyResults energy_results; //Vector for storing config_energies
-    //static std::vector<int> numElecStore;
+    static AllChargeResults charge_results; // vector for storing db_charges
+    static AllEnergyResults energy_results; // vector for storing config_energies
+    static AllCPUTimes cpu_times;           // vector for storing time information
+    static AllSuggestedConfigResults suggested_config_results;
   };
 
   class SimAnnealThread
@@ -175,16 +191,25 @@ namespace phys {
     // run simulation
     void run();
 
-    int n_elec=0;               // number of doubly occupied DBs
-    ublas::vector<int> n;       // electron configuration at the current time-step
-    std::vector<int> occ;       // indices of dbs, first n_elec indices are occupied
-    ThreadChargeResults db_charges;       // charge configuration history
-    ThreadEnergyResults config_energies;  // energy history corresponding to db_charges
+    // return the total CPU time in seconds
+    double CPUTime()
+    {
+      // CPU time
+      struct timespec curr_cpu_time;
+      clockid_t thread_clock_id;
+      pthread_getcpuclockid(pthread_self(), &thread_clock_id);
+      clock_gettime(thread_clock_id, &curr_cpu_time);
+      return (double) curr_cpu_time.tv_sec + 1e-9 * curr_cpu_time.tv_nsec;
+    }
+
+    // return the physically valid ground state of this thread.
+    ublas::vector<int> suggestedConfig() {
+      return n_valid_gs.empty() ? n_invalid_gs : n_valid_gs;
+    }
 
     int thread_id;              // the thread id of each class object
-
-    // VARIABLES
-    //const float har_to_ev = 27.2114; // hartree to eV conversion factor
+    ThreadChargeResults db_charges;       // charge configuration history
+    ThreadEnergyResults config_energies;  // energy history corresponding to db_charges
 
   private:
 
@@ -218,6 +243,11 @@ namespace phys {
     boost::random::uniform_real_distribution<float> dis01;
     boost::random::mt19937 rng;
 
+    // keep track of stats
+    int n_elec=0;               // number of doubly occupied DBs
+    ublas::vector<int> n;       // electron configuration at the current time-step
+    std::vector<int> occ;       // indices of dbs, first n_elec indices are occupied
+
     // other variables used for calculations
     int t=0;                      // current annealing cycle
     int t_freeze=0;               // current v_freeze cycle
@@ -228,6 +258,13 @@ namespace phys {
     PopulationSchedulePhase pop_schedule_phase;
     int phys_valid_count;
     int phys_invalid_count;
+
+    // keep track of the suggested config - physically valid ground state if 
+    // possible, invalid ground state otherwise. Only keeps track if 
+    ublas::vector<int> n_valid_gs;
+    ublas::vector<int> n_invalid_gs;
+    float E_sys_valid_gs = 0;
+    float E_sys_invalid_gs = 0;
 
     float E_sys;                  // energy of the system
   };

@@ -13,6 +13,10 @@
 #include <boost/numeric/ublas/vector.hpp>
 #include <boost/numeric/ublas/io.hpp>
 
+// thread CPU time for Linux
+#include <pthread.h>
+#include <time.h>
+
 //#define STEADY_THREASHOLD 700       //arbitrary value used in restarting
 
 using namespace phys;
@@ -23,6 +27,8 @@ boost::mutex SimAnneal::result_store_mutex;
 float SimAnneal::db_distance_scale = 1E-10;
 AllChargeResults SimAnneal::charge_results;
 AllEnergyResults SimAnneal::energy_results;
+AllCPUTimes SimAnneal::cpu_times;
+AllSuggestedConfigResults SimAnneal::suggested_config_results;
 
 // alias for the commonly used sim_params static variable
 constexpr auto sparams = &SimAnneal::sim_params;
@@ -86,7 +92,8 @@ void SimAnneal::initialize()
 
   charge_results.resize(sim_params.num_threads);
   energy_results.resize(sim_params.num_threads);
-  //numElecStore.resize(sim_accessor.num_threads);
+  cpu_times.resize(sim_params.num_threads);
+  suggested_config_results.resize(sim_params.num_threads);
 }
 
 void SimAnneal::invokeSimAnneal()
@@ -164,7 +171,8 @@ void SimAnneal::storeResults(SimAnnealThread *annealer, int thread_id){
 
   charge_results[thread_id] = annealer->db_charges;
   energy_results[thread_id] = annealer->config_energies;
-  //object->numElecStore[threadId] = object->n_elec;
+  cpu_times[thread_id] = annealer->CPUTime();
+  suggested_config_results[thread_id] = annealer->suggestedConfig();
 
   result_store_mutex.unlock();
 }
@@ -190,6 +198,7 @@ float SimAnneal::interElecPotential(const float &r)
 SimAnnealThread::SimAnnealThread(const int t_thread_id)
   : thread_id(t_thread_id)
 {
+  // initialize rng
   rng.seed(std::time(NULL)*thread_id+4065);
   dis01 = boost::random::uniform_real_distribution<float>(0,1);
 }
@@ -284,6 +293,19 @@ void SimAnnealThread::anneal()
     // push back the new arrangement
     db_charges.push_back(n);
     config_energies.push_back(E_sys);
+
+    // keep track of suggested ground state
+    if (isPhysicallyValid()) {
+      if (E_sys_valid_gs == 0 || E_sys < E_sys_valid_gs) {
+        E_sys_valid_gs = E_sys;
+        n_valid_gs = n;
+      }
+    } else if ((sparams->anneal_cycles - t) <= sparams->result_queue_size) {
+      if (E_sys_invalid_gs == 0 || E_sys < E_sys_invalid_gs) {
+        E_sys_invalid_gs = E_sys;
+        n_invalid_gs = n;
+      }
+    }
 
     /*
     std::cout << "db_charges=";
@@ -449,8 +471,6 @@ float SimAnnealThread::hopEnergyDelta(const int &i, const int &j)
 
 bool SimAnnealThread::isPhysicallyValid()
 {
-  assert(sparams->n_dbs > 0);
-
   // check whether v_local at each site meets physically valid constraints
   // (check the description of SimAnneal::isPhysicallyValid for what physically
   // valid entails)

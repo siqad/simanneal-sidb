@@ -22,8 +22,11 @@ namespace phys {
     //! Prepare simulation variables
     void loadSimParams();
 
-    //! Write the simulation results to output file
-    void writeSimResults();
+    //! Write the simulation results to output file. The only_suggested_gs flag
+    //! instructs the function to only export the single suggested ground state 
+    //! result from each thread rather than exporting all results in the result
+    //! queue.
+    void writeSimResults(bool only_suggested_gs);
 
 
     //! Run the simulation, returns 0 if simulation was successful.

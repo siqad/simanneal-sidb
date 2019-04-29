@@ -50,7 +50,7 @@ void SimAnnealInterface::loadSimParams()
 
   //Variable initialization
   std::cout << "Retrieving variables from SiQADConn..." << std::endl;
-  sparams->num_threads = std::stoi(sqconn->getParameter("num_threads"));
+  sparams->num_threads = std::stoi(sqconn->getParameter("num_instances"));
   sparams->anneal_cycles = std::stoi(sqconn->getParameter("anneal_cycles"));
   sparams->preanneal_cycles = std::stoi(sqconn->getParameter("preanneal_cycles"));
   sparams->mu = std::stof(sqconn->getParameter("global_v0"));
@@ -116,7 +116,7 @@ void SimAnnealInterface::loadSimParams()
   std::cout << "Retrieval from SiQADConn complete." << std::endl;
 }
 
-void SimAnnealInterface::writeSimResults()
+void SimAnnealInterface::writeSimResults(bool only_suggested_gs)
 {
   std::cout << std::endl << "*** Write Result to Output ***" << std::endl;
 
@@ -130,23 +130,48 @@ void SimAnnealInterface::writeSimResults()
 
   // save the results of all distributions to a map, with the vector of 
   // distribution as key and the count of occurances as value.
-  // TODO move typedef to header, and make typedefs for the rest of the common types
+  // TODO current only_suggested_gs processing is hacked-in and inefficient, fix
+  // in the future
   typedef std::unordered_map<std::string, int> ElecResultMapType;
   ElecResultMapType elec_result_map;
 
-  for (auto elec_result_set : annealer->chargeResults()) {
-    for (ublas::vector<int> elec_result : elec_result_set) {
-      std::string elec_result_str;
-      for (auto chg : elec_result)
-        elec_result_str.append(std::to_string(chg));
+  auto config_to_str = [](const ublas::vector<int> &config)
+  {
+    std::string elec_result_str;
+    for (auto chg : config)
+      elec_result_str.append(std::to_string(chg));
+    return elec_result_str;
+  };
+
+  if (only_suggested_gs) {
+    for (ublas::vector<int> elec_result : annealer->suggestedConfigResults()) {
+      std::string elec_result_str = config_to_str(elec_result);
 
       // attempt insertion
-      std::pair<ElecResultMapType::iterator, bool> insert_result = elec_result_map.insert({elec_result_str,1});
+      std::pair<ElecResultMapType::iterator, bool> insert_result;
+      insert_result = elec_result_map.insert({elec_result_str,1});
 
       // if insertion fails, the result already exists. Just increment the 
       // counter within the map of that result.
-      if (!insert_result.second)
+      if (!insert_result.second) {
         insert_result.first->second++;
+      }
+    }
+  } else {
+    for (auto elec_result_set : annealer->chargeResults()) {
+      for (ublas::vector<int> elec_result : elec_result_set) {
+        std::string elec_result_str = config_to_str(elec_result);
+
+        // attempt insertion
+        std::pair<ElecResultMapType::iterator, bool> insert_result;
+        insert_result = elec_result_map.insert({elec_result_str,1});
+
+        // if insertion fails, the result already exists. Just increment the 
+        // counter within the map of that result.
+        if (!insert_result.second) {
+          insert_result.first->second++;
+        }
+      }
     }
   }
 
@@ -166,8 +191,17 @@ void SimAnnealInterface::writeSimResults()
     db_dist_data.push_back(db_dist);
     i++;
   }
-
   sqconn->setExport("db_charge", db_dist_data);
+
+  // export misc thread timing data
+  unsigned int t_count = annealer->CPUTimeingResults().size();
+  std::vector<std::pair<std::string, std::string>> misc_data(t_count);
+  for (unsigned int i=0; i<t_count; i++) {
+    misc_data[i] = std::make_pair("time_s_cpu"+std::to_string(i), 
+                                  std::to_string(annealer->CPUTimeingResults().at(i)));
+  }
+  sqconn->setExport("misc", misc_data);
+
   sqconn->writeResultsXml();
 }
 

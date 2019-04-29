@@ -36,12 +36,12 @@ interpreter, bin_path, command
     <dep_path></dep_path> 
     <!-- Simulation parameters, read into SiQAD as a property map. -->
     <sim_params preserve_order="true">
-        <num_threads>
+        <num_instances>
             <T>int</T>
             <val>-1</val>
-            <label>Number of threads</label>
-            <tip>The number of threads used in multithreading. If left at -1, a number is automatically selected based on the DB layout.</tip>
-        </num_threads>
+            <label>Instance count</label>
+            <tip>The number of SimAnneal instances used in multithreading. If left at -1, a number is automatically selected based on the DB layout.</tip>
+        </num_instances>
         <schedule_scale_factor>
             <T>float</T>
             <val>1</val>
