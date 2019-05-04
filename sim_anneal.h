@@ -25,12 +25,19 @@
 #include <boost/numeric/ublas/matrix_proxy.hpp>
 
 namespace constants{
+  // physics
   const float Q0 = 1.602E-19;
   const float PI = 3.14159;
   const float EPS0 = 8.854E-12;
-  //const float EPS_SURFACE = 6.35;
   const float Kb = 8.617E-5;
   const float ERFDB = 5E-10;
+
+  // simulation
+
+  // Allowed headroom in eV for physically invalid configurations to still be 
+  // considered "probably valid", the validity will be re-determined during export.
+  // Typical error is 1E-4 or lower, so this should be plenty enough headroom.
+  const float POP_STABILITY_ERR = 1E-3;  
 }
 
 namespace phys {
@@ -88,6 +95,21 @@ namespace phys {
     ublas::vector<float> v_ext; // External potential influences
   };
 
+  // ElecChargeConfigs that are written to the shared simulation results list
+  // which is later processed for export.
+  struct ElecChargeConfigResult
+  {
+    ElecChargeConfigResult() {};
+    ElecChargeConfigResult(ublas::vector<int> config, bool population_possibly_stable, float system_energy)
+      : config(config), population_possibly_stable(population_possibly_stable), system_energy(system_energy) {};
+    
+    bool isResult() {return config.size() > 0;}
+
+    ublas::vector<int> config;
+    bool population_possibly_stable=false;
+    float system_energy;
+  };
+
   struct TimeInfo
   {
     double wall_time=-1;
@@ -95,7 +117,7 @@ namespace phys {
   };
 
   // typedefs
-  typedef boost::circular_buffer<ublas::vector<int>> ThreadChargeResults;
+  typedef boost::circular_buffer<ElecChargeConfigResult> ThreadChargeResults;
   typedef boost::circular_buffer<float> ThreadEnergyResults;
   typedef std::vector<ThreadChargeResults> AllChargeResults;
   typedef std::vector<ThreadEnergyResults> AllEnergyResults;
@@ -123,12 +145,19 @@ namespace phys {
     //! for configurations storage.
     //! TODO Make system energy recalculation optional.
     static float systemEnergy(const std::string &n_in, int n_dbs);
+    static float systemEnergy(const ublas::vector<int> &n_in);
 
-    //! Return whether the given configuration is physically valid. Validity is 
-    //! evaluated based on the following criteria:
+    //! Return whether the given configuration population is valid. Population
+    //! validity is evaluated based on the following criteria:
     //! 1. occupied DBs have local energy lower than mu;
     //! 2. unoccupied DBs have local energy higher than mu.
-    static bool isPhysicallyValid(const std::string &n_in, int n_dbs);
+    static bool populationValidity(const ublas::vector<int> &n_in);
+
+    //! Return whether the given configuration is locally minimal. In other 
+    //! words, whether there are lower energy states that can be accessed from a
+    //! single hopping event, even if that lower energy state itself is 
+    //! physically invalid.
+    static bool locallyMinimal(const ublas::vector<int> &n_in);
 
     // ACCESSORS
 
@@ -158,6 +187,11 @@ namespace phys {
 
     //! Calculate the potential between two given point charges.
     float interElecPotential(const float &r);
+
+    //! Return the energy difference for a configuration if an electron hopped
+    //! from site i to site j.
+    static float hopEnergyDelta(ublas::vector<int> n_in, const int &from_ind,
+        const int &to_ind);
 
     // Thread mutex for result storage
     static boost::mutex result_store_mutex;
@@ -229,6 +263,10 @@ namespace phys {
     float systemEnergy() const;
     float totalCoulombPotential(ublas::vector<int> &config) const;
     float hopEnergyDelta(const int &i, const int &j);
+
+    // Return whether the current electron population is valid with an error
+    // headroom to account for floating point drifts during energy updatse.
+    bool populationValid(const float &err_headroom) const;
 
     // Return whether the current configuration is physically valid.
     bool isPhysicallyValid();

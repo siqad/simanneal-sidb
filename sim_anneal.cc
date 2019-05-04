@@ -134,35 +134,53 @@ float SimAnneal::systemEnergy(const std::string &n_in, int n_dbs)
   return v;
 }
 
-bool SimAnneal::isPhysicallyValid(const std::string &n_in, int n_dbs)
+float SimAnneal::systemEnergy(const ublas::vector<int> &n_in)
 {
-  assert(n_dbs > 0);
-  assert(n_in.length() == n_dbs);
-  // convert string of 0 and 1 to ublas vector
-  ublas::vector<int> n_int(n_in.length());
-  for (int i=0; i<n_dbs; i++) {
-    // ASCII char to int with the correct int
-    n_int[i] = n_in.at(i) - '0';
-  }
+  assert(n_in.size() > 0);
+  
+  return 0.5 * ublas::inner_prod(n_in, ublas::prod(sim_params.v_ij, n_in))
+    - ublas::inner_prod(n_in, sim_params.v_ext);
+}
+
+bool SimAnneal::populationValidity(const ublas::vector<int> &n_in)
+{
+  assert(n_in.size() > 0);
 
   float v_i;
-  for (int i=0; i<n_dbs; i++) {
-    v_i = 0;
-    v_i -= sim_params.v_ext[i];
-    for (int j=0; j<n_dbs; j++) {
+  for (unsigned int i=0; i<n_in.size(); i++) {
+    v_i = sim_params.v_ext[i];
+    for (unsigned int j=0; j<n_in.size(); j++) {
       if (i == j) continue;
-      v_i += sim_params.v_ij(i,j) * n_int[j];
+      v_i -= sim_params.v_ij(i,j) * n_in[j];
     }
 
+    bool valid = ((n_in[i] == 1 && v_i + sim_params.mu >= 0)
+        || (n_in[i] == 0 && v_i + sim_params.mu < 0));
+
     // return false if constraints not met
-    if ((n_int[i] == 1 && v_i > sim_params.mu)
-        || (n_int[i] == 0 && v_i < sim_params.mu)) {
-      std::cout << "config " << n_in << " is invalid, failed at index " << i << std::endl;
-      std::cout << "v_i=" << v_i << std::endl;
+    if (!valid) {
+      //std::cout << "config " << n_in << " has an invalid population, failed at index " << i << std::endl;
+      //std::cout << "v_i=" << v_i << std::endl;
       return false;
     }
   }
-  std::cout << "config " << n_in << " is valid." << std::endl;
+  //std::cout << "config " << n_in << " has a valid population." << std::endl;
+  return true;
+}
+
+bool SimAnneal::locallyMinimal(const ublas::vector<int> &n_in)
+{
+  assert(n_in.size() > 0);
+
+  for (unsigned int i=0; i<n_in.size(); i++) {
+    if (n_in[i] == 0) 
+      continue;
+    for (unsigned int j=0; j<n_in.size(); j++) {
+      if (n_in[j] != 1 && hopEnergyDelta(n_in, i, j) < 0) {
+        return false;
+      }
+    }
+  }
   return true;
 }
 
@@ -189,6 +207,16 @@ float SimAnneal::distance(const int &i, const int &j)
 float SimAnneal::interElecPotential(const float &r)
 {
   return constants::Q0 * sim_params.Kc * exp(-r/sim_params.debye_length) / r;
+}
+
+float SimAnneal::hopEnergyDelta(ublas::vector<int> n_in, const int &from_ind, 
+    const int &to_ind)
+{
+  // TODO make an efficient implementation with energy delta implementation
+  float orig_energy = systemEnergy(n_in);
+  n_in[from_ind] = 0;
+  n_in[to_ind] = 1;
+  return systemEnergy(n_in) - orig_energy;
 }
 
 
@@ -291,7 +319,8 @@ void SimAnnealThread::anneal()
     }
 
     // push back the new arrangement
-    db_charges.push_back(n);
+    db_charges.push_back(ElecChargeConfigResult(n, 
+          populationValid(constants::POP_STABILITY_ERR), E_sys));
     config_energies.push_back(E_sys);
 
     // keep track of suggested ground state
@@ -467,6 +496,20 @@ float SimAnnealThread::totalCoulombPotential(ublas::vector<int> &config) const
 float SimAnnealThread::hopEnergyDelta(const int &i, const int &j)
 {
   return v_local[i] - v_local[j] - sparams->v_ij(i,j);
+}
+
+bool SimAnnealThread::populationValid(const float &err_headroom) const
+{
+  // Check whether v_local at each site meets population validity constraints
+  // Note that v_local components have flipped signs from E_sys
+  for (int i=0; i<sparams->n_dbs; i++) {
+    bool valid = ((n[i] == 1 && v_local[i] + sparams->mu >= -err_headroom)
+        || (n[i] == 0 && v_local[i] + sparams->mu < err_headroom));
+    if (!valid) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool SimAnnealThread::isPhysicallyValid()

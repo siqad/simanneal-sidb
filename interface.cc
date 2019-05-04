@@ -132,7 +132,15 @@ void SimAnnealInterface::writeSimResults(bool only_suggested_gs)
   // distribution as key and the count of occurances as value.
   // TODO current only_suggested_gs processing is hacked-in and inefficient, fix
   // in the future
-  typedef std::unordered_map<std::string, int> ElecResultMapType;
+  struct ExportElecConfigResult
+  {
+    ublas::vector<int> config;
+    bool population_stable=false;   // the result population is physically valid
+    bool locally_minimal=false;     // the result has no imminently preferred alternative configuration (if population_stable is false then this is not evaluated)
+    float system_energy=-1;
+    int occ_count=0;
+  };
+  typedef std::unordered_map<std::string, ExportElecConfigResult> ElecResultMapType;
   ElecResultMapType elec_result_map;
 
   auto config_to_str = [](const ublas::vector<int> &config)
@@ -145,31 +153,61 @@ void SimAnnealInterface::writeSimResults(bool only_suggested_gs)
 
   if (only_suggested_gs) {
     for (ublas::vector<int> elec_result : annealer->suggestedConfigResults()) {
-      std::string elec_result_str = config_to_str(elec_result);
+      std::string elec_result_str = config_to_str(elec_result); // key
+      ExportElecConfigResult export_result;                     // value
+      export_result.config = elec_result;
 
       // attempt insertion
       std::pair<ElecResultMapType::iterator, bool> insert_result;
-      insert_result = elec_result_map.insert({elec_result_str,1});
+      insert_result = elec_result_map.insert({elec_result_str,export_result});
 
-      // if insertion fails, the result already exists. Just increment the 
-      // counter within the map of that result.
       if (!insert_result.second) {
-        insert_result.first->second++;
+        // if insertion fails, the result already exists. Just increment the 
+        // occ_counter within the map of that result.
+        insert_result.first->second.occ_count++;
+      } else {
+        // if insertion succeeds, then this is the first insertion and the 
+        // rest of the result properties must be determined.
+        ExportElecConfigResult &result = insert_result.first->second;
+        result.population_stable = SimAnneal::populationValidity(result.config);
+        result.locally_minimal = result.population_stable ? 
+          SimAnneal::locallyMinimal(result.config) : false;
+        result.system_energy = SimAnneal::systemEnergy(result.config);
       }
     }
   } else {
     for (auto elec_result_set : annealer->chargeResults()) {
-      for (ublas::vector<int> elec_result : elec_result_set) {
-        std::string elec_result_str = config_to_str(elec_result);
+      for (ElecChargeConfigResult elec_result : elec_result_set) {
+        if (!elec_result.isResult())
+          continue;
+        std::string elec_result_str = config_to_str(elec_result.config);  // key
+        ExportElecConfigResult export_result;                             // val
+        export_result.config = elec_result.config;
 
         // attempt insertion
         std::pair<ElecResultMapType::iterator, bool> insert_result;
-        insert_result = elec_result_map.insert({elec_result_str,1});
+        insert_result = elec_result_map.insert({elec_result_str,export_result});
 
-        // if insertion fails, the result already exists. Just increment the 
-        // counter within the map of that result.
         if (!insert_result.second) {
-          insert_result.first->second++;
+          // if insertion fails, the result already exists. Just increment the 
+          // counter within the map of that result.
+          insert_result.first->second.occ_count++;
+        } else {
+          // if insertion succeeds, then this is the first insertion and the 
+          // rest of the result properties must be determined.
+          ExportElecConfigResult &result = insert_result.first->second;
+          result.population_stable = elec_result.population_possibly_stable ?
+            SimAnneal::populationValidity(result.config) : false;
+          result.locally_minimal = result.population_stable ?
+            SimAnneal::locallyMinimal(result.config) : false;
+          result.system_energy = SimAnneal::systemEnergy(result.config);
+
+          if (elec_result.population_possibly_stable != result.population_stable) {
+            std::cout << "Possibly stable state disagrees with final population "
+              << "stable state. Possible stable state " << elec_result.population_possibly_stable <<
+             ", actual stable state " << result.population_stable << ", energy diff: " 
+              << result.system_energy - elec_result.system_energy << std::endl;
+          }
         }
       }
     }
@@ -177,19 +215,18 @@ void SimAnnealInterface::writeSimResults(bool only_suggested_gs)
 
   // recalculate the energy for each configuration to get better accuracy
   std::vector<std::vector<std::string>> db_dist_data;
-  int i=0;
   for (auto result_it = elec_result_map.cbegin(); result_it != elec_result_map.cend(); ++result_it) {
     std::vector<std::string> db_dist;
+    const ExportElecConfigResult &result = result_it->second;
     // config
     db_dist.push_back(result_it->first);
     // energy
-    db_dist.push_back(std::to_string(annealer->systemEnergy(result_it->first, SimAnneal::sim_params.n_dbs)));
+    db_dist.push_back(std::to_string(result.system_energy));
     // count
-    db_dist.push_back(std::to_string(result_it->second));
+    db_dist.push_back(std::to_string(result.occ_count));
     // physically valid
-    db_dist.push_back(std::to_string(annealer->isPhysicallyValid(result_it->first, SimAnneal::sim_params.n_dbs)));
+    db_dist.push_back(std::to_string(result.population_stable && result.locally_minimal));
     db_dist_data.push_back(db_dist);
-    i++;
   }
   sqconn->setExport("db_charge", db_dist_data);
 
