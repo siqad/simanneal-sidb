@@ -29,33 +29,33 @@ SimAnnealInterface::SimAnnealInterface(std::string t_in_path,
 void SimAnnealInterface::loadSimParams()
 {
   constexpr auto sparams = &SimAnneal::sim_params;
+  Logger log(global::log_level);
 
   // grab all physical locations (in original distance unit) (Used to be part of runSim)
-  std::cout << "Grab all physical locations..." << std::endl;
+  log.debug() << "Grab all physical locations..." << std::endl;
   sparams->n_dbs = 0;
   for(auto db : *(sqconn->dbCollection())) {
-    sparams->db_locs.push_back(std::make_pair(db->x, db->y));
+    sparams->db_locs.push_back(lat_coord_to_eucl(db->n, db->m, db->l));
+    //sparams->db_locs.push_back(std::make_pair(db->x, db->y));
     sparams->n_dbs++;
-    std::cout << "DB loc: x=" << sparams->db_locs.back().first
+    log.debug() << "DB loc: x=" << sparams->db_locs.back().first
         << ", y=" << sparams->db_locs.back().second << std::endl;
   }
-  std::cout << "Free dbs, n_dbs=" << sparams->n_dbs << std::endl << std::endl;
+  log.debug() << "Free dbs, n_dbs=" << sparams->n_dbs << std::endl << std::endl;
 
   // exit if no dbs
   if(sparams->n_dbs == 0) {
-    std::cout << "No dbs found, nothing to simulate. Exiting." << std::endl;
-    std::cout << "Simulation failed, aborting" << std::endl;
     throw "No DBs found in the input file, simulation aborted.";
   }
 
   //Variable initialization
-  std::cout << "Retrieving variables from SiQADConn..." << std::endl;
+  log.echo() << "Retrieving variables from SiQADConn..." << std::endl;
   sparams->num_threads = std::stoi(sqconn->getParameter("num_instances"));
   sparams->anneal_cycles = std::stoi(sqconn->getParameter("anneal_cycles"));
   sparams->preanneal_cycles = std::stoi(sqconn->getParameter("preanneal_cycles"));
-  sparams->mu = std::stof(sqconn->getParameter("global_v0"));
-  sparams->epsilon_r = std::stof(sqconn->getParameter("epsilon_r"));
-  sparams->debye_length = std::stof(sqconn->getParameter("debye_length"));
+  sparams->mu = std::stod(sqconn->getParameter("global_v0"));
+  sparams->epsilon_r = std::stod(sqconn->getParameter("epsilon_r"));
+  sparams->debye_length = std::stod(sqconn->getParameter("debye_length"));
   sparams->debye_length *= 1E-9; // TODO change the rest of the code to use nm instead of converting here
 
   std::string T_schd = sqconn->getParameter("T_schedule");
@@ -66,16 +66,16 @@ void SimAnnealInterface::loadSimParams()
   } else {
     sparams->T_schedule = ExponentialSchedule;
   }
-  sparams->T_init = std::stof(sqconn->getParameter("T_init"));
-  sparams->T_min = std::stof(sqconn->getParameter("T_min"));
+  sparams->T_init = std::stod(sqconn->getParameter("T_init"));
+  sparams->T_min = std::stod(sqconn->getParameter("T_min"));
 
   // TODO following variables should be calculated from user settings instead of hard-coded
-  sparams->alpha = std::stof(sqconn->getParameter("T_cycle_multiplier"));
+  sparams->alpha = std::stod(sqconn->getParameter("T_cycle_multiplier"));
 
-  sparams->v_freeze_init = std::stof(sqconn->getParameter("v_freeze_init"));
+  sparams->v_freeze_init = std::stod(sqconn->getParameter("v_freeze_init"));
   if (sparams->v_freeze_init < 0) sparams->v_freeze_init = sparams->mu / 2;
-  sparams->v_freeze_threshold = std::stof(sqconn->getParameter("v_freeze_threshold"));
-  sparams->v_freeze_reset = std::stof(sqconn->getParameter("v_freeze_reset"));
+  sparams->v_freeze_threshold = std::stod(sqconn->getParameter("v_freeze_threshold"));
+  sparams->v_freeze_reset = std::stod(sqconn->getParameter("v_freeze_reset"));
   if (sparams->v_freeze_reset < 0) sparams->v_freeze_reset = sparams->mu;
   sparams->v_freeze_cycles = std::stoi(sqconn->getParameter("v_freeze_cycles"));
   sparams->phys_validity_check_cycles = std::stoi(sqconn->getParameter("phys_validity_check_cycles"));
@@ -89,17 +89,17 @@ void SimAnnealInterface::loadSimParams()
 
   // handle schedule scale factor
   if (sqconn->parameterExists("schedule_scale_factor")) {
-    float schd_scale_fact = std::stof(sqconn->getParameter("schedule_scale_factor"));
-    float scaled_anneal_cycles = sparams->anneal_cycles * schd_scale_fact;
-    float scaled_alpha = std::pow(sparams->alpha, sparams->anneal_cycles / scaled_anneal_cycles);
-    float scaled_v_freeze_cycles = sparams->v_freeze_cycles * schd_scale_fact;
+    FPType schd_scale_fact = std::stod(sqconn->getParameter("schedule_scale_factor"));
+    FPType scaled_anneal_cycles = sparams->anneal_cycles * schd_scale_fact;
+    FPType scaled_alpha = std::pow(sparams->alpha, sparams->anneal_cycles / scaled_anneal_cycles);
+    FPType scaled_v_freeze_cycles = sparams->v_freeze_cycles * schd_scale_fact;
 
-    std::cout << "Scaling schedule by factor " << schd_scale_fact << ":" << std::endl;
-    std::cout << "Annealing cycles from " << sparams->anneal_cycles 
+    log.debug() << "Scaling schedule by factor " << schd_scale_fact << ":" << std::endl;
+    log.debug() << "Annealing cycles from " << sparams->anneal_cycles 
       << " to " << scaled_anneal_cycles << std::endl;
-    std::cout << "Temperature multiplier (alpha) from " << sparams->alpha
+    log.debug() << "Temperature multiplier (alpha) from " << sparams->alpha
       << " to " << scaled_alpha << std::endl;
-    std::cout << "Freeze-out cycles from " << sparams->v_freeze_cycles
+    log.debug() << "Freeze-out cycles from " << sparams->v_freeze_cycles
       << " to " << scaled_v_freeze_cycles << std::endl;
 
     sparams->anneal_cycles = scaled_anneal_cycles;
@@ -108,18 +108,16 @@ void SimAnnealInterface::loadSimParams()
   }
 
   // determine result queue size, but be within the range [1,anneal_cycles]
-  sparams->result_queue_size = sparams->anneal_cycles * std::stof(sqconn->getParameter("result_queue_size"));
+  sparams->result_queue_size = sparams->anneal_cycles * std::stod(sqconn->getParameter("result_queue_size"));
   sparams->result_queue_size = std::min(sparams->result_queue_size, sparams->anneal_cycles);
   sparams->result_queue_size = std::max(sparams->result_queue_size, 1);
-  std::cout << "Result queue size: " << sparams->result_queue_size << std::endl;
+  log.debug() << "Result queue size: " << sparams->result_queue_size << std::endl;
 
-  std::cout << "Retrieval from SiQADConn complete." << std::endl;
+  log.echo() << "Retrieval from SiQADConn complete." << std::endl;
 }
 
 void SimAnnealInterface::writeSimResults(bool only_suggested_gs)
 {
-  std::cout << std::endl << "*** Write Result to Output ***" << std::endl;
-
   // create the vector of strings for the db locations
   std::vector<std::pair<std::string, std::string>> dbl_data(SimAnneal::sim_params.db_locs.size());
   for (unsigned int i = 0; i < SimAnneal::sim_params.db_locs.size(); i++) { //need the index
@@ -137,7 +135,7 @@ void SimAnnealInterface::writeSimResults(bool only_suggested_gs)
     ublas::vector<int> config;
     bool population_stable=false;   // the result population is physically valid
     bool locally_minimal=false;     // the result has no imminently preferred alternative configuration (if population_stable is false then this is not evaluated)
-    float system_energy=-1;
+    FPType system_energy=-1;
     int occ_count=0;
   };
   typedef std::unordered_map<std::string, ExportElecConfigResult> ElecResultMapType;
@@ -201,13 +199,6 @@ void SimAnnealInterface::writeSimResults(bool only_suggested_gs)
           result.locally_minimal = result.population_stable ?
             SimAnneal::locallyMinimal(result.config) : false;
           result.system_energy = SimAnneal::systemEnergy(result.config);
-
-          if (elec_result.population_possibly_stable != result.population_stable) {
-            std::cout << "Possibly stable state disagrees with final population "
-              << "stable state. Possible stable state " << elec_result.population_possibly_stable <<
-             ", actual stable state " << result.population_stable << ", energy diff: " 
-              << result.system_energy - elec_result.system_energy << std::endl;
-          }
         }
       }
     }

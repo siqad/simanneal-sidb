@@ -39,7 +39,8 @@ void TimeKeeper::printStopwatch(const std::string &key)
   }
   ss << std::endl;
 
-  std::cout << ss.str() << std::endl;
+  Logger log(global::log_level);
+  log.echo() << ss.str() << std::endl;
 }
 
 void TimeKeeper::printAllStopwatches()

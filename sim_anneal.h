@@ -25,19 +25,24 @@
 #include <boost/numeric/ublas/matrix_proxy.hpp>
 
 namespace constants{
+  // lattice
+  const FPType lat_a = 3.84;  // lattice vector in x, angstroms (intra dimer row)
+  const FPType lat_b = 7.68;  // lattice vector in y, angstroms (inter dimer row)
+  const FPType lat_c = 2.25;  // dimer pair separation, angstroms
+
   // physics
-  const float Q0 = 1.602E-19;
-  const float PI = 3.14159;
-  const float EPS0 = 8.854E-12;
-  const float Kb = 8.617E-5;
-  const float ERFDB = 5E-10;
+  const FPType Q0 = 1.602E-19;
+  const FPType PI = 3.14159;
+  const FPType EPS0 = 8.854E-12;
+  const FPType Kb = 8.617E-5;
+  const FPType ERFDB = 5E-10;
 
   // simulation
 
   // Allowed headroom in eV for physically invalid configurations to still be 
   // considered "probably valid", the validity will be re-determined during export.
   // Typical error is 1E-4 or lower, so this should be plenty enough headroom.
-  const float POP_STABILITY_ERR = 1E-3;  
+  const FPType POP_STABILITY_ERR = 1E-3;  
 }
 
 namespace phys {
@@ -59,9 +64,9 @@ namespace phys {
     int anneal_cycles;          // Total number of annealing cycles
     int preanneal_cycles;       // Initial cycles where temperature doesn't change
     TemperatureSchedule T_schedule;
-    float alpha;                // T(t) = alpha * T(t-1) + T_min
-    float T_init;               // Initial annealing temperature
-    float T_min;                // Minimum annealing temperature
+    FPType alpha;                // T(t) = alpha * T(t-1) + T_min
+    FPType T_init;               // Initial annealing temperature
+    FPType T_min;                // Minimum annealing temperature
 
     // v_freeze params
     // v_freeze increases from the v_freeze_init value to the v_freeze_threshold
@@ -71,28 +76,28 @@ namespace phys {
     // cycles have physically valid layouts, then v_freeze stays the same for 
     // another v_freeze_cycles until the check is performed again. Otherwise, 
     // v_freeze is reset to v_freeze_init.
-    float v_freeze_init;        // Initial freeze-out voltage
-    float v_freeze_threshold;   // Final freeze-out voltage
-    float v_freeze_reset;       // Freeze-out voltage to reset to
+    FPType v_freeze_init;        // Initial freeze-out voltage
+    FPType v_freeze_threshold;   // Final freeze-out voltage
+    FPType v_freeze_reset;       // Freeze-out voltage to reset to
     int v_freeze_cycles;        // Cycles per v_freeze_period, set to -1 to set to the same as anneal_cycles
     int phys_validity_check_cycles;
     bool strategic_v_freeze_reset;
     bool reset_T_during_v_freeze_reset;
 
     // calculated params (from annealing params)
-    float Kc;                   // 1 / (4 pi eps)
-    float kT_min;               // Kb * T_min
-    float v_freeze_step;        // (v_freeze_threshold - v_freeze_init) / v_freeze_cycles
+    FPType Kc;                   // 1 / (4 pi eps)
+    FPType kT_min;               // Kb * T_min
+    FPType v_freeze_step;        // (v_freeze_threshold - v_freeze_init) / v_freeze_cycles
 
     // physics params
-    float mu;                   // Global Fermi level (eV)
-    float epsilon_r;            // Relative premittivity on the surface
-    float debye_length;         // Debye Length (nm)
+    FPType mu;                   // Global Fermi level (eV)
+    FPType epsilon_r;            // Relative premittivity on the surface
+    FPType debye_length;         // Debye Length (nm)
     int n_dbs;                  // Number of DBs in the simulation
-    std::vector<std::pair<float,float>> db_locs;  // Location of DBs
-    ublas::matrix<float> db_r;  // Matrix of distances between all DBs
-    ublas::matrix<float> v_ij;  // Matrix of coulombic repulsion between occupied DBs
-    ublas::vector<float> v_ext; // External potential influences
+    std::vector<std::pair<FPType,FPType>> db_locs;  // Location of DBs
+    ublas::matrix<FPType> db_r;  // Matrix of distances between all DBs
+    ublas::matrix<FPType> v_ij;  // Matrix of coulombic repulsion between occupied DBs
+    ublas::vector<FPType> v_ext; // External potential influences
   };
 
   // ElecChargeConfigs that are written to the shared simulation results list
@@ -100,14 +105,14 @@ namespace phys {
   struct ElecChargeConfigResult
   {
     ElecChargeConfigResult() {};
-    ElecChargeConfigResult(ublas::vector<int> config, bool population_possibly_stable, float system_energy)
+    ElecChargeConfigResult(ublas::vector<int> config, bool population_possibly_stable, FPType system_energy)
       : config(config), population_possibly_stable(population_possibly_stable), system_energy(system_energy) {};
     
     bool isResult() {return config.size() > 0;}
 
     ublas::vector<int> config;
     bool population_possibly_stable=false;
-    float system_energy;
+    FPType system_energy;
   };
 
   struct TimeInfo
@@ -118,7 +123,7 @@ namespace phys {
 
   // typedefs
   typedef boost::circular_buffer<ElecChargeConfigResult> ThreadChargeResults;
-  typedef boost::circular_buffer<float> ThreadEnergyResults;
+  typedef boost::circular_buffer<FPType> ThreadEnergyResults;
   typedef std::vector<ThreadChargeResults> AllChargeResults;
   typedef std::vector<ThreadEnergyResults> AllEnergyResults;
   typedef std::vector<double> AllCPUTimes;
@@ -144,8 +149,8 @@ namespace phys {
     //! publically such that the interface can recalculate system energy 
     //! for configurations storage.
     //! TODO Make system energy recalculation optional.
-    static float systemEnergy(const std::string &n_in, int n_dbs);
-    static float systemEnergy(const ublas::vector<int> &n_in);
+    static FPType systemEnergy(const std::string &n_in, int n_dbs);
+    static FPType systemEnergy(const ublas::vector<int> &n_in);
 
     //! Return whether the given configuration population is valid. Population
     //! validity is evaluated based on the following criteria:
@@ -183,14 +188,14 @@ namespace phys {
 
     //! Calculate the Euclidean distance between the i th and j th DBs in the 
     //! db_locs array.
-    float distance(const int &i, const int &j);
+    FPType distance(const int &i, const int &j);
 
     //! Calculate the potential between two given point charges.
-    float interElecPotential(const float &r);
+    FPType interElecPotential(const FPType &r);
 
     //! Return the energy difference for a configuration if an electron hopped
     //! from site i to site j.
-    static float hopEnergyDelta(ublas::vector<int> n_in, const int &from_ind,
+    static FPType hopEnergyDelta(ublas::vector<int> n_in, const int &from_ind,
         const int &to_ind);
 
     // Thread mutex for result storage
@@ -200,7 +205,7 @@ namespace phys {
     std::vector<boost::thread> anneal_threads;  //! threads spawned
 
     // Simulation variables
-    static float db_distance_scale;     //! convert db distances to m TODO make this configurable in user settings
+    static FPType db_distance_scale;     //! convert db distances to m TODO make this configurable in user settings
 
     // Write-out variables
     static AllChargeResults charge_results; // vector for storing db_charges
@@ -260,25 +265,25 @@ namespace phys {
     void timeStep();
 
     // CALCULATIONS
-    float systemEnergy() const;
-    float totalCoulombPotential(ublas::vector<int> &config) const;
-    float hopEnergyDelta(const int &i, const int &j);
+    FPType systemEnergy() const;
+    FPType totalCoulombPotential(ublas::vector<int> &config) const;
+    FPType hopEnergyDelta(const int &i, const int &j);
 
     // Return whether the current electron population is valid with an error
-    // headroom to account for floating point drifts during energy updatse.
-    bool populationValid(const float &err_headroom) const;
+    // headroom to account for FPTypeing point drifts during energy updatse.
+    bool populationValid(const FPType &err_headroom) const;
 
     // Return whether the current configuration is physically valid.
     bool isPhysicallyValid();
 
     // ACCEPTANCE FUNCTIONS
-    bool acceptHop(const float &v_diff); // acceptance function for hopping
-    bool evalProb(const float &prob); // generate true or false based on given probaility
+    bool acceptHop(const FPType &v_diff); // acceptance function for hopping
+    bool evalProb(const FPType &prob); // generate true or false based on given probaility
 
     int randInt(const int &min, const int &max);
 
     // boost random number generator
-    boost::random::uniform_real_distribution<float> dis01;
+    boost::random::uniform_real_distribution<FPType> dis01;
     boost::random::mt19937 rng;
 
     // keep track of stats
@@ -289,8 +294,8 @@ namespace phys {
     // other variables used for calculations
     int t=0;                      // current annealing cycle
     int t_freeze=0;               // current v_freeze cycle
-    float kT, v_freeze;           // current annealing temperature, freeze out potential
-    ublas::vector<float> v_local; // local potetial at each site
+    FPType kT, v_freeze;           // current annealing temperature, freeze out potential
+    ublas::vector<FPType> v_local; // local potetial at each site
 
     int t_phys_validity_check=0;
     PopulationSchedulePhase pop_schedule_phase;
@@ -301,10 +306,10 @@ namespace phys {
     // possible, invalid ground state otherwise. Only keeps track if 
     ublas::vector<int> n_valid_gs;
     ublas::vector<int> n_invalid_gs;
-    float E_sys_valid_gs = 0;
-    float E_sys_invalid_gs = 0;
+    FPType E_sys_valid_gs = 0;
+    FPType E_sys_invalid_gs = 0;
 
-    float E_sys;                  // energy of the system
+    FPType E_sys;                  // energy of the system
   };
 }
 

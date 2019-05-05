@@ -13,6 +13,7 @@
 #include <string>
 
 global::TimeKeeper *global::TimeKeeper::time_keeper=nullptr;
+int global::log_level = Logger::WRN;
 
 using namespace phys;
 
@@ -20,52 +21,61 @@ int main(int argc, char *argv[])
 {
   std::cout << "Physeng invoked" << std::endl;
   std::string if_name, of_name;
-  bool only_suggested_gs=false;
+  std::vector<std::string> cml_args;
 
   std::cout << "*** Argument Parsing ***" << std::endl;
 
-  if(argc == 1){
-    if_name = std::string("cooldbdesign.xml");
-    of_name = std::string("cooloutput.xml");
-  } else if (argc == 2) {
-    if_name = argv[1];
-    of_name = std::string("cooloutput.xml");
-  } else if (argc == 3) {
-    if_name = argv[1];
-    of_name = argv[2];
-  } else if (argc == 4) {
-    if_name = argv[1];
-    of_name = argv[2];
-    if (strcmp(argv[3], "--only-suggested-gs") == 0) {
-      std::cout << "Only returning suggested ground state from each instance." << std::endl;
-      only_suggested_gs = true;
-    } else {
-      std::cout << "Last argument not recognized, aborting." << std::endl;
-      return 1;
-    }
+  if (argc < 3) {
+    throw "Less arguments than excepted.";
   } else {
-    std::cout << "More arguments than expected are encountered, aborting." << std::endl;
-    return 2;
+    // argv[0] is the binary
+    if_name = argv[1];
+    of_name = argv[2];
+
+    // store the rest of the arguments
+    for (int i=3; i<argc; i++) {
+      cml_args.push_back(argv[i]);
+    }
   }
+
+  // parse additional arguments
+  bool only_suggested_gs=false;
+  unsigned long cml_i=0;
+  while (cml_i < cml_args.size()) {
+    if (cml_args[cml_i] == "--only-suggested-gs") {
+      // each SimAnneal instance only returns one configuration
+      std::cout << "--only-suggested-gs: Only returning suggested ground state from each instance." << std::endl;
+      only_suggested_gs = true;
+    } else if (cml_args[cml_i] == "--debug") {
+      // show additional debug information
+      std::cout << "--debug: Showing additional outputs." << std::endl;
+      global::log_level = Logger::DBG;
+    } else {
+      throw "Unrecognized command-line argument: " + cml_args[cml_i];
+    }
+    cml_i++;
+  }
+
+  Logger log(global::log_level);
 
   global::TimeKeeper *tk = global::TimeKeeper::instance();
   global::Stopwatch *sw_simulation = tk->createStopwatch("Total Simulation");
 
-  std::cout << "In File: " << if_name << std::endl;
-  std::cout << "Out File: " << of_name << std::endl;
+  log.echo() << "In File: " << if_name << std::endl;
+  log.echo() << "Out File: " << of_name << std::endl;
 
-  std::cout << "Initiate SimAnneal interface" << std::endl;
+  log.echo() << "*** Initiate SimAnneal interface ***" << std::endl;
   SimAnnealInterface interface(if_name, of_name);
 
-  std::cout << "Invoke simulation" << std::endl;
+  log.echo() << "*** Invoke simulation ***" << std::endl;
   sw_simulation->start();
   interface.runSimulation();
   sw_simulation->end();
 
-  std::cout << "Write simulation results" << std::endl;
+  log.echo() << "*** Write simulation results ***" << std::endl;
   interface.writeSimResults(only_suggested_gs);
 
-  std::cout << "SimAnneal Complete" << std::endl;
+  log.echo() << "*** SimAnneal Complete ***" << std::endl;
 
   tk->printAllStopwatches();
   delete tk;

@@ -14,6 +14,10 @@
 #include <ctime>
 #include <vector>
 
+#include "logger.h"
+
+typedef double FPType;
+
 namespace global {
 
   class Stopwatch;
@@ -22,6 +26,9 @@ namespace global {
   typedef std::chrono::high_resolution_clock HDClock;
   typedef std::chrono::duration<double, std::milli> HDClockDuration;
   typedef std::map<std::string, Stopwatch*> StopwatchMap;
+
+  // default log level
+  extern int log_level;
 
   //! Timer class referenced by user classes to start and end timers.
   class Stopwatch

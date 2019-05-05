@@ -34,6 +34,15 @@ namespace phys {
 
   private:
 
+    //! Convert lattice coordinates (n, m, l) to a pair of Euclidean coordinates 
+    //! in angstrom.
+    std::pair<FPType, FPType> lat_coord_to_eucl(int n, int m, int l)
+    {
+      FPType x = n * constants::lat_a;
+      FPType y = m * constants::lat_b + l * constants::lat_c;
+      return std::make_pair(x, y);
+    }
+
     // Instances
     SiQADConnector *sqconn=nullptr;
     SimAnneal *annealer=nullptr;

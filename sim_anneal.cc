@@ -24,7 +24,7 @@ using namespace phys;
 // static variables
 SimParams SimAnneal::sim_params;
 boost::mutex SimAnneal::result_store_mutex;
-float SimAnneal::db_distance_scale = 1E-10;
+FPType SimAnneal::db_distance_scale = 1E-10;
 AllChargeResults SimAnneal::charge_results;
 AllEnergyResults SimAnneal::energy_results;
 AllCPUTimes SimAnneal::cpu_times;
@@ -43,7 +43,8 @@ SimAnneal::SimAnneal()
 
 void SimAnneal::initialize()
 {
-  std::cout << "Performing pre-calculations..." << std::endl;
+  Logger log(global::log_level);
+  log.echo() << "Performing pre-calculations..." << std::endl;
 
   if (sparams->preanneal_cycles > sparams->anneal_cycles)
     throw "Preanneal cycles > Anneal cycles";
@@ -67,7 +68,7 @@ void SimAnneal::initialize()
       sim_params.db_r(j,i) = sim_params.db_r(i,j);
       sim_params.v_ij(j,i) = sim_params.v_ij(i,j);
 
-      std::cout << "db_r[" << i << "][" << j << "]=" << sim_params.db_r(i,j) 
+      log.debug() << "db_r[" << i << "][" << j << "]=" << sim_params.db_r(i,j) 
         << ", v_ij[" << i << "][" << j << "]=" << sim_params.v_ij(i,j) << std::endl;
     }
 
@@ -77,7 +78,7 @@ void SimAnneal::initialize()
     sim_params.v_ext[i] = 0;
   }
 
-  std::cout << "Pre-calculations complete" << std::endl << std::endl;
+  log.echo() << "Pre-calculations complete" << std::endl << std::endl;
 
   // determine number of threads to run
   if (sim_params.num_threads == -1) {
@@ -98,7 +99,8 @@ void SimAnneal::initialize()
 
 void SimAnneal::invokeSimAnneal()
 {
-  std::cout << "Setting up SimAnnealThreads..." << std::endl;
+  Logger log(global::log_level);
+  log.echo() << "Setting up SimAnnealThreads..." << std::endl;
 
   // spawn all the threads
   for (int i=0; i<sim_params.num_threads; i++) {
@@ -107,20 +109,21 @@ void SimAnneal::invokeSimAnneal()
     anneal_threads.push_back(std::move(th));
   }
 
-  std::cout << "Wait for simulations to complete." << std::endl;
+  log.echo() << "Wait for simulations to complete." << std::endl;
 
   // wait for threads to complete
   for (auto &th : anneal_threads) {
     th.join();
   }
 
-  std::cout << "All simulations complete." << std::endl;
+  log.echo() << "All simulations complete." << std::endl;
 }
 
-float SimAnneal::systemEnergy(const std::string &n_in, int n_dbs)
+FPType SimAnneal::systemEnergy(const std::string &n_in, int n_dbs)
 {
   assert(n_dbs > 0);
   assert(n_in.length() == n_dbs);
+  Logger log(global::log_level);
   // convert string of 0 and 1 to ublas vector
   ublas::vector<int> n_int(n_in.length());
   for (int i=0; i<n_dbs; i++) {
@@ -128,13 +131,13 @@ float SimAnneal::systemEnergy(const std::string &n_in, int n_dbs)
     n_int[i] = n_in.at(i) - '0';
   }
 
-  float v = 0.5 * ublas::inner_prod(n_int, ublas::prod(sim_params.v_ij, n_int))
+  FPType v = 0.5 * ublas::inner_prod(n_int, ublas::prod(sim_params.v_ij, n_int))
     - ublas::inner_prod(n_int, sim_params.v_ext);
-  std::cout << "Energy of " << n_in << ": " << v << std::endl;
+  log.debug() << "Energy of " << n_in << ": " << v << std::endl;
   return v;
 }
 
-float SimAnneal::systemEnergy(const ublas::vector<int> &n_in)
+FPType SimAnneal::systemEnergy(const ublas::vector<int> &n_in)
 {
   assert(n_in.size() > 0);
   
@@ -145,8 +148,9 @@ float SimAnneal::systemEnergy(const ublas::vector<int> &n_in)
 bool SimAnneal::populationValidity(const ublas::vector<int> &n_in)
 {
   assert(n_in.size() > 0);
+  Logger log(global::log_level);
 
-  float v_i;
+  FPType v_i;
   for (unsigned int i=0; i<n_in.size(); i++) {
     v_i = sim_params.v_ext[i];
     for (unsigned int j=0; j<n_in.size(); j++) {
@@ -159,28 +163,34 @@ bool SimAnneal::populationValidity(const ublas::vector<int> &n_in)
 
     // return false if constraints not met
     if (!valid) {
-      //std::cout << "config " << n_in << " has an invalid population, failed at index " << i << std::endl;
-      //std::cout << "v_i=" << v_i << std::endl;
+      log.debug() << "config " << n_in << " has an invalid population, failed at index " << i << std::endl;
+      log.debug() << "v_i=" << v_i << std::endl;
       return false;
     }
   }
-  //std::cout << "config " << n_in << " has a valid population." << std::endl;
+  log.debug() << "config " << n_in << " has a valid population." << std::endl;
   return true;
 }
 
 bool SimAnneal::locallyMinimal(const ublas::vector<int> &n_in)
 {
   assert(n_in.size() > 0);
+  Logger log(global::log_level);
 
   for (unsigned int i=0; i<n_in.size(); i++) {
     if (n_in[i] == 0) 
       continue;
     for (unsigned int j=0; j<n_in.size(); j++) {
-      if (n_in[j] != 1 && hopEnergyDelta(n_in, i, j) < 0) {
+      FPType E_del = hopEnergyDelta(n_in, i, j);
+      if (n_in[j] != 1 && E_del < 0) {
+        log.debug() << "config " << n_in << " not stable since hopping from site "
+          << i << " to " << j << " would result in an energy reduction of "
+          << E_del << std::endl;
         return false;
       }
     }
   }
+  log.debug() << "config " << n_in << " has a stable configuration." << std::endl;
   return true;
 }
 
@@ -195,25 +205,25 @@ void SimAnneal::storeResults(SimAnnealThread *annealer, int thread_id){
   result_store_mutex.unlock();
 }
 
-float SimAnneal::distance(const int &i, const int &j)
+FPType SimAnneal::distance(const int &i, const int &j)
 {
-  float x1 = sim_params.db_locs[i].first;
-  float y1 = sim_params.db_locs[i].second;
-  float x2 = sim_params.db_locs[j].first;
-  float y2 = sim_params.db_locs[j].second;
+  FPType x1 = sim_params.db_locs[i].first;
+  FPType y1 = sim_params.db_locs[i].second;
+  FPType x2 = sim_params.db_locs[j].first;
+  FPType y2 = sim_params.db_locs[j].second;
   return sqrt(pow(x1-x2, 2.0) + pow(y1-y2, 2.0));
 }
 
-float SimAnneal::interElecPotential(const float &r)
+FPType SimAnneal::interElecPotential(const FPType &r)
 {
   return constants::Q0 * sim_params.Kc * exp(-r/sim_params.debye_length) / r;
 }
 
-float SimAnneal::hopEnergyDelta(ublas::vector<int> n_in, const int &from_ind, 
+FPType SimAnneal::hopEnergyDelta(ublas::vector<int> n_in, const int &from_ind, 
     const int &to_ind)
 {
   // TODO make an efficient implementation with energy delta implementation
-  float orig_energy = systemEnergy(n_in);
+  FPType orig_energy = systemEnergy(n_in);
   n_in[from_ind] = 0;
   n_in[to_ind] = 1;
   return systemEnergy(n_in) - orig_energy;
@@ -228,7 +238,7 @@ SimAnnealThread::SimAnnealThread(const int t_thread_id)
 {
   // initialize rng
   rng.seed(std::time(NULL)*thread_id+4065);
-  dis01 = boost::random::uniform_real_distribution<float>(0,1);
+  dis01 = boost::random::uniform_real_distribution<FPType>(0,1);
 }
 
 void SimAnnealThread::run()
@@ -267,9 +277,11 @@ void SimAnnealThread::anneal()
   E_sys = systemEnergy();
   v_local = sparams->v_ext - ublas::prod(sparams->v_ij, n);
 
+  Logger log(global::log_level);
+
   // Run simulated annealing for predetermined time steps
   while(t < sparams->anneal_cycles) {
-    //std::cout << "Cycle " << t << ", kT=" << kT << ", v_freeze=" << v_freeze << std::endl;
+    //log.debug() << "Cycle " << t << ", kT=" << kT << ", v_freeze=" << v_freeze << std::endl;
 
     // Random population change, pop_changed is set to true if anything changes
     dn = genPopDelta(pop_changed);
@@ -303,15 +315,15 @@ void SimAnnealThread::anneal()
         from_ind = occ[from_occ_ind];
         to_ind = occ[to_occ_ind];
 
-        float E_del = hopEnergyDelta(from_ind, to_ind);
+        FPType E_del = hopEnergyDelta(from_ind, to_ind);
         if (acceptHop(E_del)) {
           performHop(from_ind, to_ind);
           occ[from_occ_ind] = to_ind;
           occ[to_occ_ind] = from_ind;
           // calculate energy difference
           E_sys += E_del;
-          ublas::matrix_column<ublas::matrix<float>> v_i (sparams->v_ij, from_ind);
-          ublas::matrix_column<ublas::matrix<float>> v_j (sparams->v_ij, to_ind);
+          ublas::matrix_column<ublas::matrix<FPType>> v_i (sparams->v_ij, from_ind);
+          ublas::matrix_column<ublas::matrix<FPType>> v_j (sparams->v_ij, to_ind);
           v_local += v_i - v_j;
         }
         hop_attempts++;
@@ -336,26 +348,15 @@ void SimAnnealThread::anneal()
       }
     }
 
-    /*
-    std::cout << "db_charges=";
-    for (int charge : n)
-      std::cout << charge;
-    std::cout << std::endl;
-    */
+    //log.debug() << "db_charges = " << n << std::endl;
 
     // perform time-step if not pre-annealing
     timeStep();
   }
 
-  /*
-  std::cout << "Final db_charges=";
-  for (int charge : n)
-    std::cout << charge;
-  std::cout << ", delta-based system energy=";
-  std::cout << E_sys,
-  std::cout << ", recalculated system energy=" << systemEnergy();
-  std::cout << std::endl;
-  */
+  log.debug() << "Final db_charges = " << n
+    << ", delta-based system energy = " << E_sys
+    << ", recalculated system energy=" << systemEnergy() << std::endl;
 
   SimAnneal::storeResults(this, thread_id);
 }
@@ -365,7 +366,7 @@ ublas::vector<int> SimAnnealThread::genPopDelta(bool &changed)
   changed = false;
   ublas::vector<int> dn(sparams->n_dbs);
   for (unsigned i=0; i<n.size(); i++) {
-    float prob = 1. / ( 1 + exp( ((2*n[i]-1)*(v_local[i] + sparams->mu) + v_freeze) / kT ) );
+    FPType prob = 1. / ( 1 + exp( ((2*n[i]-1)*(v_local[i] + sparams->mu) + v_freeze) / kT ) );
 
     /*
     std::cout << "prob = 1. / ( 1 + exp( ((" << 2*n[i]-1 << ")*(" << v_local[i] << "+" << sparams->mu <<") + " << v_freeze << ") / kT ) )" << std::endl;
@@ -390,6 +391,8 @@ void SimAnnealThread::performHop(const int &from_ind, const int &to_ind)
 
 void SimAnnealThread::timeStep()
 {
+  Logger log(global::log_level);
+
   // always progress annealing schedule
   t++;
 
@@ -428,10 +431,9 @@ void SimAnnealThread::timeStep()
         pop_schedule_phase = PopulationUpdateMode;
         t_freeze = 0;
         if (phys_valid_count < phys_invalid_count) {
-          std::cout << "Thread " << thread_id << ": t=" << t << ", charge config is ";
-          for (int charge : n)
-            std::cout << charge;
-          std::cout << " which is physically invalid, resetting v_freeze." << std::endl;
+          log.debug() << "Thread " << thread_id << ": t=" << t 
+            << ", charge config is " << n 
+            << " which is physically invalid, resetting v_freeze." << std::endl;
 
           // reset v_freeze and temperature
           v_freeze = sparams->v_freeze_reset;
@@ -458,20 +460,20 @@ void SimAnnealThread::timeStep()
     v_freeze += sparams->v_freeze_step;
 }
 
-bool SimAnnealThread::acceptHop(const float &v_diff)
+bool SimAnnealThread::acceptHop(const FPType &v_diff)
 {
   if (v_diff < 0)
     return true;
 
   // some acceptance function, acceptance probability falls off exponentially
-  float prob = exp(-v_diff/kT);
+  FPType prob = exp(-v_diff/kT);
 
   return evalProb(prob);
 }
 
-bool SimAnnealThread::evalProb(const float &prob)
+bool SimAnnealThread::evalProb(const FPType &prob)
 {
-  boost::variate_generator<boost::random::mt19937&, boost::random::uniform_real_distribution<float>> rnd_gen(rng, dis01);
+  boost::variate_generator<boost::random::mt19937&, boost::random::uniform_real_distribution<FPType>> rnd_gen(rng, dis01);
   return prob >= rnd_gen();
 }
 
@@ -481,24 +483,24 @@ int SimAnnealThread::randInt(const int &min, const int &max)
   return dis(rng);
 }
 
-float SimAnnealThread::systemEnergy() const
+FPType SimAnnealThread::systemEnergy() const
 {
   assert(sparams->n_dbs > 0);
   return 0.5 * ublas::inner_prod(n, ublas::prod(sparams->v_ij, n))
     - ublas::inner_prod(n, sparams->v_ext);
 }
 
-float SimAnnealThread::totalCoulombPotential(ublas::vector<int> &config) const
+FPType SimAnnealThread::totalCoulombPotential(ublas::vector<int> &config) const
 {
   return 0.5 * ublas::inner_prod(config, ublas::prod(sparams->v_ij, config));
 }
 
-float SimAnnealThread::hopEnergyDelta(const int &i, const int &j)
+FPType SimAnnealThread::hopEnergyDelta(const int &i, const int &j)
 {
   return v_local[i] - v_local[j] - sparams->v_ij(i,j);
 }
 
-bool SimAnnealThread::populationValid(const float &err_headroom) const
+bool SimAnnealThread::populationValid(const FPType &err_headroom) const
 {
   // Check whether v_local at each site meets population validity constraints
   // Note that v_local components have flipped signs from E_sys
