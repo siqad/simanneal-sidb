@@ -116,7 +116,7 @@ void SimAnnealInterface::loadSimParams()
   log.echo() << "Retrieval from SiQADConn complete." << std::endl;
 }
 
-void SimAnnealInterface::writeSimResults(bool only_suggested_gs)
+void SimAnnealInterface::writeSimResults(bool only_suggested_gs, bool qubo_energy)
 {
   // create the vector of strings for the db locations
   std::vector<std::pair<std::string, std::string>> dbl_data(SimAnneal::sim_params.db_locs.size());
@@ -170,7 +170,7 @@ void SimAnnealInterface::writeSimResults(bool only_suggested_gs)
         result.population_stable = SimAnneal::populationValidity(result.config);
         result.locally_minimal = result.population_stable ? 
           SimAnneal::locallyMinimal(result.config) : false;
-        result.system_energy = SimAnneal::systemEnergy(result.config);
+        result.system_energy = SimAnneal::systemEnergy(result.config, qubo_energy);
       }
     }
   } else {
@@ -198,7 +198,7 @@ void SimAnnealInterface::writeSimResults(bool only_suggested_gs)
             SimAnneal::populationValidity(result.config) : false;
           result.locally_minimal = result.population_stable ?
             SimAnneal::locallyMinimal(result.config) : false;
-          result.system_energy = SimAnneal::systemEnergy(result.config);
+          result.system_energy = SimAnneal::systemEnergy(result.config, qubo_energy);
         }
       }
     }

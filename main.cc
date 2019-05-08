@@ -40,6 +40,7 @@ int main(int argc, char *argv[])
 
   // parse additional arguments
   bool only_suggested_gs=false;
+  bool qubo_energy=false;
   unsigned long cml_i=0;
   while (cml_i < cml_args.size()) {
     if (cml_args[cml_i] == "--only-suggested-gs") {
@@ -50,6 +51,10 @@ int main(int argc, char *argv[])
       // show additional debug information
       std::cout << "--debug: Showing additional outputs." << std::endl;
       global::log_level = Logger::DBG;
+    } else if (cml_args[cml_i] == "--qubo") {
+      // export energy value in QUBO formulation
+      std::cout << "--qubo: Using QUBO energy equation for export." << std::endl;
+      qubo_energy = true;
     } else {
       throw "Unrecognized command-line argument: " + cml_args[cml_i];
     }
@@ -73,7 +78,7 @@ int main(int argc, char *argv[])
   sw_simulation->end();
 
   log.echo() << "*** Write simulation results ***" << std::endl;
-  interface.writeSimResults(only_suggested_gs);
+  interface.writeSimResults(only_suggested_gs, qubo_energy);
 
   log.echo() << "*** SimAnneal Complete ***" << std::endl;
 

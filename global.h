@@ -16,7 +16,7 @@
 
 #include "logger.h"
 
-typedef double FPType;
+typedef float FPType;
 
 namespace global {
 

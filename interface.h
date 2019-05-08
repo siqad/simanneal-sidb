@@ -26,7 +26,7 @@ namespace phys {
     //! instructs the function to only export the single suggested ground state 
     //! result from each thread rather than exporting all results in the result
     //! queue.
-    void writeSimResults(bool only_suggested_gs);
+    void writeSimResults(bool only_suggested_gs, bool qubo_energy);
 
 
     //! Run the simulation, returns 0 if simulation was successful.

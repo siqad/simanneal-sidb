@@ -137,12 +137,20 @@ FPType SimAnneal::systemEnergy(const std::string &n_in, int n_dbs)
   return v;
 }
 
-FPType SimAnneal::systemEnergy(const ublas::vector<int> &n_in)
+FPType SimAnneal::systemEnergy(const ublas::vector<int> &n_in, bool qubo)
 {
   assert(n_in.size() > 0);
-  
-  return 0.5 * ublas::inner_prod(n_in, ublas::prod(sim_params.v_ij, n_in))
+
+  float E = 0.5 * ublas::inner_prod(n_in, ublas::prod(sim_params.v_ij, n_in))
     - ublas::inner_prod(n_in, sim_params.v_ext);
+
+  if (qubo) {
+    for (int n_i : n_in) {
+      E -= n_i * sim_params.mu;
+    }
+  }
+  
+  return E;
 }
 
 bool SimAnneal::populationValidity(const ublas::vector<int> &n_in)
@@ -158,8 +166,8 @@ bool SimAnneal::populationValidity(const ublas::vector<int> &n_in)
       v_i -= sim_params.v_ij(i,j) * n_in[j];
     }
 
-    bool valid = ((n_in[i] == 1 && v_i + sim_params.mu >= 0)
-        || (n_in[i] == 0 && v_i + sim_params.mu < 0));
+    bool valid = ((n_in[i] == 1 && v_i + sim_params.mu >= constants::RECALC_STABILITY_ERR)
+        || (n_in[i] == 0 && v_i + sim_params.mu < constants::RECALC_STABILITY_ERR));
 
     // return false if constraints not met
     if (!valid) {
@@ -182,7 +190,7 @@ bool SimAnneal::locallyMinimal(const ublas::vector<int> &n_in)
       continue;
     for (unsigned int j=0; j<n_in.size(); j++) {
       FPType E_del = hopEnergyDelta(n_in, i, j);
-      if (n_in[j] != 1 && E_del < 0) {
+      if (n_in[j] != 1 && E_del < -constants::RECALC_STABILITY_ERR) {
         log.debug() << "config " << n_in << " not stable since hopping from site "
           << i << " to " << j << " would result in an energy reduction of "
           << E_del << std::endl;
@@ -284,7 +292,7 @@ void SimAnnealThread::anneal()
     //log.debug() << "Cycle " << t << ", kT=" << kT << ", v_freeze=" << v_freeze << std::endl;
 
     // Random population change, pop_changed is set to true if anything changes
-    dn = genPopDelta(pop_changed);
+    genPopDelta(dn, pop_changed);
     if (pop_changed) {
       n += dn;
       E_sys += -1 * ublas::inner_prod(v_local, dn) + totalCoulombPotential(dn);
@@ -361,10 +369,9 @@ void SimAnnealThread::anneal()
   SimAnneal::storeResults(this, thread_id);
 }
 
-ublas::vector<int> SimAnnealThread::genPopDelta(bool &changed)
+void SimAnnealThread::genPopDelta(ublas::vector<int> &dn, bool &changed)
 {
   changed = false;
-  ublas::vector<int> dn(sparams->n_dbs);
   for (unsigned i=0; i<n.size(); i++) {
     FPType prob = 1. / ( 1 + exp( ((2*n[i]-1)*(v_local[i] + sparams->mu) + v_freeze) / kT ) );
 
@@ -380,7 +387,6 @@ ublas::vector<int> SimAnnealThread::genPopDelta(bool &changed)
       dn[i] = 0;
     }
   }
-  return dn;
 }
 
 void SimAnnealThread::performHop(const int &from_ind, const int &to_ind)

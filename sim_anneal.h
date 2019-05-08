@@ -42,7 +42,8 @@ namespace constants{
   // Allowed headroom in eV for physically invalid configurations to still be 
   // considered "probably valid", the validity will be re-determined during export.
   // Typical error is 1E-4 or lower, so this should be plenty enough headroom.
-  const FPType POP_STABILITY_ERR = 1E-3;  
+  const FPType POP_STABILITY_ERR = 1E-3;
+  const FPType RECALC_STABILITY_ERR = 1E-6;
 }
 
 namespace phys {
@@ -150,7 +151,7 @@ namespace phys {
     //! for configurations storage.
     //! TODO Make system energy recalculation optional.
     static FPType systemEnergy(const std::string &n_in, int n_dbs);
-    static FPType systemEnergy(const ublas::vector<int> &n_in);
+    static FPType systemEnergy(const ublas::vector<int> &n_in, bool qubo=false);
 
     //! Return whether the given configuration population is valid. Population
     //! validity is evaluated based on the following criteria:
@@ -253,7 +254,7 @@ namespace phys {
   private:
 
     // Generate the delta in population.
-    ublas::vector<int> genPopDelta(bool &changed);
+    void genPopDelta(ublas::vector<int> &dn, bool &changed);
 
     // simmulated annealing accessor
     void anneal();
