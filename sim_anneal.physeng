@@ -49,6 +49,12 @@ interpreter, bin_path, command
             <label>Schedule scale factor</label>
             <tip>A scale factor to lengthen or shorten the schedule while keeping the ratio of cycle multiplier, freeze-out cycles and annealing cycles.</tip>
         </schedule_scale_factor>
+        <hop_attempt_factor>
+            <T>int</T>
+            <val>5</val>
+            <label>Hop attempt factor</label>
+            <tip></tip>
+        </hop_attempt_factor>
         <T_schedule>
             <T>string</T>
             <val>exponential</val>

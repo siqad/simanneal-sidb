@@ -5,5 +5,6 @@ simanneal.exe
 build/
 bin/
 *.xml
+*.swp
 
 !Makefile

@@ -30,6 +30,9 @@ namespace constants{
   const FPType lat_b = 7.68;  // lattice vector in y, angstroms (inter dimer row)
   const FPType lat_c = 2.25;  // dimer pair separation, angstroms
 
+  // energy band diagram
+  const FPType eta = 0.59;    // TODO enter true value; energy difference between (0/-) and (+/0) levels
+
   // physics
   const FPType Q0 = 1.602E-19;
   const FPType PI = 3.14159;
@@ -60,6 +63,7 @@ namespace phys {
     // runtime params
     int num_threads;            // Number of threads to spawn
     int result_queue_size;      // Number of results to store (per thread)
+    int hop_attempt_factor;     // total hop attempt = hop_attempt_factor * (num_occ - num_vac)
 
     // annealing params
     int anneal_cycles;          // Total number of annealing cycles
@@ -150,7 +154,6 @@ namespace phys {
     //! publically such that the interface can recalculate system energy 
     //! for configurations storage.
     //! TODO Make system energy recalculation optional.
-    static FPType systemEnergy(const std::string &n_in, int n_dbs);
     static FPType systemEnergy(const ublas::vector<int> &n_in, bool qubo=false);
 
     //! Return whether the given configuration population is valid. Population
@@ -256,11 +259,13 @@ namespace phys {
     // Generate the delta in population.
     void genPopDelta(ublas::vector<int> &dn, bool &changed);
 
-    // simmulated annealing accessor
+    // Start annealing.
     void anneal();
 
-    // perform an electron hop from one DB to another
-    void performHop(const int &from_ind, const int &to_ind);
+    // Perform an electron hop from one DB to another and update the energy
+    // difference.
+    void performHop(const int &from_ind, const int &to_ind, float &E_sys, 
+        const float &E_del);
 
     // advance time-step
     void timeStep();
@@ -272,25 +277,24 @@ namespace phys {
 
     // Return whether the current electron population is valid with an error
     // headroom to account for FPTypeing point drifts during energy updatse.
-    bool populationValid(const FPType &err_headroom) const;
-
-    // Return whether the current configuration is physically valid.
-    bool isPhysicallyValid();
+    bool populationValid() const;
 
     // ACCEPTANCE FUNCTIONS
     bool acceptHop(const FPType &v_diff); // acceptance function for hopping
     bool evalProb(const FPType &prob); // generate true or false based on given probaility
 
+    // Return a random integer inclusively between min and max.
     int randInt(const int &min, const int &max);
+
+
+    // VARIABLES
 
     // boost random number generator
     boost::random::uniform_real_distribution<FPType> dis01;
     boost::random::mt19937 rng;
 
     // keep track of stats
-    int n_elec=0;               // number of doubly occupied DBs
     ublas::vector<int> n;       // electron configuration at the current time-step
-    std::vector<int> occ;       // indices of dbs, first n_elec indices are occupied
 
     // other variables used for calculations
     int t=0;                      // current annealing cycle

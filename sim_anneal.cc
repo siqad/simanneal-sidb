@@ -46,8 +46,10 @@ void SimAnneal::initialize()
   Logger log(global::log_level);
   log.echo() << "Performing pre-calculations..." << std::endl;
 
-  if (sparams->preanneal_cycles > sparams->anneal_cycles)
-    throw "Preanneal cycles > Anneal cycles";
+  if (sparams->preanneal_cycles > sparams->anneal_cycles) {
+    std::cerr << "Preanneal cycles > Anneal cycles";
+    throw;
+  }
 
   // phys
   sim_params.kT_min = constants::Kb * sim_params.T_min;
@@ -119,24 +121,6 @@ void SimAnneal::invokeSimAnneal()
   log.echo() << "All simulations complete." << std::endl;
 }
 
-FPType SimAnneal::systemEnergy(const std::string &n_in, int n_dbs)
-{
-  assert(n_dbs > 0);
-  assert(n_in.length() == n_dbs);
-  Logger log(global::log_level);
-  // convert string of 0 and 1 to ublas vector
-  ublas::vector<int> n_int(n_in.length());
-  for (int i=0; i<n_dbs; i++) {
-    // ASCII char to int with the correct integer
-    n_int[i] = n_in.at(i) - '0';
-  }
-
-  FPType v = 0.5 * ublas::inner_prod(n_int, ublas::prod(sim_params.v_ij, n_int))
-    - ublas::inner_prod(n_int, sim_params.v_ext);
-  log.debug() << "Energy of " << n_in << ": " << v << std::endl;
-  return v;
-}
-
 FPType SimAnneal::systemEnergy(const ublas::vector<int> &n_in, bool qubo)
 {
   assert(n_in.size() > 0);
@@ -158,19 +142,23 @@ bool SimAnneal::populationValidity(const ublas::vector<int> &n_in)
   assert(n_in.size() > 0);
   Logger log(global::log_level);
 
+  const FPType &mu = sparams->mu;
+  const FPType &eta = constants::eta;
+  const FPType &zero_equiv = constants::RECALC_STABILITY_ERR;
   FPType v_i;
   for (unsigned int i=0; i<n_in.size(); i++) {
+    // calculate v_i
     v_i = sim_params.v_ext[i];
     for (unsigned int j=0; j<n_in.size(); j++) {
       if (i == j) continue;
       v_i -= sim_params.v_ij(i,j) * n_in[j];
     }
 
-    bool valid = ((n_in[i] == 1 && v_i + sim_params.mu >= constants::RECALC_STABILITY_ERR)
-        || (n_in[i] == 0 && v_i + sim_params.mu < constants::RECALC_STABILITY_ERR));
-
-    // return false if constraints not met
-    if (!valid) {
+    // return false if invalid
+    if (!(   (n_in[i] == 1  && v_i + mu >= -zero_equiv)       // DB- valid condition
+          || (n_in[i] == -1 && v_i + mu + eta < zero_equiv)   // DB+ valid condition
+          || (n_in[i] == 0  && v_i + mu < zero_equiv          // DB0 valid condition
+                            && v_i + mu + eta > -zero_equiv))) {
       log.debug() << "config " << n_in << " has an invalid population, failed at index " << i << std::endl;
       log.debug() << "v_i=" << v_i << std::endl;
       return false;
@@ -186,15 +174,21 @@ bool SimAnneal::locallyMinimal(const ublas::vector<int> &n_in)
   Logger log(global::log_level);
 
   for (unsigned int i=0; i<n_in.size(); i++) {
-    if (n_in[i] == 0) 
+    // nothing to do with DB+ states
+    if (n_in[i] == -1)
       continue;
+
+    const FPType &zero_equiv = constants::RECALC_STABILITY_ERR;
     for (unsigned int j=0; j<n_in.size(); j++) {
-      FPType E_del = hopEnergyDelta(n_in, i, j);
-      if (n_in[j] != 1 && E_del < -constants::RECALC_STABILITY_ERR) {
-        log.debug() << "config " << n_in << " not stable since hopping from site "
-          << i << " to " << j << " would result in an energy reduction of "
-          << E_del << std::endl;
-        return false;
+      // only higher occupancy states can hop to lower ones:
+      if (n_in[i] > n_in[j]) {
+        FPType E_del = hopEnergyDelta(n_in, i, j);
+        if (E_del < -zero_equiv) {
+          log.debug() << "config " << n_in << " not stable since hopping from site "
+            << i << " to " << j << " would result in an energy reduction of "
+            << E_del << std::endl;
+          return false;
+        }
       }
     }
   }
@@ -232,8 +226,9 @@ FPType SimAnneal::hopEnergyDelta(ublas::vector<int> n_in, const int &from_ind,
 {
   // TODO make an efficient implementation with energy delta implementation
   FPType orig_energy = systemEnergy(n_in);
-  n_in[from_ind] = 0;
-  n_in[to_ind] = 1;
+  int from_state = n_in[from_ind];
+  n_in[from_ind] = n_in[to_ind];
+  n_in[to_ind] = from_state;
   return systemEnergy(n_in) - orig_energy;
 }
 
@@ -264,7 +259,6 @@ void SimAnnealThread::run()
 
   db_charges.resize(sparams->result_queue_size);
   n.resize(sparams->n_dbs);
-  occ.resize(sparams->n_dbs);
 
   config_energies.resize(sparams->result_queue_size);
 
@@ -274,13 +268,50 @@ void SimAnnealThread::run()
 
 void SimAnnealThread::anneal()
 {
+  typedef boost::numeric::ublas::vector<int> OccListType;
+
   // Vars
-  boost::numeric::ublas::vector<int> dn(sparams->n_dbs); // change of occupation for population update
-  int occ_ind_min, occ_ind_max, unocc_ind_min, unocc_ind_max;
-  int from_occ_ind, to_occ_ind; // hopping from n[occ[from_ind]]
+  boost::numeric::ublas::vector<int> dn(sparams->n_dbs);  // change of occupation for population update
+  OccListType doubly_occ(sparams->n_dbs);            // indices of DB- sites in n
+  OccListType singly_occ(sparams->n_dbs);            // indices of DB0 sites in n
+  OccListType no_occ(sparams->n_dbs);                // indices of DB+ sites in n
+  OccListType::iterator from_occ, to_occ;
+  int doubly_occ_count=0, singly_occ_count=0, no_occ_count=0;
+  int hop_attempts, max_hop_attempts;
   int from_ind, to_ind;         // hopping from n[from_ind] to n[to_ind]
-  int hop_attempts;
+  FPType hop_E_del;
   bool pop_changed;
+
+  // Randomly select an occupied (DB- or DB0) site. If there aren't any DB+ sites,
+  // then don't bother selected DB0 sites to hop from.
+  auto rand_occ_db_ind = [this, &doubly_occ, &singly_occ, &doubly_occ_count, 
+                          &singly_occ_count, &no_occ_count]
+                            (OccListType::iterator &occ_it) mutable -> int
+  {
+    if (doubly_occ_count == 0 && singly_occ_count == 0)
+      return -1;
+    int max_ind = (no_occ_count > 0) ? doubly_occ_count + singly_occ_count
+                                     : doubly_occ_count;
+    int r_ind = randInt(0, max_ind - 1);
+    occ_it = (r_ind < doubly_occ_count) ? doubly_occ.begin() + r_ind
+                                        : singly_occ.begin() + r_ind - doubly_occ_count;
+    return *occ_it;
+  };
+
+  // Randomly select a site with vacancy (DB0 or DB+). If the from_ind site 
+  // is DB0, then the target site must be DB+.
+  auto rand_vac_db_ind = [this, &singly_occ, &no_occ, &singly_occ_count, 
+                          &no_occ_count, &from_occ](OccListType::iterator &occ_it) mutable -> int
+  {
+    if (singly_occ_count == 0 && no_occ_count == 0)
+      return -1;
+    int min_ind = (n[*from_occ]==0) ? singly_occ_count : 0; // omit DB0 sites from selection if hopping from DB0 site
+    int max_ind = singly_occ_count + no_occ_count;
+    int r_ind = randInt(min_ind, max_ind - 1);
+    occ_it = (r_ind < singly_occ_count) ? singly_occ.begin() + r_ind
+                                        : no_occ.begin() + r_ind - singly_occ_count;
+    return *occ_it;
+  };
 
   E_sys = systemEnergy();
   v_local = sparams->v_ext - ublas::prod(sparams->v_ij, n);
@@ -298,41 +329,54 @@ void SimAnnealThread::anneal()
       E_sys += -1 * ublas::inner_prod(v_local, dn) + totalCoulombPotential(dn);
       v_local -= ublas::prod(sparams->v_ij, dn);
 
-      // Occupation list update (used for selecting sites to hop from and to)
-      // First n_dbs entries are occupied, the rest are unoccupied
-      int occ_ind=0, unocc_ind=sparams->n_dbs-1;
+      // Occupation lists update
+      int d_ind=0, s_ind=0, n_ind=0;
       for (int db_ind=0; db_ind<sparams->n_dbs; db_ind++) {
-        if (n[db_ind])
-          occ[occ_ind++] = db_ind;
-        else
-          occ[unocc_ind--] = db_ind;
+        if (n[db_ind]==1) {
+          doubly_occ[d_ind++] = db_ind;
+        } else if (n[db_ind]==0) {
+          singly_occ[s_ind++] = db_ind;
+        } else {
+          no_occ[n_ind++] = db_ind;
+        }
+        doubly_occ_count = d_ind;
+        singly_occ_count = s_ind;
+        no_occ_count = n_ind;
       }
-      n_elec = occ_ind;
-      occ_ind_min = 0;
-      occ_ind_max = n_elec-1;
-      unocc_ind_min = n_elec;
-      unocc_ind_max = sparams->n_dbs-1;
     }
 
-    // Hopping - randomly hop electrons from occupied sites to unoccupied sites
+    // Hopping - randomly hop electrons from higher occupancy sites to lower
+    // occupancy sites
     hop_attempts = 0;
-    if (n_elec != 0) {
-      while (hop_attempts < (sparams->n_dbs-n_elec)*5) {
-        from_occ_ind = randInt(occ_ind_min, occ_ind_max);
-        to_occ_ind = randInt(unocc_ind_min, unocc_ind_max);
-        from_ind = occ[from_occ_ind];
-        to_ind = occ[to_occ_ind];
-
-        FPType E_del = hopEnergyDelta(from_ind, to_ind);
-        if (acceptHop(E_del)) {
-          performHop(from_ind, to_ind);
-          occ[from_occ_ind] = to_ind;
-          occ[to_occ_ind] = from_ind;
-          // calculate energy difference
-          E_sys += E_del;
-          ublas::matrix_column<ublas::matrix<FPType>> v_i (sparams->v_ij, from_ind);
-          ublas::matrix_column<ublas::matrix<FPType>> v_j (sparams->v_ij, to_ind);
-          v_local += v_i - v_j;
+    if (doubly_occ_count != sparams->n_dbs && singly_occ_count != sparams->n_dbs
+        && no_occ_count != sparams->n_dbs) {
+      max_hop_attempts = doubly_occ_count + singly_occ_count;
+      max_hop_attempts *= sparams->hop_attempt_factor;
+      while (hop_attempts < max_hop_attempts) {
+        from_ind = rand_occ_db_ind(from_occ);
+        to_ind = rand_vac_db_ind(to_occ);
+        if (from_ind == -1 || to_ind == -1) {
+          std::cerr << "Cycle: " << t << ", attempting hop from ind " 
+            << from_ind << " to " << to_ind << " when the configuration is "
+            << n << " which is an invalid operation." << std::endl;
+          throw;
+        }
+        hop_E_del = hopEnergyDelta(from_ind, to_ind);
+        if (acceptHop(hop_E_del)) {
+          performHop(from_ind, to_ind, E_sys, hop_E_del);
+          // update occupation indices list
+          if (n[from_ind]-n[to_ind] < 2) {
+            // hopping from DB- to DB0 or DB0 to DB+
+            int orig_from_ind = *from_occ;
+            *from_occ = *to_occ;
+            *to_occ = orig_from_ind;
+          } else {
+            // hopping from DB- to DB+, both becomes DB0
+            singly_occ[singly_occ_count++] = from_ind;
+            singly_occ[singly_occ_count++] = to_ind;
+            *from_occ = doubly_occ[--doubly_occ_count];
+            *to_occ = no_occ[--no_occ_count];
+          }
         }
         hop_attempts++;
       }
@@ -340,11 +384,11 @@ void SimAnnealThread::anneal()
 
     // push back the new arrangement
     db_charges.push_back(ElecChargeConfigResult(n, 
-          populationValid(constants::POP_STABILITY_ERR), E_sys));
+          populationValid(), E_sys));
     config_energies.push_back(E_sys);
 
     // keep track of suggested ground state
-    if (isPhysicallyValid()) {
+    if (populationValid()) {
       if (E_sys_valid_gs == 0 || E_sys < E_sys_valid_gs) {
         E_sys_valid_gs = E_sys;
         n_valid_gs = n;
@@ -371,17 +415,37 @@ void SimAnnealThread::anneal()
 
 void SimAnnealThread::genPopDelta(ublas::vector<int> &dn, bool &changed)
 {
+  // DB- and DB+ sites can be flipped to DB0, DB0 sites can be flipped to either
+  // DB- or DB+ depending on which one is enegetically closer.
+  FPType prob;
+  FPType x;
+  int change_dir;
   changed = false;
   for (unsigned i=0; i<n.size(); i++) {
-    FPType prob = 1. / ( 1 + exp( ((2*n[i]-1)*(v_local[i] + sparams->mu) + v_freeze) / kT ) );
+    if (n[i] == 1) {
+      // Probability from DB- to DB0, in paper P_{1->0}
+      x = v_local[i] + sparams->mu + v_freeze;
+      change_dir = -1;
+    } else if (n[i] == -1) {
+      // Probability from DB+ to DB0, in paper P_{-1->0}
+      x = -(v_local[i] + sparams->mu + constants::eta) + v_freeze;
+      change_dir = 1;
+    } else {
+      if (abs(v_local[i] - sparams->mu) > abs(v_local[i] - (sparams->mu + constants::eta))) {
+        // Closer to DB(+/0) transition level, probability from DB0 to DB+, in paper P_{0->-1}
+        x = v_local[i] + sparams->mu + constants::eta + v_freeze;
+        change_dir = -1;
+      } else {
+        // Closer to DB(0/-) transition level, probability from DB0 to DB-, in paper P_{0->1}
+        x = -(v_local[i] + sparams->mu) + v_freeze;
+        change_dir = 1;
+      }
+    }
+    prob = 1. / (1 + exp(x / kT));
 
-    /*
-    std::cout << "prob = 1. / ( 1 + exp( ((" << 2*n[i]-1 << ")*(" << v_local[i] << "+" << sparams->mu <<") + " << v_freeze << ") / kT ) )" << std::endl;
-    std::cout << prob << std::endl;
-    */
 
     if (evalProb(prob)) {
-      dn[i] = 1 - 2*n[i];
+      dn[i] = change_dir;
       changed = true;
     } else {
       dn[i] = 0;
@@ -389,10 +453,16 @@ void SimAnnealThread::genPopDelta(ublas::vector<int> &dn, bool &changed)
   }
 }
 
-void SimAnnealThread::performHop(const int &from_ind, const int &to_ind)
+void SimAnnealThread::performHop(const int &from_ind, const int &to_ind,
+    float &E_sys, const float &E_del)
 {
-  n[from_ind] = 0;
-  n[to_ind] = 1;
+  n[from_ind]--;
+  n[to_ind]++;
+
+  E_sys += E_del;
+  ublas::matrix_column<ublas::matrix<FPType>> v_i (sparams->v_ij, from_ind);
+  ublas::matrix_column<ublas::matrix<FPType>> v_j (sparams->v_ij, to_ind);
+  v_local += v_i - v_j;
 }
 
 void SimAnnealThread::timeStep()
@@ -431,7 +501,7 @@ void SimAnnealThread::timeStep()
     case PhysicalValidityCheckMode:
     {
       if (t_phys_validity_check < sparams->phys_validity_check_cycles) {
-        isPhysicallyValid() ? phys_valid_count++ : phys_invalid_count++;
+        populationValid() ? phys_valid_count++ : phys_invalid_count++;
         t_phys_validity_check++;
       } else if (t_phys_validity_check >= sparams->phys_validity_check_cycles) {
         pop_schedule_phase = PopulationUpdateMode;
@@ -452,7 +522,8 @@ void SimAnnealThread::timeStep()
     case PopulationUpdateFinished:
       break;
     default:
-      throw "Invalid PopulationSchedulePhase.";
+      std::cerr << "Invalid PopulationSchedulePhase.";
+      throw;
   }
 
   // update parameters according to schedule
@@ -506,29 +577,25 @@ FPType SimAnnealThread::hopEnergyDelta(const int &i, const int &j)
   return v_local[i] - v_local[j] - sparams->v_ij(i,j);
 }
 
-bool SimAnnealThread::populationValid(const FPType &err_headroom) const
+bool SimAnnealThread::populationValid() const
 {
   // Check whether v_local at each site meets population validity constraints
   // Note that v_local components have flipped signs from E_sys
+  bool valid;
+  const FPType &mu = sparams->mu;
+  const FPType &eta = constants::eta;
+  const FPType &zero_equiv = constants::POP_STABILITY_ERR;
   for (int i=0; i<sparams->n_dbs; i++) {
-    bool valid = ((n[i] == 1 && v_local[i] + sparams->mu >= -err_headroom)
-        || (n[i] == 0 && v_local[i] + sparams->mu < err_headroom));
-    if (!valid) {
-      return false;
+    if (   (n[i] == 1  && v_local[i] + mu >= -zero_equiv)       // DB- condition
+        || (n[i] == -1 && v_local[i] + mu + eta < zero_equiv)   // DB+ condition
+        || (n[i] == 0  && v_local[i] + mu < zero_equiv          // DB0 condition
+                       && v_local[i] + mu + eta > -zero_equiv)) {
+      valid = true;
+    } else {
+      valid = false;
     }
-  }
-  return true;
-}
 
-bool SimAnnealThread::isPhysicallyValid()
-{
-  // check whether v_local at each site meets physically valid constraints
-  // (check the description of SimAnneal::isPhysicallyValid for what physically
-  // valid entails)
-  // Note that v_local components have flipped signs from E_sys
-  for (int i=0; i<sparams->n_dbs; i++) {
-    if ((n[i] == 1 && v_local[i] < -sparams->mu)
-        || (n[i] == 0 && v_local[i] > -sparams->mu)) {
+    if (!valid) {
       return false;
     }
   }

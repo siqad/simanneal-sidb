@@ -53,6 +53,7 @@ void SimAnnealInterface::loadSimParams()
   sparams->num_threads = std::stoi(sqconn->getParameter("num_instances"));
   sparams->anneal_cycles = std::stoi(sqconn->getParameter("anneal_cycles"));
   sparams->preanneal_cycles = std::stoi(sqconn->getParameter("preanneal_cycles"));
+  sparams->hop_attempt_factor = std::stoi(sqconn->getParameter("hop_attempt_factor"));
   sparams->mu = std::stod(sqconn->getParameter("global_v0"));
   sparams->epsilon_r = std::stod(sqconn->getParameter("epsilon_r"));
   sparams->debye_length = std::stod(sqconn->getParameter("debye_length"));
@@ -73,10 +74,10 @@ void SimAnnealInterface::loadSimParams()
   sparams->alpha = std::stod(sqconn->getParameter("T_cycle_multiplier"));
 
   sparams->v_freeze_init = std::stod(sqconn->getParameter("v_freeze_init"));
-  if (sparams->v_freeze_init < 0) sparams->v_freeze_init = sparams->mu / 2;
+  if (sparams->v_freeze_init < 0) sparams->v_freeze_init = abs(sparams->mu) / 2;
   sparams->v_freeze_threshold = std::stod(sqconn->getParameter("v_freeze_threshold"));
   sparams->v_freeze_reset = std::stod(sqconn->getParameter("v_freeze_reset"));
-  if (sparams->v_freeze_reset < 0) sparams->v_freeze_reset = sparams->mu;
+  if (sparams->v_freeze_reset < 0) sparams->v_freeze_reset = abs(sparams->mu);
   sparams->v_freeze_cycles = std::stoi(sqconn->getParameter("v_freeze_cycles"));
   sparams->phys_validity_check_cycles = std::stoi(sqconn->getParameter("phys_validity_check_cycles"));
 
@@ -144,8 +145,15 @@ void SimAnnealInterface::writeSimResults(bool only_suggested_gs, bool qubo_energ
   auto config_to_str = [](const ublas::vector<int> &config)
   {
     std::string elec_result_str;
-    for (auto chg : config)
-      elec_result_str.append(std::to_string(chg));
+    char chg_ch;
+    for (auto chg : config) {
+      assert(chg >= -1 && chg <= 1);
+      if (chg == -1) chg_ch = '+';
+      else if (chg == 0) chg_ch = '0';
+      else if (chg == 1) chg_ch = '-';
+
+      elec_result_str.push_back(chg_ch);
+    }
     return elec_result_str;
   };
 
@@ -206,7 +214,8 @@ void SimAnnealInterface::writeSimResults(bool only_suggested_gs, bool qubo_energ
 
   // recalculate the energy for each configuration to get better accuracy
   std::vector<std::vector<std::string>> db_dist_data;
-  for (auto result_it = elec_result_map.cbegin(); result_it != elec_result_map.cend(); ++result_it) {
+  auto result_it = elec_result_map.cbegin();
+  for (; result_it != elec_result_map.cend(); ++result_it) {
     std::vector<std::string> db_dist;
     const ExportElecConfigResult &result = result_it->second;
     // config
@@ -217,6 +226,8 @@ void SimAnnealInterface::writeSimResults(bool only_suggested_gs, bool qubo_energ
     db_dist.push_back(std::to_string(result.occ_count));
     // physically valid
     db_dist.push_back(std::to_string(result.population_stable && result.locally_minimal));
+    // 3 state export
+    db_dist.push_back("3");
     db_dist_data.push_back(db_dist);
   }
   sqconn->setExport("db_charge", db_dist_data);
