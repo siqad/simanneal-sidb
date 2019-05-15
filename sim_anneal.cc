@@ -156,7 +156,7 @@ bool SimAnneal::populationValidity(const ublas::vector<int> &n_in)
 
     // return false if invalid
     if (!(   (n_in[i] == 1  && v_i + mu >= -zero_equiv)       // DB- valid condition
-          || (n_in[i] == -1 && v_i + mu + eta < zero_equiv)   // DB+ valid condition
+          || (n_in[i] == -1 && v_i + mu + eta <= zero_equiv)  // DB+ valid condition
           || (n_in[i] == 0  && v_i + mu < zero_equiv          // DB0 valid condition
                             && v_i + mu + eta > -zero_equiv))) {
       log.debug() << "config " << n_in << " has an invalid population, failed at index " << i << std::endl;
