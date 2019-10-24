@@ -69,18 +69,18 @@ int main(int argc, char *argv[])
   log.echo() << "In File: " << if_name << std::endl;
   log.echo() << "Out File: " << of_name << std::endl;
 
-  log.echo() << "*** Initiate SimAnneal interface ***" << std::endl;
+  log.echo() << "\n*** Initiate SimAnneal interface ***" << std::endl;
   SimAnnealInterface interface(if_name, of_name);
 
-  log.echo() << "*** Invoke simulation ***" << std::endl;
+  log.echo() << "\n*** Invoke simulation ***" << std::endl;
   sw_simulation->start();
   interface.runSimulation();
   sw_simulation->end();
 
-  log.echo() << "*** Write simulation results ***" << std::endl;
+  log.echo() << "\n*** Write simulation results ***" << std::endl;
   interface.writeSimResults(only_suggested_gs, qubo_energy);
 
-  log.echo() << "*** SimAnneal Complete ***" << std::endl;
+  log.echo() << "\n*** SimAnneal Complete ***" << std::endl;
 
   tk->printAllStopwatches();
   delete tk;

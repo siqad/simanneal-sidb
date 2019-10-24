@@ -146,6 +146,7 @@ bool SimAnneal::populationValidity(const ublas::vector<int> &n_in)
   const FPType &eta = constants::eta;
   const FPType &zero_equiv = constants::RECALC_STABILITY_ERR;
   FPType v_i;
+  log.debug() << "V_i and Charge State (Opposite sign from paper, here +1 = DB-) Config " << n_in << ":" << std::endl;
   for (unsigned int i=0; i<n_in.size(); i++) {
     // calculate v_i
     v_i = sim_params.v_ext[i];
@@ -153,6 +154,8 @@ bool SimAnneal::populationValidity(const ublas::vector<int> &n_in)
       if (i == j) continue;
       v_i -= sim_params.v_ij(i,j) * n_in[j];
     }
+    log.debug() << "\tDB[" << i << "]: charge state=" << n_in[i]
+      << " and V_i=" << v_i << " eV" << std::endl;
 
     // return false if invalid
     if (!(   (n_in[i] == 1  && v_i + mu >= -zero_equiv)       // DB- valid condition
