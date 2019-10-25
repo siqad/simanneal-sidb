@@ -17,8 +17,6 @@
 #include <pthread.h>
 #include <time.h>
 
-//#define STEADY_THREASHOLD 700       //arbitrary value used in restarting
-
 using namespace phys;
 
 // static variables
@@ -73,11 +71,6 @@ void SimAnneal::initialize()
       log.debug() << "db_r[" << i << "][" << j << "]=" << sim_params.db_r(i,j) 
         << ", v_ij[" << i << "][" << j << "]=" << sim_params.v_ij(i,j) << std::endl;
     }
-
-    // TODO add electrode effect to v_ext
-
-    //sim_accessor.v_ext[i] = sim_accessor.mu;
-    sim_params.v_ext[i] = 0;
   }
 
   log.echo() << "Pre-calculations complete" << std::endl << std::endl;

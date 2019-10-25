@@ -11,19 +11,50 @@
 // std
 #include <vector>
 #include <unordered_map>
+#include <iterator>
 
 // boost
 #include <boost/numeric/ublas/matrix.hpp>
 #include <boost/numeric/ublas/matrix_proxy.hpp>
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/json_parser.hpp>
 
 using namespace phys;
 
 SimAnnealInterface::SimAnnealInterface(std::string t_in_path, 
-                                       std::string t_out_path)
-  : in_path(t_in_path), out_path(t_out_path)
+                                       std::string t_out_path,
+                                       std::string t_ext_pots_path,
+                                       int t_ext_pots_step)
+  : in_path(t_in_path), out_path(t_out_path), ext_pots_path(t_ext_pots_path),
+    ext_pots_step(t_ext_pots_step)
 {
   sqconn = new SiQADConnector(std::string("SimAnneal"), in_path, out_path);
   loadSimParams();
+}
+
+ublas::vector<FPType> SimAnnealInterface::loadExternalPotentials(int n_dbs)
+{
+  Logger log(global::log_level);
+  bpt::ptree pt;
+  bpt::read_json(ext_pots_path, pt);
+
+  const bpt::ptree &pot_steps_arr = pt.get_child("pots");
+  // iterate pots array until the desired step has been reached
+  // TODO change to std::next
+  if (static_cast<unsigned long>(ext_pots_step) >= pot_steps_arr.size())
+    throw std::range_error("External potential step out of bounds.");
+  bpt::ptree::const_iterator pots_arr_it = std::next(pot_steps_arr.begin(), 
+      ext_pots_step);
+
+  ublas::vector<FPType> v_ext;
+  v_ext.resize(n_dbs);
+  int db_i = 0;
+  for (bpt::ptree::value_type const &v : (*pots_arr_it).second) {
+    v_ext[db_i] = (v.second.get_value<float>()); // TODO figure out the sign
+    log.debug() << "v_ext[" << db_i << "] = " << v_ext[db_i] << std::endl;
+    db_i++;
+  }
+  return v_ext;
 }
 
 void SimAnnealInterface::loadSimParams()
@@ -36,7 +67,6 @@ void SimAnnealInterface::loadSimParams()
   sparams->n_dbs = 0;
   for(auto db : *(sqconn->dbCollection())) {
     sparams->db_locs.push_back(lat_coord_to_eucl(db->n, db->m, db->l));
-    //sparams->db_locs.push_back(std::make_pair(db->x, db->y));
     sparams->n_dbs++;
     log.debug() << "DB loc: x=" << sparams->db_locs.back().first
         << ", y=" << sparams->db_locs.back().second << std::endl;
@@ -47,6 +77,17 @@ void SimAnnealInterface::loadSimParams()
   if(sparams->n_dbs == 0) {
     throw "No DBs found in the input file, simulation aborted.";
   }
+
+  // load external voltages if relevant file has been supplied
+  if (!ext_pots_path.empty()) {
+    log.debug() << "Loading external potentials..." << std::endl;
+    sparams->v_ext = loadExternalPotentials(sparams->n_dbs);
+  } else {
+    log.debug() << "No external potentials file supplied, set to 0." << std::endl;
+    sparams->v_ext.resize(sparams->n_dbs);
+    for (auto &v : sparams->v_ext) v = 0;
+  }
+
 
   //Variable initialization
   log.echo() << "Retrieving variables from SiQADConn..." << std::endl;

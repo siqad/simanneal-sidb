@@ -20,7 +20,7 @@ using namespace phys;
 int main(int argc, char *argv[])
 {
   std::cout << "Physeng invoked" << std::endl;
-  std::string if_name, of_name;
+  std::string if_name, of_name, ext_pots_name;
   std::vector<std::string> cml_args;
 
   std::cout << "*** Argument Parsing ***" << std::endl;
@@ -39,13 +39,22 @@ int main(int argc, char *argv[])
   }
 
   // parse additional arguments
+  int ext_pots_step=0;
   bool only_suggested_gs=false;
   bool qubo_energy=false;
   unsigned long cml_i=0;
   while (cml_i < cml_args.size()) {
-    if (cml_args[cml_i] == "--only-suggested-gs") {
+    if (cml_args[cml_i] == "--ext-pots") {
+      std::cout << "--ext-pots: Import external potentials." << std::endl;
+      ext_pots_name = cml_args[++cml_i];
+    } else if (cml_args[cml_i] == "--ext-pots-step") {
+      std::cout << "--ext-pots-step: Specify the step to use for potentials."
+        << std::endl;
+      ext_pots_step = stoi(cml_args[++cml_i]);
+    } else if (cml_args[cml_i] == "--only-suggested-gs") {
       // each SimAnneal instance only returns one configuration
-      std::cout << "--only-suggested-gs: Only returning suggested ground state from each instance." << std::endl;
+      std::cout << "--only-suggested-gs: Only returning suggested ground state "
+        << "from each instance." << std::endl;
       only_suggested_gs = true;
     } else if (cml_args[cml_i] == "--debug") {
       // show additional debug information
@@ -68,9 +77,10 @@ int main(int argc, char *argv[])
 
   log.echo() << "In File: " << if_name << std::endl;
   log.echo() << "Out File: " << of_name << std::endl;
+  log.echo() << "External Potentials File: " << ext_pots_name << std::endl;
 
   log.echo() << "\n*** Initiate SimAnneal interface ***" << std::endl;
-  SimAnnealInterface interface(if_name, of_name);
+  SimAnnealInterface interface(if_name, of_name, ext_pots_name, ext_pots_step);
 
   log.echo() << "\n*** Invoke simulation ***" << std::endl;
   sw_simulation->start();

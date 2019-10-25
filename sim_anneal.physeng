@@ -31,6 +31,14 @@ interpreter, bin_path, command
             <arg>@PROBLEMPATH@</arg>
             <arg>@RESULTPATH@</arg>
         </command>
+        <!-- Import potentials from PoisSolver. -->
+        <command label="Import Potentials">
+            <program>@BINPATH@</program>
+            <arg>@PROBLEMPATH@</arg>
+            <arg>@RESULTPATH@</arg>
+            <arg>--ext-pots</arg>
+            <arg>@JOBTMP@/db_pots.json</arg>
+        </command>
     </commands>
     <!-- Python dependencies file path, relative to the directory containing this physeng file. -->
     <dep_path></dep_path> 
