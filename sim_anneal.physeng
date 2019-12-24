@@ -167,7 +167,7 @@ interpreter, bin_path, command
         </epsilon_r>
         <global_v0>
             <T>float</T>
-            <val>0.25</val>
+            <val>-0.25</val>
             <dp>2</dp>
             <label>mu (0/- transition level - Fermi level)</label>
             <tip>The global Fermi level on the surface, higher value brings more electrons to the surface.</tip>

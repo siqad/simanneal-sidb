@@ -61,7 +61,7 @@ namespace phys {
   struct SimParams
   {
     // runtime params
-    int num_threads;            // Number of threads to spawn
+    int num_instances;          // Number of threads to spawn
     int result_queue_size;      // Number of results to store (per thread)
     int hop_attempt_factor;     // total hop attempt = hop_attempt_factor * (num_occ - num_vac)
 
@@ -272,7 +272,7 @@ namespace phys {
 
     // CALCULATIONS
     FPType systemEnergy() const;
-    FPType totalCoulombPotential(ublas::vector<int> &config) const;
+    //FPType totalCoulombPotential(ublas::vector<int> &config) const;
     FPType hopEnergyDelta(const int &i, const int &j);
 
     // Return whether the current electron population is valid with an error
@@ -297,10 +297,11 @@ namespace phys {
     ublas::vector<int> n;       // electron configuration at the current time-step
 
     // other variables used for calculations
-    int t=0;                      // current annealing cycle
-    int t_freeze=0;               // current v_freeze cycle
-    FPType kT, v_freeze;           // current annealing temperature, freeze out potential
-    ublas::vector<FPType> v_local; // local potetial at each site
+    int t=0;                        // current annealing cycle
+    int t_freeze=0;                 // current v_freeze cycle
+    FPType kT, v_freeze;            // current annealing temperature, freeze out potential
+    FPType muzm, mupz;              // short hand for (-/0) and (0/+) charge transition levels
+    ublas::vector<FPType> v_local;  // local potetial at each site
 
     int t_phys_validity_check=0;
     PopulationSchedulePhase pop_schedule_phase;

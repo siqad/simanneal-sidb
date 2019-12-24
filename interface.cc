@@ -91,7 +91,7 @@ void SimAnnealInterface::loadSimParams()
 
   //Variable initialization
   log.echo() << "Retrieving variables from SiQADConn..." << std::endl;
-  sparams->num_threads = std::stoi(sqconn->getParameter("num_instances"));
+  sparams->num_instances = std::stoi(sqconn->getParameter("num_instances"));
   sparams->anneal_cycles = std::stoi(sqconn->getParameter("anneal_cycles"));
   sparams->preanneal_cycles = std::stoi(sqconn->getParameter("preanneal_cycles"));
   sparams->hop_attempt_factor = std::stoi(sqconn->getParameter("hop_attempt_factor"));
@@ -189,9 +189,9 @@ void SimAnnealInterface::writeSimResults(bool only_suggested_gs, bool qubo_energ
     char chg_ch;
     for (auto chg : config) {
       assert(chg >= -1 && chg <= 1);
-      if (chg == -1) chg_ch = '+';
+      if (chg == -1) chg_ch = '-';
       else if (chg == 0) chg_ch = '0';
-      else if (chg == 1) chg_ch = '-';
+      else if (chg == 1) chg_ch = '+';
 
       elec_result_str.push_back(chg_ch);
     }
