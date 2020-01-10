@@ -12,6 +12,8 @@
 
 namespace phys {
 
+  namespace bpt = boost::property_tree;
+
   class helper;
 
   class SimAnnealInterface
