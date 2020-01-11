@@ -10,9 +10,13 @@ find_package(Threads REQUIRED)
 
 #add_definitions( -DAPP_VERSION=\"0.1.0\" -DAPPLICATION_NAME=\"SiQAD\" -DORGANIZATION_NAME=\"WalusLab\" )
 
-if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Release)
-endif()
+if(DEFINED SIQAD_INSTALL_ROOT)
+    set(SIMANNEAL_INSTALL_DIR "${SIQAD_INSTALL_ROOT}/phys/simanneal")
+elseif(CMAKE_BUILD_TYPE MATCHES Release)
+    set(SIMANNEAL_INSTALL_DIR "release")
+else()
+    set(SIMANNEAL_INSTALL_DIR "debug")
+ENDIF()
 
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
@@ -36,3 +40,14 @@ include_directories(
 add_executable(simanneal ${SOURCES})
 
 target_link_libraries(${PROJECT_NAME} ${Boost_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})
+
+add_custom_command(
+    TARGET simanneal POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+            ${CMAKE_CURRENT_SOURCE_DIR}/sim_anneal.physeng
+            ${CMAKE_CURRENT_BINARY_DIR})
+
+#install(TARGETS simanneal RUNTIME DESTINATION ${CMAKE_BUILD_TYPE}/phys/simanneal)
+#install(FILES sim_anneal.physeng DESTINATION ${CMAKE_BUILD_TYPE}/phys/simanneal)
+install(TARGETS simanneal RUNTIME DESTINATION ${SIMANNEAL_INSTALL_DIR})
+install(FILES sim_anneal.physeng DESTINATION ${SIMANNEAL_INSTALL_DIR})
