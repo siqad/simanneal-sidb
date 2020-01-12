@@ -118,9 +118,9 @@ FPType SimAnneal::systemEnergy(const ublas::vector<int> &n_in, bool qubo)
 {
   assert(n_in.size() > 0);
 
-  //float E = 0.5 * ublas::inner_prod(n_in, ublas::prod(sim_params.v_ij, n_in))
+  //FPType E = 0.5 * ublas::inner_prod(n_in, ublas::prod(sim_params.v_ij, n_in))
     //- ublas::inner_prod(n_in, sim_params.v_ext);
-  float E = ublas::inner_prod(n_in, sim_params.v_ext)
+  FPType E = ublas::inner_prod(n_in, sim_params.v_ext)
     + 0.5 * ublas::inner_prod(n_in, ublas::prod(sim_params.v_ij, n_in));
     
 
@@ -511,7 +511,7 @@ void SimAnnealThread::genPopDelta(ublas::vector<int> &dn, bool &changed)
 }
 
 void SimAnnealThread::performHop(const int &from_ind, const int &to_ind,
-    float &E_sys, const float &E_del)
+    FPType &E_sys, const FPType &E_del)
 {
   int dn_i = (n[from_ind]==-1) ? 1 : -1;
   int dn_j = - dn_i;

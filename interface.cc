@@ -50,7 +50,7 @@ ublas::vector<FPType> SimAnnealInterface::loadExternalPotentials(int n_dbs)
   v_ext.resize(n_dbs);
   int db_i = 0;
   for (bpt::ptree::value_type const &v : (*pots_arr_it).second) {
-    v_ext[db_i] = (v.second.get_value<float>()); // TODO figure out the sign
+    v_ext[db_i] = (v.second.get_value<FPType>()); // TODO figure out the sign
     log.debug() << "v_ext[" << db_i << "] = " << v_ext[db_i] << std::endl;
     db_i++;
   }

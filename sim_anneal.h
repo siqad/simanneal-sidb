@@ -264,8 +264,8 @@ namespace phys {
 
     // Perform an electron hop from one DB to another and update the energy
     // difference.
-    void performHop(const int &from_ind, const int &to_ind, float &E_sys, 
-        const float &E_del);
+    void performHop(const int &from_ind, const int &to_ind, FPType &E_sys, 
+        const FPType &E_del);
 
     // advance time-step
     void timeStep();
