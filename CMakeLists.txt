@@ -12,10 +12,10 @@ find_package(Threads REQUIRED)
 
 if(DEFINED SIQAD_INSTALL_ROOT)
     set(SIMANNEAL_INSTALL_DIR "${SIQAD_INSTALL_ROOT}/phys/simanneal")
-elseif(CMAKE_BUILD_TYPE MATCHES Release)
-    set(SIMANNEAL_INSTALL_DIR "release")
-else()
+elseif(CMAKE_BUILD_TYPE MATCHES Debug)
     set(SIMANNEAL_INSTALL_DIR "debug")
+else()
+    set(SIMANNEAL_INSTALL_DIR "release")
 ENDIF()
 
 set(CMAKE_CXX_STANDARD 11)
