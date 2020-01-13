@@ -42,6 +42,7 @@ SimAnneal::SimAnneal()
 void SimAnneal::initialize()
 {
   Logger log(global::log_level);
+
   log.echo() << "Performing pre-calculations..." << std::endl;
 
   if (sparams->preanneal_cycles > sparams->anneal_cycles) {
@@ -350,6 +351,7 @@ void SimAnnealThread::anneal()
     //log.debug() << "Cycle " << t << ", kT=" << kT << ", v_freeze=" << v_freeze << std::endl;
 
     // Random population change, pop_changed is set to true if anything changes
+    //log.debug() << "Before popgen: n=" << n << std::endl;
     genPopDelta(dn, pop_changed);
     if (pop_changed) {
       n += dn;
@@ -489,7 +491,7 @@ void SimAnnealThread::genPopDelta(ublas::vector<int> &dn, bool &changed)
       x = v_local[i] + mupz + v_freeze;
       change_dir = -1;
     } else {
-      if (abs(v_local[i] + muzm) < abs(v_local[i] + mupz)) {
+      if (fabs(v_local[i] + muzm) < fabs(v_local[i] + mupz)) {
         // Closer to DB(0/-) transition level, probability from DB0 to DB-
         x = v_local[i] + muzm + v_freeze;
         change_dir = -1;

@@ -115,10 +115,10 @@ void SimAnnealInterface::loadSimParams()
   sparams->alpha = std::stod(sqconn->getParameter("T_cycle_multiplier"));
 
   sparams->v_freeze_init = std::stod(sqconn->getParameter("v_freeze_init"));
-  if (sparams->v_freeze_init < 0) sparams->v_freeze_init = abs(sparams->mu) / 2;
+  if (sparams->v_freeze_init < 0) sparams->v_freeze_init = fabs(sparams->mu) / 2;
   sparams->v_freeze_threshold = std::stod(sqconn->getParameter("v_freeze_threshold"));
   sparams->v_freeze_reset = std::stod(sqconn->getParameter("v_freeze_reset"));
-  if (sparams->v_freeze_reset < 0) sparams->v_freeze_reset = abs(sparams->mu);
+  if (sparams->v_freeze_reset < 0) sparams->v_freeze_reset = fabs(sparams->mu);
   sparams->v_freeze_cycles = std::stoi(sqconn->getParameter("v_freeze_cycles"));
   sparams->phys_validity_check_cycles = std::stoi(sqconn->getParameter("phys_validity_check_cycles"));
 
