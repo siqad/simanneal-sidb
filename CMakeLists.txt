@@ -41,8 +41,8 @@ if(SKBUILD)
 
 else()
 
-    if(DEFINED SIQAD_INSTALL_ROOT)
-        set(SIMANNEAL_INSTALL_DIR "${SIQAD_INSTALL_ROOT}/phys/simanneal")
+    if(DEFINED SIQAD_PLUGINS_ROOT)
+        set(SIMANNEAL_INSTALL_DIR "${SIQAD_PLUGINS_ROOT}/simanneal")
     elseif(CMAKE_BUILD_TYPE MATCHES Debug)
         set(SIMANNEAL_INSTALL_DIR "debug")
     else()
