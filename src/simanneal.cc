@@ -6,7 +6,7 @@
 //
 // @desc:     Simulated annealing physics engine
 
-#include "sim_anneal.h"
+#include "simanneal.h"
 #include <ctime>
 #include <algorithm>
 
@@ -17,16 +17,19 @@
 #include <pthread.h>
 #include <time.h>
 
+saglobal::TimeKeeper *saglobal::TimeKeeper::time_keeper=nullptr;
+int saglobal::log_level = Logger::DBG;
+
 using namespace phys;
 
 // static variables
 SimParams SimAnneal::sim_params;
-boost::mutex SimAnneal::result_store_mutex;
+std::mutex SimAnneal::result_store_mutex;
 FPType SimAnneal::db_distance_scale = 1E-10;
 AllChargeResults SimAnneal::charge_results;
 AllEnergyResults SimAnneal::energy_results;
 AllCPUTimes SimAnneal::cpu_times;
-AllSuggestedConfigResults SimAnneal::suggested_config_results;
+SuggestedResults SimAnneal::suggested_gs_results;
 
 // alias for the commonly used sim_params static variable
 constexpr auto sparams = &SimAnneal::sim_params;
@@ -34,74 +37,22 @@ constexpr auto sparams = &SimAnneal::sim_params;
 
 // SimAnneal (master) Implementation
 
-SimAnneal::SimAnneal()
+SimAnneal::SimAnneal(SimParams &sparams)
 {
+  sim_params = sparams;
   initialize();
 }
 
-void SimAnneal::initialize()
-{
-  Logger log(global::log_level);
-
-  log.echo() << "Performing pre-calculations..." << std::endl;
-
-  if (sparams->preanneal_cycles > sparams->anneal_cycles) {
-    std::cerr << "Preanneal cycles > Anneal cycles";
-    throw;
-  }
-
-  // phys
-  sim_params.kT_min = constants::Kb * sim_params.T_min;
-  sim_params.Kc = 1/(4 * constants::PI * sim_params.epsilon_r * constants::EPS0);
-
-  // DB distance and potentials
-  sim_params.db_r.resize(sim_params.n_dbs, sim_params.n_dbs);
-  sim_params.v_ext.resize(sim_params.n_dbs);
-  sim_params.v_ij.resize(sim_params.n_dbs, sim_params.n_dbs);
-
-  // inter-db distances and voltages
-  for (int i=0; i<sim_params.n_dbs; i++) {
-    sim_params.db_r(i,i) = 0.;
-    sim_params.v_ij(i,i) = 0.;
-    for (int j=i+1; j<sim_params.n_dbs; j++) {
-      sim_params.db_r(i,j) = db_distance_scale * distance(i,j);
-      sim_params.v_ij(i,j) = interElecPotential(sim_params.db_r(i,j));
-      sim_params.db_r(j,i) = sim_params.db_r(i,j);
-      sim_params.v_ij(j,i) = sim_params.v_ij(i,j);
-
-      log.debug() << "db_r[" << i << "][" << j << "]=" << sim_params.db_r(i,j) 
-        << ", v_ij[" << i << "][" << j << "]=" << sim_params.v_ij(i,j) << std::endl;
-    }
-  }
-
-  log.echo() << "Pre-calculations complete" << std::endl << std::endl;
-
-  // determine number of threads to run
-  if (sim_params.num_instances == -1) {
-    if (sim_params.n_dbs <= 9) {
-      sim_params.num_instances = 8;
-    } else if (sim_params.n_dbs <= 25) {
-      sim_params.num_instances = 16;
-    } else {
-      sim_params.num_instances = 128;
-    }
-  }
-
-  charge_results.resize(sim_params.num_instances);
-  energy_results.resize(sim_params.num_instances);
-  cpu_times.resize(sim_params.num_instances);
-  suggested_config_results.resize(sim_params.num_instances);
-}
 
 void SimAnneal::invokeSimAnneal()
 {
-  Logger log(global::log_level);
+  Logger log(saglobal::log_level);
   log.echo() << "Setting up SimAnnealThreads..." << std::endl;
 
   // spawn all the threads
   for (int i=0; i<sim_params.num_instances; i++) {
     SimAnnealThread annealer(i);
-    boost::thread th(&SimAnnealThread::run, annealer);
+    std::thread th(&SimAnnealThread::run, annealer);
     anneal_threads.push_back(std::move(th));
   }
 
@@ -137,7 +88,7 @@ FPType SimAnneal::systemEnergy(const ublas::vector<int> &n_in, bool qubo)
 bool SimAnneal::populationValidity(const ublas::vector<int> &n_in)
 {
   assert(n_in.size() > 0);
-  Logger log(global::log_level);
+  Logger log(saglobal::log_level);
 
   const FPType &muzm = sparams->mu;
   const FPType &mupz = sparams->mu - constants::eta;
@@ -171,7 +122,7 @@ bool SimAnneal::populationValidity(const ublas::vector<int> &n_in)
 bool SimAnneal::locallyMinimal(const ublas::vector<int> &n_in)
 {
   assert(n_in.size() > 0);
-  Logger log(global::log_level);
+  Logger log(saglobal::log_level);
 
   for (unsigned int i=0; i<n_in.size(); i++) {
     // nothing to do with DB+ states
@@ -203,9 +154,94 @@ void SimAnneal::storeResults(SimAnnealThread *annealer, int thread_id)
   charge_results[thread_id] = annealer->db_charges;
   energy_results[thread_id] = annealer->config_energies;
   cpu_times[thread_id] = annealer->CPUTime();
-  suggested_config_results[thread_id] = annealer->suggestedConfig();
+
+  suggested_gs_results[thread_id] = annealer->suggestedConfig();
+
+  // TODO remove the following two lines and replace with suggested gs
+  //suggested_config_results[thread_id] = annealer->suggestedConfig();
+  //suggested_energy_results[thread_id] = annealer->suggestedEnergy();
 
   result_store_mutex.unlock();
+}
+
+
+// PRIVATE
+
+void SimAnneal::initialize()
+{
+  Logger log(saglobal::log_level);
+  SimParams &sp = sim_params;
+
+  log.echo() << "Performing pre-calculations..." << std::endl;
+
+  // set default values
+  if (sp.v_freeze_init < 0)
+    sp.v_freeze_init = fabs(sp.mu) / 2;
+  if (sp.v_freeze_reset < 0)
+    sp.v_freeze_reset = fabs(sp.mu);
+
+  // apply schedule scaling
+  sp.anneal_cycles = sp.prescale_anneal_cycles * sp.schedule_scale_factor;
+  sp.alpha = std::pow(sp.prescale_alpha, sp.prescale_anneal_cycles / sp.anneal_cycles);
+  sp.v_freeze_cycles = sp.prescale_v_freeze_cycles * sp.schedule_scale_factor;
+
+  log.debug() << "Scaling schedule by factor " << sp.schedule_scale_factor << ":" << std::endl;
+  log.debug() << "Annealing cycles from " << sp.prescale_anneal_cycles 
+    << " to " << sp.anneal_cycles << std::endl;
+  log.debug() << "Temperature multiplier (alpha) from " << sp.prescale_alpha
+    << " to " << sp.alpha << std::endl;
+  log.debug() << "Freeze-out cycles from " << sp.prescale_v_freeze_cycles
+    << " to " << sp.v_freeze_cycles << std::endl;
+  sp.v_freeze_step = ((sp.v_freeze_threshold - sp.v_freeze_init) / sp.v_freeze_cycles);
+
+  sp.result_queue_size = sp.anneal_cycles * sp.result_queue_factor;
+  sp.result_queue_size = std::min(sp.result_queue_size, sp.anneal_cycles);
+  sp.result_queue_size = std::max(sp.result_queue_size, 1);
+  log.debug() << "Result queue size: " << sp.result_queue_size << std::endl;
+
+
+  if (sp.preanneal_cycles > sp.anneal_cycles) {
+    std::cerr << "Preanneal cycles > Anneal cycles";
+    throw;
+  }
+
+
+  // phys
+  sp.kT_min = constants::Kb * sp.T_min;
+  sp.Kc = 1/(4 * constants::PI * sp.epsilon_r * constants::EPS0);
+
+  // inter-db distances and voltages
+  for (int i=0; i<sp.n_dbs; i++) {
+    sp.db_r(i,i) = 0.;
+    sp.v_ij(i,i) = 0.;
+    for (int j=i+1; j<sp.n_dbs; j++) {
+      sp.db_r(i,j) = db_distance_scale * distance(i,j);
+      sp.v_ij(i,j) = interElecPotential(sp.db_r(i,j));
+      sp.db_r(j,i) = sp.db_r(i,j);
+      sp.v_ij(j,i) = sp.v_ij(i,j);
+
+      log.debug() << "db_r[" << i << "][" << j << "]=" << sp.db_r(i,j) 
+        << ", v_ij[" << i << "][" << j << "]=" << sp.v_ij(i,j) << std::endl;
+    }
+  }
+
+  log.echo() << "Pre-calculations complete" << std::endl << std::endl;
+
+  // determine number of threads to run
+  if (sp.num_instances == -1) {
+    if (sp.n_dbs <= 9) {
+      sp.num_instances = 8;
+    } else if (sp.n_dbs <= 25) {
+      sp.num_instances = 16;
+    } else {
+      sp.num_instances = 128;
+    }
+  }
+
+  charge_results.resize(sp.num_instances);
+  energy_results.resize(sp.num_instances);
+  cpu_times.resize(sp.num_instances);
+  suggested_gs_results.resize(sp.num_instances);
 }
 
 FPType SimAnneal::distance(const int &i, const int &j)
@@ -259,11 +295,9 @@ void SimAnnealThread::run()
   pop_schedule_phase = PopulationUpdateMode;
 
   // resize vectors
-  v_local.resize(sparams->n_dbs);
-
-  db_charges.resize(sparams->result_queue_size);
   n.resize(sparams->n_dbs);
-
+  v_local.resize(sparams->n_dbs);
+  db_charges.resize(sparams->result_queue_size);
   config_energies.resize(sparams->result_queue_size);
 
   // SIM ANNEAL
@@ -272,10 +306,10 @@ void SimAnnealThread::run()
 
 void SimAnnealThread::anneal()
 {
-  typedef boost::numeric::ublas::vector<int> OccListType;
+  typedef ublas::vector<int> OccListType;
 
   // Vars
-  boost::numeric::ublas::vector<int> dn(sparams->n_dbs);  // change of occupation for population update
+  ublas::vector<int> dn(sparams->n_dbs);  // change of occupation for population update
   OccListType dbm_occ(sparams->n_dbs);                    // indices of DB- sites in n
   OccListType db0_occ(sparams->n_dbs);                    // indices of DB0 sites in n
   OccListType dbp_occ(sparams->n_dbs);                    // indices of DB+ sites in n
@@ -308,43 +342,10 @@ void SimAnnealThread::anneal()
     return *occ_it;
   };
 
-  /*
-  // Randomly select an occupied (DB- or DB0) site. If there aren't any DB+ sites,
-  // then don't bother selected DB0 sites to hop from.
-  auto rand_occ_db_ind = [this, &dbm_occ, &db0_occ, &dbm_occ_count, 
-                          &db0_occ_count, &dbp_occ_count]
-                            (OccListType::iterator &occ_it) mutable -> int
-  {
-    if (dbm_occ_count == 0 && db0_occ_count == 0)
-      return -1;
-    int max_ind = (dbp_occ_count > 0) ? dbm_occ_count + db0_occ_count
-                                     : dbm_occ_count;
-    int r_ind = randInt(0, max_ind - 1);
-    occ_it = (r_ind < dbm_occ_count) ? dbm_occ.begin() + r_ind
-                                        : db0_occ.begin() + r_ind - dbm_occ_count;
-    return *occ_it;
-  };
-
-  // Randomly select a site with vacancy (DB0 or DB+). If the from_ind site 
-  // is DB0, then the target site must be DB+.
-  auto rand_vac_db_ind = [this, &db0_occ, &dbp_occ, &db0_occ_count, 
-                          &dbp_occ_count, &from_occ](OccListType::iterator &occ_it) mutable -> int
-  {
-    if (db0_occ_count == 0 && dbp_occ_count == 0)
-      return -1;
-    int min_ind = (n[*from_occ]==0) ? db0_occ_count : 0; // omit DB0 sites from selection if hopping from DB0 site
-    int max_ind = db0_occ_count + dbp_occ_count;
-    int r_ind = randInt(min_ind, max_ind - 1);
-    occ_it = (r_ind < db0_occ_count) ? db0_occ.begin() + r_ind
-                                        : dbp_occ.begin() + r_ind - db0_occ_count;
-    return *occ_it;
-  };
-  */
-
   E_sys = systemEnergy();
   v_local = - sparams->v_ext - ublas::prod(sparams->v_ij, n);
 
-  Logger log(global::log_level);
+  Logger log(saglobal::log_level);
 
   // Run simulated annealing for predetermined time steps
   while(t < sparams->anneal_cycles) {
@@ -406,57 +407,17 @@ void SimAnnealThread::anneal()
       hop_attempts++;
     }
 
-    /*
-    if (dbm_occ_count != sparams->n_dbs && db0_occ_count != sparams->n_dbs
-        && dbp_occ_count != sparams->n_dbs) {
-      max_hop_attempts = dbm_occ_count + db0_occ_count;
-      max_hop_attempts *= sparams->hop_attempt_factor;
-      while (hop_attempts < max_hop_attempts) {
-        from_ind = rand_occ_db_ind(from_occ);
-        to_ind = rand_vac_db_ind(to_occ);
-        if (from_ind == -1 || to_ind == -1) {
-          std::cerr << "Cycle: " << t << ", attempting hop from ind " 
-            << from_ind << " to " << to_ind << " when the configuration is "
-            << n << " which is an invalid operation." << std::endl;
-          throw;
-        }
-        hop_E_del = hopEnergyDelta(from_ind, to_ind);
-        if (acceptHop(hop_E_del)) {
-          performHop(from_ind, to_ind, E_sys, hop_E_del);
-          // update occupation indices list
-          if (n[from_ind]-n[to_ind] < 2) {
-            // hopping from DB- to DB0 or DB0 to DB+
-            int orig_from_ind = *from_occ;
-            *from_occ = *to_occ;
-            *to_occ = orig_from_ind;
-          } else {
-            // hopping from DB- to DB+, both becomes DB0
-            db0_occ[db0_occ_count++] = from_ind;
-            db0_occ[db0_occ_count++] = to_ind;
-            *from_occ = dbm_occ[--dbm_occ_count];
-            *to_occ = dbp_occ[--dbp_occ_count];
-          }
-        }
-        hop_attempts++;
-      }
-    }
-    */
-
     // push back the new arrangement
-    db_charges.push_back(ElecChargeConfigResult(n, 
+    db_charges.push_back(ChargeConfigResult(n, 
           populationValid(), E_sys));
     config_energies.push_back(E_sys);
 
     // keep track of suggested ground state
     if (populationValid()) {
-      if (E_sys_valid_gs == 0 || E_sys < E_sys_valid_gs) {
-        E_sys_valid_gs = E_sys;
-        n_valid_gs = n;
-      }
-    } else if ((sparams->anneal_cycles - t) <= sparams->result_queue_size) {
-      if (E_sys_invalid_gs == 0 || E_sys < E_sys_invalid_gs) {
-        E_sys_invalid_gs = E_sys;
-        n_invalid_gs = n;
+      if (E_sys < suggested_gs.system_energy || suggested_gs.config.empty()) {
+        suggested_gs.config = n;
+        suggested_gs.system_energy = E_sys;
+        suggested_gs.pop_likely_stable = true;
       }
     }
 
@@ -529,7 +490,7 @@ void SimAnnealThread::performHop(const int &from_ind, const int &to_ind,
 
 void SimAnnealThread::timeStep()
 {
-  Logger log(global::log_level);
+  Logger log(saglobal::log_level);
 
   // always progress annealing schedule
   t++;

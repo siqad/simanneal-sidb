@@ -12,8 +12,8 @@
 #include <iostream>
 #include <string>
 
-global::TimeKeeper *global::TimeKeeper::time_keeper=nullptr;
-int global::log_level = Logger::WRN;
+//saglobal::TimeKeeper *saglobal::TimeKeeper::time_keeper=nullptr;
+//int saglobal::log_level = Logger::WRN;
 
 using namespace phys;
 
@@ -59,7 +59,7 @@ int main(int argc, char *argv[])
     } else if (cml_args[cml_i] == "--debug") {
       // show additional debug information
       std::cout << "--debug: Showing additional outputs." << std::endl;
-      global::log_level = Logger::DBG;
+      saglobal::log_level = Logger::DBG;
     } else if (cml_args[cml_i] == "--qubo") {
       // export energy value in QUBO formulation
       std::cout << "--qubo: Using QUBO energy equation for export." << std::endl;
@@ -70,10 +70,10 @@ int main(int argc, char *argv[])
     cml_i++;
   }
 
-  Logger log(global::log_level);
+  Logger log(saglobal::log_level);
 
-  global::TimeKeeper *tk = global::TimeKeeper::instance();
-  global::Stopwatch *sw_simulation = tk->createStopwatch("Total Simulation");
+  saglobal::TimeKeeper *tk = saglobal::TimeKeeper::instance();
+  saglobal::Stopwatch *sw_simulation = tk->createStopwatch("Total Simulation");
 
   log.echo() << "In File: " << if_name << std::endl;
   log.echo() << "Out File: " << of_name << std::endl;
@@ -82,9 +82,12 @@ int main(int argc, char *argv[])
   log.echo() << "\n*** Initiate SimAnneal interface ***" << std::endl;
   SimAnnealInterface interface(if_name, of_name, ext_pots_name, ext_pots_step);
 
+  log.echo() << "\n*** Read Simulation parameters ***" << std::endl;
+  SimParams sparams = interface.loadSimParams();
+
   log.echo() << "\n*** Invoke simulation ***" << std::endl;
   sw_simulation->start();
-  interface.runSimulation();
+  interface.runSimulation(sparams);
   sw_simulation->end();
 
   log.echo() << "\n*** Write simulation results ***" << std::endl;

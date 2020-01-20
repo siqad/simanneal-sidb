@@ -5,8 +5,8 @@
 //
 // @desc:     Global functions for SimAnneal
 
-#ifndef _PHYS_GLOBAL_H_
-#define _PHYS_GLOBAL_H_
+#ifndef _SAGLOBAL_H_
+#define _SAGLOBAL_H_
 
 #include <map>
 #include <string>
@@ -18,7 +18,7 @@
 
 typedef float FPType;
 
-namespace global {
+namespace saglobal {
 
   class Stopwatch;
   class TimeKeeper;

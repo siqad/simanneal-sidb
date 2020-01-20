@@ -2,9 +2,15 @@ simanneal
 simanneal.exe
 .depend
 *.o
+*.so
+*.cxx
+__pycache__
+_skbuild
+*.egg-info
+/dist/
 build/
 bin/
-*.xml
+/*.xml
 *.swp
 
 !Makefile

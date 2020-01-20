@@ -10,7 +10,7 @@
 #include <iomanip>
 #include <sstream>
 
-using namespace global;
+using namespace saglobal;
 
 void TimeKeeper::printStopwatch(const std::string &key)
 {
@@ -39,7 +39,7 @@ void TimeKeeper::printStopwatch(const std::string &key)
   }
   ss << std::endl;
 
-  Logger log(global::log_level);
+  Logger log(saglobal::log_level);
   log.echo() << ss.str() << std::endl;
 }
 

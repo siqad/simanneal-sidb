@@ -6,19 +6,19 @@
 //
 // @desc:     Simulated annealing physics engine
 
-#ifndef _PHYS_SIM_ANNEAL_H_
-#define _PHYS_SIM_ANNEAL_H_
+#ifndef _PHYS_SIMANNEAL_H_
+#define _PHYS_SIMANNEAL_H_
 
-// #include "phys_engine.h"
 #include "global.h"
-#include "siqadconn.h"
 #include <vector>
 #include <deque>
 #include <tuple>
 #include <memory>
 #include <cmath>
+#include <mutex>
+#include <thread>
 
-#include <boost/thread.hpp>
+//#include <boost/thread.hpp>
 #include <boost/random.hpp>
 #include <boost/circular_buffer.hpp>
 #include <boost/numeric/ublas/matrix.hpp>
@@ -58,20 +58,44 @@ namespace phys {
   // Forward declaration
   class SimAnnealThread;
 
+  typedef std::pair<FPType,FPType> EuclCoord2D;
+  typedef std::vector<EuclCoord2D> DBLocs;
+
   struct SimParams
   {
+    SimParams() {};
+
+    void setDBLocs(DBLocs t_db_locs)
+    {
+      db_locs = t_db_locs;
+      if (db_locs.size() == 0) {
+        throw "There must be 1 or more DBs when setting DBs for SimParams.";
+      }
+      n_dbs = db_locs.size();
+      db_r.resize(n_dbs, n_dbs);
+      v_ij.resize(n_dbs, n_dbs);
+      v_ext.resize(n_dbs);
+    }
+
+    // variables that are affected by scaling factor (calculated at initialize)
+    FPType schedule_scale_factor=1.0;
+    int prescale_anneal_cycles=10000;
+    FPType prescale_alpha=0.999;
+    int prescale_v_freeze_cycles=4000;
+
     // runtime params
-    int num_instances;          // Number of threads to spawn
-    int result_queue_size;      // Number of results to store (per thread)
-    int hop_attempt_factor;     // total hop attempt = hop_attempt_factor * (num_occ - num_vac)
+    int num_instances=-1;         // Number of threads to spawn
+    float result_queue_factor=.1; // Number of results to store (per thread)
+    int result_queue_size;        // Number of results to store (per thread)
+    int hop_attempt_factor=5;     // total hop attempt = hop_attempt_factor * (num_occ - num_vac)
 
     // annealing params
-    int anneal_cycles;          // Total number of annealing cycles
-    int preanneal_cycles;       // Initial cycles where temperature doesn't change
-    TemperatureSchedule T_schedule;
-    FPType alpha;                // T(t) = alpha * T(t-1) + T_min
-    FPType T_init;               // Initial annealing temperature
-    FPType T_min;                // Minimum annealing temperature
+    int anneal_cycles;            // Total number of annealing cycles
+    int preanneal_cycles=0;       // Initial cycles where temperature doesn't change
+    TemperatureSchedule T_schedule=ExponentialSchedule;
+    FPType alpha;                 // T(t) = alpha * T(t-1) + T_min
+    FPType T_init=500;            // Initial annealing temperature
+    FPType T_min=2;               // Minimum annealing temperature
 
     // v_freeze params
     // v_freeze increases from the v_freeze_init value to the v_freeze_threshold
@@ -81,13 +105,13 @@ namespace phys {
     // cycles have physically valid layouts, then v_freeze stays the same for 
     // another v_freeze_cycles until the check is performed again. Otherwise, 
     // v_freeze is reset to v_freeze_init.
-    FPType v_freeze_init;        // Initial freeze-out voltage
-    FPType v_freeze_threshold;   // Final freeze-out voltage
-    FPType v_freeze_reset;       // Freeze-out voltage to reset to
+    FPType v_freeze_init=-1;     // Initial freeze-out voltage
+    FPType v_freeze_threshold=4; // Final freeze-out voltage
+    FPType v_freeze_reset=-1;    // Freeze-out voltage to reset to
     int v_freeze_cycles;        // Cycles per v_freeze_period, set to -1 to set to the same as anneal_cycles
-    int phys_validity_check_cycles;
-    bool strategic_v_freeze_reset;
-    bool reset_T_during_v_freeze_reset;
+    int phys_validity_check_cycles=10;
+    bool strategic_v_freeze_reset=true;
+    bool reset_T_during_v_freeze_reset=true;
 
     // calculated params (from annealing params)
     FPType Kc;                   // 1 / (4 pi eps)
@@ -95,28 +119,28 @@ namespace phys {
     FPType v_freeze_step;        // (v_freeze_threshold - v_freeze_init) / v_freeze_cycles
 
     // physics params
-    FPType mu;                   // Global Fermi level (eV)
-    FPType epsilon_r;            // Relative premittivity on the surface
-    FPType debye_length;         // Debye Length (nm)
-    int n_dbs;                  // Number of DBs in the simulation
+    FPType mu=-0.25;             // Global Fermi level (eV)
+    FPType epsilon_r=5.6;        // Relative premittivity on the surface
+    FPType debye_length=5.0e-9;  // Debye Length (nm)
+    int n_dbs;                   // Number of DBs in the simulation
     std::vector<std::pair<FPType,FPType>> db_locs;  // Location of DBs
     ublas::matrix<FPType> db_r;  // Matrix of distances between all DBs
     ublas::matrix<FPType> v_ij;  // Matrix of coulombic repulsion between occupied DBs
     ublas::vector<FPType> v_ext; // External potential influences
   };
 
-  // ElecChargeConfigs that are written to the shared simulation results list
-  // which is later processed for export.
-  struct ElecChargeConfigResult
+  // ChargeConfigs that are written to the shared simulation results list which 
+  // is later processed for export.
+  struct ChargeConfigResult
   {
-    ElecChargeConfigResult() {};
-    ElecChargeConfigResult(ublas::vector<int> config, bool population_possibly_stable, FPType system_energy)
-      : config(config), population_possibly_stable(population_possibly_stable), system_energy(system_energy) {};
+    ChargeConfigResult() {};
+    ChargeConfigResult(ublas::vector<int> config, bool pop_likely_stable, FPType system_energy)
+      : config(config), pop_likely_stable(pop_likely_stable), system_energy(system_energy) {};
     
     bool isResult() {return config.size() > 0;}
 
     ublas::vector<int> config;
-    bool population_possibly_stable=false;
+    bool pop_likely_stable=false;
     FPType system_energy;
   };
 
@@ -127,12 +151,12 @@ namespace phys {
   };
 
   // typedefs
-  typedef boost::circular_buffer<ElecChargeConfigResult> ThreadChargeResults;
+  typedef boost::circular_buffer<ChargeConfigResult> ThreadChargeResults;
   typedef boost::circular_buffer<FPType> ThreadEnergyResults;
   typedef std::vector<ThreadChargeResults> AllChargeResults;
   typedef std::vector<ThreadEnergyResults> AllEnergyResults;
+  typedef std::vector<ChargeConfigResult> SuggestedResults;
   typedef std::vector<double> AllCPUTimes;
-  typedef std::vector<ublas::vector<int>> AllSuggestedConfigResults;
 
   //! Controller class which spawns SimAnneal threads for actual computation.
   class SimAnneal
@@ -140,11 +164,7 @@ namespace phys {
   public:
 
     //! Constructor taking the simulation parameters.
-    SimAnneal();
-
-    //! Initialize simulation (precomputation, setup common write-out variables,
-    //! etc.
-    void initialize();
+    SimAnneal(SimParams &sparams);
 
     //! Invoke the desired number of annealers (threads) with the sim_params
     //! stored in the class.
@@ -183,12 +203,16 @@ namespace phys {
     AllCPUTimes &CPUTimeingResults() {return cpu_times;}
 
     //! Return suggested config results.
-    AllSuggestedConfigResults &suggestedConfigResults() {return suggested_config_results;}
+    SuggestedResults &suggestedConfigResults() {return suggested_gs_results;}
 
     //! Publically accessible simulation parameters
     static SimParams sim_params;
 
   private:
+
+    //! Initialize simulation (precomputation, setup common write-out variables,
+    //! etc.
+    void initialize();
 
     //! Calculate the Euclidean distance between the i th and j th DBs in the 
     //! db_locs array.
@@ -203,10 +227,10 @@ namespace phys {
         const int &to_ind);
 
     // Thread mutex for result storage
-    static boost::mutex result_store_mutex;
+    static std::mutex result_store_mutex;
 
     // Runtime variables
-    std::vector<boost::thread> anneal_threads;  //! threads spawned
+    std::vector<std::thread> anneal_threads;  //! threads spawned
 
     // Simulation variables
     static FPType db_distance_scale;     //! convert db distances to m TODO make this configurable in user settings
@@ -215,7 +239,7 @@ namespace phys {
     static AllChargeResults charge_results; // vector for storing db_charges
     static AllEnergyResults energy_results; // vector for storing config_energies
     static AllCPUTimes cpu_times;           // vector for storing time information
-    static AllSuggestedConfigResults suggested_config_results;
+    static SuggestedResults suggested_gs_results;
   };
 
   class SimAnnealThread
@@ -246,9 +270,7 @@ namespace phys {
     }
 
     // return the physically valid ground state of this thread.
-    ublas::vector<int> suggestedConfig() {
-      return n_valid_gs.empty() ? n_invalid_gs : n_valid_gs;
-    }
+    ChargeConfigResult suggestedConfig() {return suggested_gs;}
 
     int thread_id;              // the thread id of each class object
     ThreadChargeResults db_charges;       // charge configuration history
@@ -308,12 +330,14 @@ namespace phys {
     int phys_valid_count;
     int phys_invalid_count;
 
-    // keep track of the suggested config - physically valid ground state if 
-    // possible, invalid ground state otherwise. Only keeps track if 
-    ublas::vector<int> n_valid_gs;
-    ublas::vector<int> n_invalid_gs;
-    FPType E_sys_valid_gs = 0;
-    FPType E_sys_invalid_gs = 0;
+    // keep track of the suggested config - physical valid ground state 
+    // encountered by this thread.
+    ChargeConfigResult suggested_gs;
+
+    //ublas::vector<int> n_valid_gs;
+    //ublas::vector<int> n_invalid_gs;
+    //FPType E_sys_valid_gs = 0;
+    //FPType E_sys_invalid_gs = 0;
 
     FPType E_sys;                  // energy of the system
   };

@@ -1,3 +1,6 @@
+#ifndef _LOGGER_H_
+#define _LOGGER_H_
+
 #include <iostream>
 #include <ostream>
 #include <streambuf>
@@ -46,3 +49,5 @@ private:
   std::ostream &os;
   nostream nos;
 };
+
+#endif

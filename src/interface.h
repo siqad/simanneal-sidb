@@ -7,7 +7,7 @@
 //            SiQADConn as well as invokes SimAnneal instances.
 
 #include "siqadconn.h"
-#include "sim_anneal.h"
+#include "simanneal.h"
 #include <string>
 
 namespace phys {
@@ -26,10 +26,10 @@ namespace phys {
         std::string t_ext_pots_path, int t_ext_pots_step);
 
     //! Read external potentials.
-    ublas::vector<FPType> loadExternalPotentials(int n_dbs);
+    ublas::vector<FPType> loadExternalPotentials();
 
     //! Prepare simulation variables.
-    void loadSimParams();
+    SimParams loadSimParams();
 
     //! Write the simulation results to output file. The only_suggested_gs flag
     //! instructs the function to only export the single suggested ground state 
@@ -39,13 +39,13 @@ namespace phys {
 
 
     //! Run the simulation, returns 0 if simulation was successful.
-    int runSimulation();
+    int runSimulation(SimParams sparams);
 
   private:
 
     //! Convert lattice coordinates (n, m, l) to a pair of Euclidean coordinates 
     //! in angstrom.
-    std::pair<FPType, FPType> lat_coord_to_eucl(int n, int m, int l)
+    EuclCoord2D lat_coord_to_eucl(int n, int m, int l)
     {
       FPType x = n * constants::lat_a;
       FPType y = m * constants::lat_b + l * constants::lat_c;

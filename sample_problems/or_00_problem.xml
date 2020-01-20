@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<siqad>
+    <!--Program Flags-->
+    <program>
+        <file_purpose>simulation</file_purpose>
+        <version>TBD</version>
+        <date>2020-01-19 15:01:06</date>
+    </program>
+    <sim_params>
+        <T_cycle_multiplier>0.9990000128746033</T_cycle_multiplier>
+        <T_init>500</T_init>
+        <T_min>2</T_min>
+        <T_schedule>exponential</T_schedule>
+        <anneal_cycles>10000</anneal_cycles>
+        <debye_length>5</debye_length>
+        <epsilon_r>5.599999904632568</epsilon_r>
+        <global_v0>-0.25</global_v0>
+        <hop_attempt_factor>5</hop_attempt_factor>
+        <num_instances>-1</num_instances>
+        <phys_validity_check_cycles>10</phys_validity_check_cycles>
+        <preanneal_cycles>0</preanneal_cycles>
+        <reset_T_during_v_freeze_reset>true</reset_T_during_v_freeze_reset>
+        <result_queue_size>0.10000000149011612</result_queue_size>
+        <schedule_scale_factor>1</schedule_scale_factor>
+        <strategic_v_freeze_reset>true</strategic_v_freeze_reset>
+        <v_freeze_cycles>4000</v_freeze_cycles>
+        <v_freeze_init>-1</v_freeze_init>
+        <v_freeze_reset>-1</v_freeze_reset>
+        <v_freeze_threshold>4</v_freeze_threshold>
+    </sim_params>
+    <!--GUI Flags-->
+    <gui>
+        <zoom>0.1</zoom>
+        <scroll x="-775" y="-570"/>
+    </gui>
+    <!--Layer Properties-->
+    <!--Layer ID is intrinsic to the layer order-->
+    <layers>
+        <layer_prop>
+            <name>Lattice</name>
+            <type>Lattice</type>
+            <zoffset>0</zoffset>
+            <zheight>0</zheight>
+            <visible>1</visible>
+            <active>0</active>
+            <lat_vec>
+                <a1 x="3.84" y="0"/>
+                <a2 x="0" y="7.68"/>
+                <N>2</N>
+                <b1 x="0" y="0"/>
+                <b2 x="0" y="2.25"/>
+            </lat_vec>
+        </layer_prop>
+        <layer_prop>
+            <name>Misc</name>
+            <type>Misc</type>
+            <zoffset>0</zoffset>
+            <zheight>0</zheight>
+            <visible>1</visible>
+            <active>0</active>
+        </layer_prop>
+        <layer_prop>
+            <name>Surface</name>
+            <type>DB</type>
+            <zoffset>0</zoffset>
+            <zheight>0</zheight>
+            <visible>1</visible>
+            <active>0</active>
+        </layer_prop>
+        <layer_prop>
+            <name>Metal</name>
+            <type>Electrode</type>
+            <zoffset>1000</zoffset>
+            <zheight>100</zheight>
+            <visible>1</visible>
+            <active>0</active>
+        </layer_prop>
+        <layer_prop>
+            <name>AFM</name>
+            <type>AFMTip</type>
+            <zoffset>5</zoffset>
+            <zheight>0.5</zheight>
+            <visible>1</visible>
+            <active>0</active>
+        </layer_prop>
+    </layers>
+    <!--Item Hierarchy-->
+    <design>
+        <!--Lattice-->
+        <layer type="Lattice"/>
+        <!--Misc-->
+        <layer type="Misc"/>
+        <!--Surface-->
+        <layer type="DB">
+            <dbdot>
+                <layer_id>2</layer_id>
+                <latcoord n="-8" m="-4" l="0"/>
+                <physloc x="-30.72" y="-30.72"/>
+                <color>#ffc8c8c8</color>
+            </dbdot>
+            <dbdot>
+                <layer_id>2</layer_id>
+                <latcoord n="-6" m="-3" l="0"/>
+                <physloc x="-23.04" y="-23.04"/>
+                <color>#ffc8c8c8</color>
+            </dbdot>
+            <dbdot>
+                <layer_id>2</layer_id>
+                <latcoord n="-2" m="-3" l="0"/>
+                <physloc x="-7.68" y="-23.04"/>
+                <color>#ffc8c8c8</color>
+            </dbdot>
+            <dbdot>
+                <layer_id>2</layer_id>
+                <latcoord n="0" m="-4" l="0"/>
+                <physloc x="0" y="-30.72"/>
+                <color>#ffc8c8c8</color>
+            </dbdot>
+            <dbdot>
+                <layer_id>2</layer_id>
+                <latcoord n="-4" m="-1" l="0"/>
+                <physloc x="-15.36" y="-7.68"/>
+                <color>#ffc8c8c8</color>
+            </dbdot>
+            <dbdot>
+                <layer_id>2</layer_id>
+                <latcoord n="-4" m="0" l="1"/>
+                <physloc x="-15.36" y="2.25"/>
+                <color>#ffc8c8c8</color>
+            </dbdot>
+            <dbdot>
+                <layer_id>2</layer_id>
+                <latcoord n="-4" m="2" l="1"/>
+                <physloc x="-15.36" y="17.61"/>
+                <color>#ffc8c8c8</color>
+            </dbdot>
+        </layer>
+        <!--Metal-->
+        <layer type="Electrode"/>
+        <!--AFM-->
+        <layer type="AFMTip"/>
+    </design>
+</siqad>
