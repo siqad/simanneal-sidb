@@ -32,7 +32,7 @@ SimAnnealInterface::SimAnnealInterface(std::string t_in_path,
   loadSimParams();
 }
 
-ublas::vector<FPType> SimAnnealInterface::loadExternalPotentials()
+ublas::vector<FPType> SimAnnealInterface::loadExternalPotentials(const int &n_dbs)
 {
   Logger log(saglobal::log_level);
   bpt::ptree pt;
@@ -40,16 +40,17 @@ ublas::vector<FPType> SimAnnealInterface::loadExternalPotentials()
 
   const bpt::ptree &pot_steps_arr = pt.get_child("pots");
   // iterate pots array until the desired step has been reached
-  // TODO change to std::next
   if (static_cast<unsigned long>(ext_pots_step) >= pot_steps_arr.size())
     throw std::range_error("External potential step out of bounds.");
   bpt::ptree::const_iterator pots_arr_it = std::next(pot_steps_arr.begin(), 
       ext_pots_step);
 
   ublas::vector<FPType> v_ext;
+  v_ext.resize(n_dbs);
   int db_i = 0;
   for (bpt::ptree::value_type const &v : (*pots_arr_it).second) {
-    v_ext[db_i] = (v.second.get_value<FPType>()); // TODO figure out the sign
+    log.debug() << "Reading v_ext[" << db_i << "]" << std::endl;
+    v_ext[db_i] = (v.second.get_value<FPType>());
     log.debug() << "v_ext[" << db_i << "] = " << v_ext[db_i] << std::endl;
     db_i++;
   }
@@ -75,7 +76,7 @@ SimParams SimAnnealInterface::loadSimParams()
   // load external voltages if relevant file has been supplied
   if (!ext_pots_path.empty()) {
     log.debug() << "Loading external potentials..." << std::endl;
-    sp.v_ext = loadExternalPotentials();
+    sp.v_ext = loadExternalPotentials(sp.db_locs.size());
   } else {
     log.debug() << "No external potentials file supplied, set to 0." << std::endl;
     for (auto &v : sp.v_ext) {

@@ -26,7 +26,7 @@ namespace phys {
         std::string t_ext_pots_path, int t_ext_pots_step);
 
     //! Read external potentials.
-    ublas::vector<FPType> loadExternalPotentials();
+    ublas::vector<FPType> loadExternalPotentials(const int &n_dbs);
 
     //! Prepare simulation variables.
     SimParams loadSimParams();
