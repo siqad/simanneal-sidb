@@ -42,6 +42,7 @@ namespace std {
     %template(DoublePairVector) vector< pair <double, double> >;
     %template(FloatPair) pair<float, float>;
     %template(FloatPairVector) vector< pair <float, float> >;
+    %template(FloatVector) vector<float>;
     %template(IntVector) vector<int>;
     %template(IntVectorVector) vector< vector<int> >;
     %template(StringPair) pair<string, string>;
@@ -60,10 +61,21 @@ namespace std {
 %}
 
 %extend phys::SimParams {
+    
+    void phys::SimParams::pySetVExt(std::vector<float> s_vec) {
+        boost::numeric::ublas::vector<float> u_vec(s_vec.size());
+        for (unsigned int i=0; i<s_vec.size(); i++)
+            u_vec[i] = s_vec[i];
+        $self->v_ext = u_vec;
+    }
+    
     %pythoncode{
         def set_db_locs(self, db_locs):
             dbs = FloatPairVector(db_locs)
             self.setDBLocs(dbs)
+
+        def set_v_ext(self, v_ext):
+            self.pySetVExt(FloatVector(v_ext))
     }
 }
 
