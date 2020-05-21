@@ -9,16 +9,17 @@
 #include "simanneal.h"
 #include <ctime>
 #include <algorithm>
+#include <unordered_set>
 
 #include <boost/numeric/ublas/vector.hpp>
 #include <boost/numeric/ublas/io.hpp>
 
 // thread CPU time for Linux
-#include <pthread.h>
-#include <time.h>
+//#include <pthread.h>
+//#include <time.h>
 
 saglobal::TimeKeeper *saglobal::TimeKeeper::time_keeper=nullptr;
-int saglobal::log_level = Logger::DBG;
+int saglobal::log_level = Logger::WRN;
 
 using namespace phys;
 
@@ -28,12 +29,43 @@ std::mutex SimAnneal::result_store_mutex;
 FPType SimAnneal::db_distance_scale = 1E-10;
 AllChargeResults SimAnneal::charge_results;
 AllEnergyResults SimAnneal::energy_results;
-AllCPUTimes SimAnneal::cpu_times;
+//AllCPUTimes SimAnneal::cpu_times;
 SuggestedResults SimAnneal::suggested_gs_results;
 
 // alias for the commonly used sim_params static variable
 constexpr auto sparams = &SimAnneal::sim_params;
 
+
+// SimParams implementation
+
+void SimParams::setDBLocs(const std::vector<EuclCoord> &t_db_locs)
+{
+  db_locs = t_db_locs;
+  if (db_locs.size() == 0) {
+    throw "There must be 1 or more DBs when setting DBs for SimParams.";
+  }
+  n_dbs = db_locs.size();
+  db_r.resize(n_dbs, n_dbs);
+  v_ij.resize(n_dbs, n_dbs);
+  v_ext.resize(n_dbs);
+}
+
+void SimParams::setDBLocs(const std::vector<LatCoord> &t_db_locs)
+{
+  std::vector<EuclCoord> db_locs;
+  for (LatCoord lat_coord : t_db_locs) {
+    assert(lat_coord.size() == 3);
+    db_locs.push_back(latToEuclCoord(lat_coord[0], lat_coord[1], lat_coord[2]));
+  }
+  setDBLocs(db_locs);
+}
+
+EuclCoord SimParams::latToEuclCoord(const int &n, const int &m, const int &l)
+{
+  FPType x = n * constants::lat_a;
+  FPType y = m * constants::lat_b + l * constants::lat_c;
+  return std::make_pair(x, y);
+}
 
 // SimAnneal (master) Implementation
 
@@ -47,23 +79,26 @@ SimAnneal::SimAnneal(SimParams &sparams)
 void SimAnneal::invokeSimAnneal()
 {
   Logger log(saglobal::log_level);
-  log.echo() << "Setting up SimAnnealThreads..." << std::endl;
+  log.debug() << "Setting up SimAnnealThreads..." << std::endl;
 
   // spawn all the threads
   for (int i=0; i<sim_params.num_instances; i++) {
-    SimAnnealThread annealer(i);
+    boost::random_device rd;
+    std::uint64_t seed = rd();
+    seed = (seed << 32) | rd();
+    SimAnnealThread annealer(i, seed);
     std::thread th(&SimAnnealThread::run, annealer);
     anneal_threads.push_back(std::move(th));
   }
 
-  log.echo() << "Wait for simulations to complete." << std::endl;
+  log.debug() << "Wait for simulations to complete." << std::endl;
 
   // wait for threads to complete
   for (auto &th : anneal_threads) {
     th.join();
   }
 
-  log.echo() << "All simulations complete." << std::endl;
+  log.debug() << "All simulations complete." << std::endl;
 }
 
 FPType SimAnneal::systemEnergy(const ublas::vector<int> &n_in, bool qubo)
@@ -85,7 +120,7 @@ FPType SimAnneal::systemEnergy(const ublas::vector<int> &n_in, bool qubo)
   return E;
 }
 
-bool SimAnneal::populationValidity(const ublas::vector<int> &n_in)
+bool SimAnneal::isMetastable(const ublas::vector<int> &n_in)
 {
   assert(n_in.size() > 0);
   Logger log(saglobal::log_level);
@@ -93,53 +128,50 @@ bool SimAnneal::populationValidity(const ublas::vector<int> &n_in)
   const FPType &muzm = sparams->mu;
   const FPType &mupz = sparams->mu - constants::eta;
   const FPType &zero_equiv = constants::RECALC_STABILITY_ERR;
-  FPType v_i;
+
+  ublas::vector<FPType> v_local(n_in.size());
   log.debug() << "V_i and Charge State Config " << n_in << ":" << std::endl;
   for (unsigned int i=0; i<n_in.size(); i++) {
     // calculate v_i
-    v_i = - sim_params.v_ext[i];
+    v_local[i] = - sim_params.v_ext[i];
     for (unsigned int j=0; j<n_in.size(); j++) {
       if (i == j) continue;
-      v_i -= sim_params.v_ij(i,j) * n_in[j];
+      v_local[i] -= sim_params.v_ij(i,j) * n_in[j];
     }
     log.debug() << "\tDB[" << i << "]: charge state=" << n_in[i]
-      << ", V_i=" << v_i << " eV, and V_i+muzm=" << v_i + muzm << "eV" << std::endl;
+      << ", v_local[i]=" << v_local[i] << " eV, and v_local[i]+muzm=" << v_local[i] + muzm << "eV" << std::endl;
 
     // return false if invalid
-    if (!(   (n_in[i] == -1 && v_i + muzm < zero_equiv)         // DB- valid condition
-          || (n_in[i] == 1  && v_i + mupz > - zero_equiv) // DB+ valid condition
-          || (n_in[i] == 0  && v_i + muzm > - zero_equiv        // DB0 valid condition
-                            && v_i + mupz < zero_equiv))) {
+    if (!(   (n_in[i] == -1 && v_local[i] + muzm < zero_equiv)    // DB- valid condition
+          || (n_in[i] == 1  && v_local[i] + mupz > - zero_equiv)  // DB+ valid condition
+          || (n_in[i] == 0  && v_local[i] + muzm > - zero_equiv   // DB0 valid condition
+                            && v_local[i] + mupz < zero_equiv))) {
       log.debug() << "config " << n_in << " has an invalid population, failed at index " << i << std::endl;
-      log.debug() << "v_i=" << v_i << ", muzm=" << muzm << ", mupz=" << mupz << std::endl;
+      log.debug() << "v_local[i]=" << v_local[i] << ", muzm=" << muzm << ", mupz=" << mupz << std::endl;
       return false;
     }
   }
   log.debug() << "config " << n_in << " has a valid population." << std::endl;
-  return true;
-}
 
-bool SimAnneal::locallyMinimal(const ublas::vector<int> &n_in)
-{
-  assert(n_in.size() > 0);
-  Logger log(saglobal::log_level);
+  auto hopDel = [v_local, n_in](const int &i, const int &j) -> FPType {
+    int dn_i = (n_in[i]==-1) ? 1 : -1;
+    int dn_j = - dn_i;
+    return - v_local[i]*dn_i - v_local[j]*dn_j - sparams->v_ij(i,j);
+  };
 
   for (unsigned int i=0; i<n_in.size(); i++) {
-    // nothing to do with DB+ states
+    // do nothing with DB+
     if (n_in[i] == 1)
       continue;
 
-    const FPType &zero_equiv = constants::RECALC_STABILITY_ERR;
     for (unsigned int j=0; j<n_in.size(); j++) {
-      // only more negative charge states can hop to more positive ones:
-      if (n_in[i] < n_in[j]) {
-        FPType E_del = hopEnergyDelta(n_in, i, j);
-        if (E_del < -zero_equiv) {
-          log.debug() << "config " << n_in << " not stable since hopping from site "
-            << i << " to " << j << " would result in an energy change of "
-            << E_del << std::endl;
-          return false;
-        }
+      // attempt hops from more negative charge states to more positive ones
+      FPType E_del = hopDel(i, j);
+      if ((n_in[j] > n_in[i]) && (E_del < -zero_equiv)) {
+        log.debug() << "config " << n_in << " not stable since hopping from site "
+          << i << " to " << j << " would result in an energy change of "
+          << E_del << std::endl;
+        return false;
       }
     }
   }
@@ -153,15 +185,39 @@ void SimAnneal::storeResults(SimAnnealThread *annealer, int thread_id)
 
   charge_results[thread_id] = annealer->db_charges;
   energy_results[thread_id] = annealer->config_energies;
-  cpu_times[thread_id] = annealer->CPUTime();
+  //cpu_times[thread_id] = annealer->CPUTime();
 
   suggested_gs_results[thread_id] = annealer->suggestedConfig();
 
-  // TODO remove the following two lines and replace with suggested gs
-  //suggested_config_results[thread_id] = annealer->suggestedConfig();
-  //suggested_energy_results[thread_id] = annealer->suggestedEnergy();
-
   result_store_mutex.unlock();
+}
+
+SuggestedResults SimAnneal::suggestedConfigResults(bool tidy)
+{
+  SuggestedResults filtered_results;
+  if (tidy) {
+    // deduplicate and recalculate energy
+    std::unordered_set<std::string> config_set;
+    //std::map< ublas::vector<int>, ChargeConfigResult > result_map;
+    for (auto result : suggested_gs_results) {
+      if (!result.initialized) {
+        continue;
+      }
+      if (config_set.find(configToStr(result.config)) == config_set.end()) {
+        config_set.insert(configToStr(result.config));
+        if (isMetastable(result.config)) {
+          result.system_energy = systemEnergy(result.config);
+          filtered_results.push_back(result);
+        }
+      }
+    }
+  } else {
+    // return every result that has been initialized
+    for (auto result : suggested_gs_results)
+      if (result.initialized)
+        filtered_results.push_back(result);
+  }
+  return filtered_results;
 }
 
 
@@ -172,7 +228,7 @@ void SimAnneal::initialize()
   Logger log(saglobal::log_level);
   SimParams &sp = sim_params;
 
-  log.echo() << "Performing pre-calculations..." << std::endl;
+  log.debug() << "Performing pre-calculations..." << std::endl;
 
   // set default values
   if (sp.v_freeze_init < 0)
@@ -181,18 +237,12 @@ void SimAnneal::initialize()
     sp.v_freeze_reset = fabs(sp.mu);
 
   // apply schedule scaling
-  sp.anneal_cycles = sp.prescale_anneal_cycles * sp.schedule_scale_factor;
-  sp.alpha = std::pow(sp.prescale_alpha, sp.prescale_anneal_cycles / sp.anneal_cycles);
-  sp.v_freeze_cycles = sp.prescale_v_freeze_cycles * sp.schedule_scale_factor;
+  sp.alpha = std::pow(std::exp(-1.), 1./(sp.T_e_inv_point * sp.anneal_cycles));
+  sp.v_freeze_cycles = sp.v_freeze_end_point * sp.anneal_cycles;
+  sp.v_freeze_step = sp.v_freeze_threshold / sp.v_freeze_cycles;
 
-  log.debug() << "Scaling schedule by factor " << sp.schedule_scale_factor << ":" << std::endl;
-  log.debug() << "Annealing cycles from " << sp.prescale_anneal_cycles 
-    << " to " << sp.anneal_cycles << std::endl;
-  log.debug() << "Temperature multiplier (alpha) from " << sp.prescale_alpha
-    << " to " << sp.alpha << std::endl;
-  log.debug() << "Freeze-out cycles from " << sp.prescale_v_freeze_cycles
-    << " to " << sp.v_freeze_cycles << std::endl;
-  sp.v_freeze_step = ((sp.v_freeze_threshold - sp.v_freeze_init) / sp.v_freeze_cycles);
+  log.debug() << "Anneal cycles: " << sp.anneal_cycles << ", alpha: " 
+    << sp.alpha << ", v_freeze_cycles: " << sp.v_freeze_cycles << std::endl;
 
   sp.result_queue_size = sp.anneal_cycles * sp.result_queue_factor;
   sp.result_queue_size = std::min(sp.result_queue_size, sp.anneal_cycles);
@@ -208,7 +258,7 @@ void SimAnneal::initialize()
 
   // phys
   sp.kT_min = constants::Kb * sp.T_min;
-  sp.Kc = 1/(4 * constants::PI * sp.epsilon_r * constants::EPS0);
+  sp.Kc = 1/(4 * constants::PI * sp.eps_r * constants::EPS0);
 
   // inter-db distances and voltages
   for (int i=0; i<sp.n_dbs; i++) {
@@ -225,7 +275,7 @@ void SimAnneal::initialize()
     }
   }
 
-  log.echo() << "Pre-calculations complete" << std::endl << std::endl;
+  log.debug() << "Pre-calculations complete" << std::endl << std::endl;
 
   // determine number of threads to run
   if (sp.num_instances == -1) {
@@ -240,7 +290,7 @@ void SimAnneal::initialize()
 
   charge_results.resize(sp.num_instances);
   energy_results.resize(sp.num_instances);
-  cpu_times.resize(sp.num_instances);
+  //cpu_times.resize(sp.num_instances);
   suggested_gs_results.resize(sp.num_instances);
 }
 
@@ -255,7 +305,7 @@ FPType SimAnneal::distance(const int &i, const int &j)
 
 FPType SimAnneal::interElecPotential(const FPType &r)
 {
-  return constants::Q0 * sim_params.Kc * exp(-r/sim_params.debye_length) / r;
+  return constants::Q0 * sim_params.Kc * exp(-r/(sim_params.debye_length*1e-9)) / r;
 }
 
 FPType SimAnneal::hopEnergyDelta(ublas::vector<int> n_in, const int &from_ind, 
@@ -273,13 +323,9 @@ FPType SimAnneal::hopEnergyDelta(ublas::vector<int> n_in, const int &from_ind,
 
 // SimAnnealThread Implementation
 
-SimAnnealThread::SimAnnealThread(const int t_thread_id)
-  : thread_id(t_thread_id)
+SimAnnealThread::SimAnnealThread(const int t_thread_id, const std::uint64_t seed)
+  : thread_id(t_thread_id), gener(seed), dis01(0,1)
 {
-  // initialize rng
-  rng.seed(std::time(NULL)*thread_id+4065);
-  dis01 = boost::random::uniform_real_distribution<FPType>(0,1);
-
   muzm = sparams->mu;
   mupz = sparams->mu - constants::eta;
 }
@@ -415,6 +461,7 @@ void SimAnnealThread::anneal()
     // keep track of suggested ground state
     if (populationValid()) {
       if (E_sys < suggested_gs.system_energy || suggested_gs.config.empty()) {
+        suggested_gs.initialized = true;
         suggested_gs.config = n;
         suggested_gs.system_energy = E_sys;
         suggested_gs.pop_likely_stable = true;
@@ -573,14 +620,13 @@ bool SimAnnealThread::acceptHop(const FPType &v_diff)
 
 bool SimAnnealThread::evalProb(const FPType &prob)
 {
-  boost::variate_generator<boost::random::mt19937&, boost::random::uniform_real_distribution<FPType>> rnd_gen(rng, dis01);
-  return prob >= rnd_gen();
+  return prob >= dis01(gener);
 }
 
 int SimAnnealThread::randInt(const int &min, const int &max)
 {
-  boost::random::uniform_int_distribution<int> dis(min,max);
-  return dis(rng);
+  RandIntDist dis(min,max);
+  return dis(gener);
 }
 
 FPType SimAnnealThread::systemEnergy() const

@@ -20,6 +20,7 @@
 
 //#include <boost/thread.hpp>
 #include <boost/random.hpp>
+#include <boost/nondet_random.hpp>
 #include <boost/circular_buffer.hpp>
 #include <boost/numeric/ublas/matrix.hpp>
 #include <boost/numeric/ublas/matrix_proxy.hpp>
@@ -58,30 +59,24 @@ namespace phys {
   // Forward declaration
   class SimAnnealThread;
 
-  typedef std::pair<FPType,FPType> EuclCoord2D;
-  typedef std::vector<EuclCoord2D> DBLocs;
+  typedef std::pair<FPType,FPType> EuclCoord;
+  typedef std::vector<int> LatCoord;
+  //typedef std::vector<EuclCoord2D> DBLocs;
 
   struct SimParams
   {
     SimParams() {};
 
-    void setDBLocs(DBLocs t_db_locs)
-    {
-      db_locs = t_db_locs;
-      if (db_locs.size() == 0) {
-        throw "There must be 1 or more DBs when setting DBs for SimParams.";
-      }
-      n_dbs = db_locs.size();
-      db_r.resize(n_dbs, n_dbs);
-      v_ij.resize(n_dbs, n_dbs);
-      v_ext.resize(n_dbs);
-    }
+    void setDBLocs(const std::vector<EuclCoord> &);
 
-    // variables that are affected by scaling factor (calculated at initialize)
-    FPType schedule_scale_factor=1.0;
-    int prescale_anneal_cycles=10000;
-    FPType prescale_alpha=0.999;
-    int prescale_v_freeze_cycles=4000;
+    void setDBLocs(const std::vector<LatCoord> &);
+
+    static EuclCoord latToEuclCoord(const int &n, const int &m, const int &l);
+
+    // used for alpha and v_freeze_cycles calculation
+    int anneal_cycles=10000;      // Total number of annealing cycles
+    FPType T_e_inv_point=0.09995; // Where in schedule does T = 1/e * T_0
+    FPType v_freeze_end_point=0.4;// Where in schedule does v_freeze stop growing
 
     // runtime params
     int num_instances=-1;         // Number of threads to spawn
@@ -90,7 +85,6 @@ namespace phys {
     int hop_attempt_factor=5;     // total hop attempt = hop_attempt_factor * (num_occ - num_vac)
 
     // annealing params
-    int anneal_cycles;            // Total number of annealing cycles
     int preanneal_cycles=0;       // Initial cycles where temperature doesn't change
     TemperatureSchedule T_schedule=ExponentialSchedule;
     FPType alpha;                 // T(t) = alpha * T(t-1) + T_min
@@ -120,8 +114,8 @@ namespace phys {
 
     // physics params
     FPType mu=-0.25;             // Global Fermi level (eV)
-    FPType epsilon_r=5.6;        // Relative premittivity on the surface
-    FPType debye_length=5.0e-9;  // Debye Length (nm)
+    FPType eps_r=5.6;        // Relative premittivity on the surface
+    FPType debye_length=5.0;     // Debye Length (nm)
     int n_dbs;                   // Number of DBs in the simulation
     std::vector<std::pair<FPType,FPType>> db_locs;  // Location of DBs
     ublas::matrix<FPType> db_r;  // Matrix of distances between all DBs
@@ -133,14 +127,19 @@ namespace phys {
   // is later processed for export.
   struct ChargeConfigResult
   {
-    ChargeConfigResult() {};
-    ChargeConfigResult(ublas::vector<int> config, bool pop_likely_stable, FPType system_energy)
-      : config(config), pop_likely_stable(pop_likely_stable), system_energy(system_energy) {};
+    ChargeConfigResult() 
+      : initialized(false), config(ublas::vector<int>()), 
+        pop_likely_stable(false), system_energy(0) {};
+    ChargeConfigResult(ublas::vector<int> config, bool pop_likely_stable, 
+        FPType system_energy)
+      : initialized(true), config(config), pop_likely_stable(pop_likely_stable), 
+        system_energy(system_energy) {};
     
-    bool isResult() {return config.size() > 0;}
+    bool isResult() const {return config.size() > 0;}
 
+    bool initialized = false;
     ublas::vector<int> config;
-    bool pop_likely_stable=false;
+    bool pop_likely_stable;
     FPType system_energy;
   };
 
@@ -156,7 +155,7 @@ namespace phys {
   typedef std::vector<ThreadChargeResults> AllChargeResults;
   typedef std::vector<ThreadEnergyResults> AllEnergyResults;
   typedef std::vector<ChargeConfigResult> SuggestedResults;
-  typedef std::vector<double> AllCPUTimes;
+  //typedef std::vector<double> AllCPUTimes;
 
   //! Controller class which spawns SimAnneal threads for actual computation.
   class SimAnneal
@@ -173,20 +172,26 @@ namespace phys {
     //! Calculate system energy of a given configuration, must be exposed 
     //! publically such that the interface can recalculate system energy 
     //! for configurations storage.
-    //! TODO Make system energy recalculation optional.
     static FPType systemEnergy(const ublas::vector<int> &n_in, bool qubo=false);
 
-    //! Return whether the given configuration population is valid. Population
-    //! validity is evaluated based on the following criteria:
-    //! 1. occupied DBs have local energy lower than mu;
-    //! 2. unoccupied DBs have local energy higher than mu.
-    static bool populationValidity(const ublas::vector<int> &n_in);
+    //! Return whether the given configuration is metastable.
+    static bool isMetastable(const ublas::vector<int> &n_in);
 
-    //! Return whether the given configuration is locally minimal. In other 
-    //! words, whether there are lower energy states that can be accessed from a
-    //! single hopping event, even if that lower energy state itself is 
-    //! physically invalid.
-    static bool locallyMinimal(const ublas::vector<int> &n_in);
+    //! Return the charge configuration in string form.
+    static std::string configToStr(const ublas::vector<int> &n_in)
+    {
+      std::string config_str;
+      for (int chg : n_in) {
+        assert(chg >= -1 && chg <= 1);
+        switch(chg) {
+          case -1:  config_str += "-"; break;
+          case 0:   config_str += "0"; break;
+          case +1:  config_str += "+"; break;
+        }
+      }
+      return config_str;
+    }
+
 
     // ACCESSORS
 
@@ -200,10 +205,10 @@ namespace phys {
     AllEnergyResults &energyResults() {return energy_results;}
 
     //! Return CPU timing results.
-    AllCPUTimes &CPUTimeingResults() {return cpu_times;}
+    //AllCPUTimes &CPUTimeingResults() {return cpu_times;}
 
     //! Return suggested config results.
-    SuggestedResults &suggestedConfigResults() {return suggested_gs_results;}
+    SuggestedResults suggestedConfigResults(bool tidy);
 
     //! Publically accessible simulation parameters
     static SimParams sim_params;
@@ -238,7 +243,7 @@ namespace phys {
     // Write-out variables
     static AllChargeResults charge_results; // vector for storing db_charges
     static AllEnergyResults energy_results; // vector for storing config_energies
-    static AllCPUTimes cpu_times;           // vector for storing time information
+    //static AllCPUTimes cpu_times;           // vector for storing time information
     static SuggestedResults suggested_gs_results;
   };
 
@@ -246,11 +251,16 @@ namespace phys {
   {
   public:
 
+    typedef boost::random::mt19937 RandEng;
+    typedef boost::random::uniform_real_distribution<FPType> RandRealDist;
+    typedef boost::random::uniform_int_distribution<int> RandIntDist;
+    typedef boost::random::variate_generator<RandEng&, RandRealDist> RandGen;
+
     enum PopulationSchedulePhase{PopulationUpdateMode, PhysicalValidityCheckMode,
       PopulationUpdateFinished};
 
     // constructor
-    SimAnnealThread(const int t_thread_id);
+    SimAnnealThread(const int t_thread_id, const std::uint64_t seed);
 
     // destructor
     ~SimAnnealThread() {};
@@ -259,6 +269,7 @@ namespace phys {
     void run();
 
     // return the total CPU time in seconds
+    /*
     double CPUTime()
     {
       // CPU time
@@ -268,6 +279,7 @@ namespace phys {
       clock_gettime(thread_clock_id, &curr_cpu_time);
       return (double) curr_cpu_time.tv_sec + 1e-9 * curr_cpu_time.tv_nsec;
     }
+    */
 
     // return the physically valid ground state of this thread.
     ChargeConfigResult suggestedConfig() {return suggested_gs;}
@@ -312,8 +324,8 @@ namespace phys {
     // VARIABLES
 
     // boost random number generator
-    boost::random::uniform_real_distribution<FPType> dis01;
-    boost::random::mt19937 rng;
+    RandEng gener;
+    RandRealDist dis01;
 
     // keep track of stats
     ublas::vector<int> n;       // electron configuration at the current time-step
@@ -333,11 +345,6 @@ namespace phys {
     // keep track of the suggested config - physical valid ground state 
     // encountered by this thread.
     ChargeConfigResult suggested_gs;
-
-    //ublas::vector<int> n_valid_gs;
-    //ublas::vector<int> n_invalid_gs;
-    //FPType E_sys_valid_gs = 0;
-    //FPType E_sys_invalid_gs = 0;
 
     FPType E_sys;                  // energy of the system
   };

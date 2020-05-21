@@ -13,6 +13,7 @@
 %include <std_string.i>
 %include <std_map.i>
 %include <exception.i>
+%include <std_unordered_set.i>
 
 namespace boost {
     namespace numeric {
@@ -71,11 +72,23 @@ namespace std {
     
     %pythoncode{
         def set_db_locs(self, db_locs):
-            dbs = FloatPairVector(db_locs)
+            if len(db_locs[0]) == 3:
+                dbs = IntVectorVector(db_locs)
+            elif len(db_locs[0]) == 2:
+                dbs = FloatPairVector(db_locs)
+            else:
+                raise Exception('db_locs[0] must have a length of 2 or 3.')
             self.setDBLocs(dbs)
 
         def set_v_ext(self, v_ext):
             self.pySetVExt(FloatVector(v_ext))
+
+        def set_param(self, pname, pval):
+            try:
+                self.__swig_setmethods__[pname](self, pval)
+            except KeyError:
+                print(f'set_param error: {pname} is not a valid SimParams parameter.')
+                raise
     }
 }
 
@@ -84,9 +97,9 @@ namespace std {
     // Convert vector of ChargeConfigResult to a vector of pair that has been 
     // specifically defined above as ConfigVector such that SWIG knows how to 
     // generate a suitable container for the results.
-    std::vector<std::pair<std::vector<int>, float>> phys::SimAnneal::pySuggestedResults() {
+    std::vector<std::pair<std::vector<int>, float>> phys::SimAnneal::pySuggestedResults(bool tidy) {
         std::vector<std::pair<std::vector<int>, float>> out_results;
-        for (auto result : self->suggestedConfigResults()) {
+        for (auto result : self->suggestedConfigResults(tidy)) {
             std::vector<int> conf;
             for (int chg : result.config)
                 conf.push_back(chg);
@@ -99,9 +112,9 @@ namespace std {
         from collections import namedtuple
         ChargeResult = namedtuple('ChargeResult', ['config', 'energy'])
 
-        def suggested_gs_results(self):
+        def suggested_gs_results(self, tidy=True):
             configs = []
-            for conf in self.pySuggestedResults():
+            for conf in self.pySuggestedResults(tidy):
                 chg_cfg = [chg for chg in conf[0]]
                 configs.append(self.ChargeResult(chg_cfg, conf[1]))
             return configs

@@ -44,25 +44,63 @@ interpreter, bin_path, command
     <dep_path></dep_path> 
     <!-- Simulation parameters, read into SiQAD as a property map. -->
     <sim_params preserve_order="true">
+        <anneal_cycles>
+            <T>int</T>
+            <val>10000</val>
+            <label>Anneal cycles</label>
+            <tip>The number of simulated annealing cycles.</tip>
+        </anneal_cycles>
         <num_instances>
             <T>int</T>
             <val>-1</val>
             <label>Instance count</label>
             <tip>The number of SimAnneal instances used in multithreading. If left at -1, a number is automatically selected based on the DB layout.</tip>
         </num_instances>
-        <schedule_scale_factor>
+        <eps_r>
             <T>float</T>
-            <val>1</val>
-            <dp>1</dp>
-            <label>Schedule scale factor</label>
-            <tip>A scale factor to lengthen or shorten the schedule while keeping the ratio of cycle multiplier, freeze-out cycles and annealing cycles.</tip>
-        </schedule_scale_factor>
+            <val>5.6</val>
+            <dp>2</dp>
+            <label>Relative permittivity</label>
+            <tip>Surface relative permittivity.</tip>
+        </eps_r>
+        <muzm>
+            <T>float</T>
+            <val>-0.25</val>
+            <dp>2</dp>
+            <label>mu (Isolated E_{(0/-)} - E_{Fermi})</label>
+            <tip>The global Fermi level on the surface, lower value brings more electrons to the surface.</tip>
+        </muzm>
+        <debye_length>
+            <T>float</T>
+            <val>5</val>
+            <label>Debye length (nm)</label>
+            <tip>Debye length for screening.</tip>
+        </debye_length>
         <hop_attempt_factor>
             <T>int</T>
             <val>5</val>
             <label>Hop attempt factor</label>
             <tip></tip>
         </hop_attempt_factor>
+        <T_init>
+            <T>float</T>
+            <val>500</val>
+            <label>Initial temperature (K)</label>
+            <tip>Initial annealing temperature (K)</tip>
+        </T_init>
+        <T_min>
+            <T>float</T>
+            <val>2</val>
+            <label>Minimum annealing temperature (K)</label>
+            <tip>The minimum temperature at the end of the annealing schedule.</tip>
+        </T_min>
+        <T_e_inv_point>
+            <T>float</T>
+            <val>0.09995</val>
+            <dp>5</dp>
+            <label>Temperature 1/e point</label>
+            <tip>The point in the annealing schedule where temperature is reduced to 1/e * T_0.</tip>
+        </T_e_inv_point>
         <T_schedule>
             <T>string</T>
             <val>exponential</val>
@@ -70,16 +108,9 @@ interpreter, bin_path, command
             <tip>Annealing temperature schedule.</tip>
             <value_selection type="ComboBox">
                 <exponential>Exponential</exponential>
-                <linear>Linear</linear>
+                <!--<linear>Linear</linear>-->
             </value_selection>
         </T_schedule>
-        <T_cycle_multiplier>
-            <T>float</T>
-            <val>0.999</val>
-            <dp>3</dp>
-            <label>Temperature cycle multiplier</label>
-            <tip>Exponential: T(t) = alpha * T(t-1) + T_min\nLinear: T(t) = T_init - alpha * t</tip>
-        </T_cycle_multiplier>
         <v_freeze_init>
             <T>float</T>
             <val>-1</val>
@@ -101,12 +132,13 @@ interpreter, bin_path, command
             <label>Reset V_freeze</label>
             <tip>The freeze-out voltage to reset to if strategic reset occurs.</tip>
         </v_freeze_reset>
-        <v_freeze_cycles>
-            <T>int</T>
-            <val>4000</val>
+        <v_freeze_end_point>
+            <T>float</T>
+            <val>0.4</val>
+            <dp>2</dp>
             <label>V_freeze cycles</label>
             <tip>Number of cycles in a period of V_freeze.</tip>
-        </v_freeze_cycles>
+        </v_freeze_end_point>
         <phys_validity_check_cycles>
             <T>int</T>
             <val>10</val>
@@ -131,52 +163,16 @@ interpreter, bin_path, command
             <T>float</T>
             <val>0.1</val>
             <dp>1</dp>
-            <label>Result queue size (relative to anneal cycles)</label>
+            <label>Result queue size</label>
             <tip>The number of results to retrieve from SimAnneal (anneal_cycles * result_queue_size).</tip>
         </result_queue_size>
-        <anneal_cycles>
-            <T>int</T>
-            <val>10000</val>
-            <label>Anneal cycles</label>
-            <tip>The number of simulated annealing cycles.</tip>
-        </anneal_cycles>
+        <!--
         <preanneal_cycles>
             <T>int</T>
             <val>0</val>
             <label>Preanneal cycles</label>
             <tip>Number of cycles in the beginning when the temperature doesn't change.</tip>
         </preanneal_cycles>
-        <T_init>
-            <T>float</T>
-            <val>500</val>
-            <label>Initial temperature (K)</label>
-            <tip>Initial annealing temperature (K)</tip>
-        </T_init>
-        <T_min>
-            <T>float</T>
-            <val>2</val>
-            <label>Minimum annealing temperature (K)</label>
-            <tip>The minimum temperature at the end of the annealing schedule.</tip>
-        </T_min>
-        <epsilon_r>
-            <T>float</T>
-            <val>5.6</val>
-            <dp>2</dp>
-            <label>Relative permittivity</label>
-            <tip>Surface relative permittivity. Original default was 6.35, changed to 5.6 after Huff's fitting in the paper Binary Atomic Silicon Logic on Nature Electronics.</tip>
-        </epsilon_r>
-        <global_v0>
-            <T>float</T>
-            <val>-0.25</val>
-            <dp>2</dp>
-            <label>mu (0/- transition level - Fermi level)</label>
-            <tip>The global Fermi level on the surface, higher value brings more electrons to the surface.</tip>
-        </global_v0>
-        <debye_length>
-            <T>float</T>
-            <val>5</val>
-            <label>Debye length (nm)</label>
-            <tip>Debye length for screening.</tip>
-        </debye_length>
+        -->
     </sim_params>
 </physeng>

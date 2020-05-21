@@ -14,8 +14,6 @@ namespace phys {
 
   namespace bpt = boost::property_tree;
 
-  class helper;
-
   class SimAnnealInterface
   {
   public:
@@ -24,6 +22,8 @@ namespace phys {
     //! SiQADConn.
     SimAnnealInterface(std::string t_in_path, std::string t_out_path, 
         std::string t_ext_pots_path, int t_ext_pots_step);
+
+    ~SimAnnealInterface();
 
     //! Read external potentials.
     ublas::vector<FPType> loadExternalPotentials(const int &n_dbs);
@@ -43,18 +43,9 @@ namespace phys {
 
   private:
 
-    //! Convert lattice coordinates (n, m, l) to a pair of Euclidean coordinates 
-    //! in angstrom.
-    EuclCoord2D lat_coord_to_eucl(int n, int m, int l)
-    {
-      FPType x = n * constants::lat_a;
-      FPType y = m * constants::lat_b + l * constants::lat_c;
-      return std::make_pair(x, y);
-    }
-
     // Instances
     SiQADConnector *sqconn=nullptr;
-    SimAnneal *annealer=nullptr;
+    SimAnneal *master_annealer=nullptr;
 
     // variables
     std::string in_path;
@@ -62,19 +53,5 @@ namespace phys {
     std::string ext_pots_path;
     int ext_pots_step;
 
-  };
-
-  class helper {
-    template <typename T = std::string> 
-    T element_at_checked(bpt::ptree const& pt, std::string name, size_t n) {
-        auto r = pt.get_child(name).equal_range("");
-
-        for (; r.first != r.second && n; --n) ++r.first;
-
-        if (n || r.first==r.second)
-            throw std::range_error("index out of bounds");
-
-        return r.first->second.get_value<T>();
-    }
   };
 }

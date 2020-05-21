@@ -4,26 +4,24 @@
     <program>
         <file_purpose>simulation</file_purpose>
         <version>TBD</version>
-        <date>2020-01-19 15:01:06</date>
+        <date>2020-01-27 23:38:54</date>
     </program>
     <sim_params>
-        <T_cycle_multiplier>0.9990000128746033</T_cycle_multiplier>
+        <T_e_inv_point>0.09995</T_e_inv_point>
         <T_init>500</T_init>
         <T_min>2</T_min>
         <T_schedule>exponential</T_schedule>
         <anneal_cycles>10000</anneal_cycles>
         <debye_length>5</debye_length>
-        <epsilon_r>5.599999904632568</epsilon_r>
-        <global_v0>-0.25</global_v0>
+        <eps_r>5.6</eps_r>
         <hop_attempt_factor>5</hop_attempt_factor>
-        <num_instances>-1</num_instances>
+        <muzm>-0.28</muzm>
+        <num_instances>1</num_instances>
         <phys_validity_check_cycles>10</phys_validity_check_cycles>
-        <preanneal_cycles>0</preanneal_cycles>
-        <reset_T_during_v_freeze_reset>true</reset_T_during_v_freeze_reset>
-        <result_queue_size>0.10000000149011612</result_queue_size>
-        <schedule_scale_factor>1</schedule_scale_factor>
-        <strategic_v_freeze_reset>true</strategic_v_freeze_reset>
-        <v_freeze_cycles>4000</v_freeze_cycles>
+        <reset_T_during_v_freeze_reset>false</reset_T_during_v_freeze_reset>
+        <result_queue_size>0.1</result_queue_size>
+        <strategic_v_freeze_reset>false</strategic_v_freeze_reset>
+        <v_freeze_end_point>0.4</v_freeze_end_point>
         <v_freeze_init>-1</v_freeze_init>
         <v_freeze_reset>-1</v_freeze_reset>
         <v_freeze_threshold>4</v_freeze_threshold>
@@ -31,7 +29,7 @@
     <!--GUI Flags-->
     <gui>
         <zoom>0.1</zoom>
-        <scroll x="-775" y="-570"/>
+        <scroll x="-751" y="-570"/>
     </gui>
     <!--Layer Properties-->
     <!--Layer ID is intrinsic to the layer order-->
@@ -94,44 +92,44 @@
         <layer type="DB">
             <dbdot>
                 <layer_id>2</layer_id>
-                <latcoord n="-8" m="-4" l="0"/>
-                <physloc x="-30.72" y="-30.72"/>
+                <latcoord n="-5" m="-2" l="0"/>
+                <physloc x="-19.2" y="-15.36"/>
                 <color>#ffc8c8c8</color>
             </dbdot>
             <dbdot>
                 <layer_id>2</layer_id>
-                <latcoord n="-6" m="-3" l="0"/>
-                <physloc x="-23.04" y="-23.04"/>
+                <latcoord n="-3" m="-1" l="0"/>
+                <physloc x="-11.52" y="-7.68"/>
                 <color>#ffc8c8c8</color>
             </dbdot>
             <dbdot>
                 <layer_id>2</layer_id>
-                <latcoord n="-2" m="-3" l="0"/>
-                <physloc x="-7.68" y="-23.04"/>
+                <latcoord n="1" m="-1" l="0"/>
+                <physloc x="3.84" y="-7.68"/>
                 <color>#ffc8c8c8</color>
             </dbdot>
             <dbdot>
                 <layer_id>2</layer_id>
-                <latcoord n="0" m="-4" l="0"/>
-                <physloc x="0" y="-30.72"/>
+                <latcoord n="3" m="-2" l="0"/>
+                <physloc x="11.52" y="-15.36"/>
                 <color>#ffc8c8c8</color>
             </dbdot>
             <dbdot>
                 <layer_id>2</layer_id>
-                <latcoord n="-4" m="-1" l="0"/>
-                <physloc x="-15.36" y="-7.68"/>
+                <latcoord n="-1" m="1" l="0"/>
+                <physloc x="-3.84" y="7.68"/>
                 <color>#ffc8c8c8</color>
             </dbdot>
             <dbdot>
                 <layer_id>2</layer_id>
-                <latcoord n="-4" m="0" l="1"/>
-                <physloc x="-15.36" y="2.25"/>
+                <latcoord n="-1" m="2" l="1"/>
+                <physloc x="-3.84" y="17.61"/>
                 <color>#ffc8c8c8</color>
             </dbdot>
             <dbdot>
                 <layer_id>2</layer_id>
-                <latcoord n="-4" m="2" l="1"/>
-                <physloc x="-15.36" y="17.61"/>
+                <latcoord n="-1" m="4" l="1"/>
+                <physloc x="-3.84" y="32.97"/>
                 <color>#ffc8c8c8</color>
             </dbdot>
         </layer>

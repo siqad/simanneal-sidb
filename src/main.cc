@@ -60,10 +60,12 @@ int main(int argc, char *argv[])
       // show additional debug information
       std::cout << "--debug: Showing additional outputs." << std::endl;
       saglobal::log_level = Logger::DBG;
+    /* NOTE: current QUBO implementation is incomplete
     } else if (cml_args[cml_i] == "--qubo") {
       // export energy value in QUBO formulation
       std::cout << "--qubo: Using QUBO energy equation for export." << std::endl;
       qubo_energy = true;
+    */
     } else {
       throw "Unrecognized command-line argument: " + cml_args[cml_i];
     }
@@ -96,5 +98,6 @@ int main(int argc, char *argv[])
   log.echo() << "\n*** SimAnneal Complete ***" << std::endl;
 
   tk->printAllStopwatches();
+
   delete tk;
 }

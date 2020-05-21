@@ -5,7 +5,11 @@ cmake_minimum_required(VERSION 3.10)
 project(simanneal CXX)
 # TODO add way to push version number into source code
 
-find_package(Boost COMPONENTS system filesystem thread REQUIRED)
+#find_package(Boost COMPONENTS random REQUIRED)
+if (WIN32)
+    set(Boost_USE_STATIC_LIBS ON)
+endif()
+find_package(Boost COMPONENTS random REQUIRED)
 find_package(Threads REQUIRED)
 
 #add_definitions( -DAPP_VERSION=\"0.1.0\" -DAPPLICATION_NAME=\"SiQAD\" -DORGANIZATION_NAME=\"WalusLab\" )
