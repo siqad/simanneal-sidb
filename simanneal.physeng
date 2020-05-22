@@ -73,8 +73,8 @@ interpreter, bin_path, command
         <debye_length>
             <T>float</T>
             <val>5</val>
-            <label>Debye length (nm)</label>
-            <tip>Debye length for screening.</tip>
+            <label>Screening distance (nm)</label>
+            <tip>Thomas-Fermi screening distance.</tip>
         </debye_length>
         <hop_attempt_factor>
             <T>int</T>
@@ -91,7 +91,7 @@ interpreter, bin_path, command
         <T_min>
             <T>float</T>
             <val>2</val>
-            <label>Minimum annealing temperature (K)</label>
+            <label>Minimum temperature (K)</label>
             <tip>The minimum temperature at the end of the annealing schedule.</tip>
         </T_min>
         <T_e_inv_point>
@@ -115,14 +115,14 @@ interpreter, bin_path, command
             <T>float</T>
             <val>-1</val>
             <dp>1</dp>
-            <label>Initial V_freeze</label>
+            <label>Initial V_freeze (eV)</label>
             <tip>The initial freeze-out voltage for population update, set to -1 for auto (mu/2).</tip>
         </v_freeze_init>
         <v_freeze_threshold>
             <T>float</T>
             <val>4</val>
             <dp>1</dp>
-            <label>Maximum V_freeze</label>
+            <label>Maximum V_freeze (eV)</label>
             <tip>The maximum freeze-out voltage. Dependent on mu but by V_freeze=0.5 the chance of population update is already neglegibly small.</tip>
         </v_freeze_threshold>
         <v_freeze_reset>
@@ -147,14 +147,14 @@ interpreter, bin_path, command
         </phys_validity_check_cycles>
         <strategic_v_freeze_reset>
             <T>bool</T>
-            <val>1</val>
+            <val>0</val>
             <label>Strategically reset V_freeze</label>
             <tip>Strategically reset V_freeze if a majority of the results at the end of V_freeze cycle are invalid.</tip>
             <value_selection type="CheckBox"></value_selection>
         </strategic_v_freeze_reset>
         <reset_T_during_v_freeze_reset>
             <T>bool</T>
-            <val>1</val>
+            <val>0</val>
             <label>Reset temperature as well</label>
             <tip>Reset temperature as well when strategically resetting V_freeze.</tip>
             <value_selection type="CheckBox"></value_selection>
