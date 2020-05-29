@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
 
+cmake_policy(SET CMP0074 NEW)
+
 # for release builds, add flag "-DCMAKE_BUILD_TYPE=Release" (without quotes) when running cmake.
 
 project(simanneal CXX)
