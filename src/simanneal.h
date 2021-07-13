@@ -104,8 +104,8 @@ namespace phys {
     FPType v_freeze_reset=-1;    // Freeze-out voltage to reset to
     int v_freeze_cycles;        // Cycles per v_freeze_period, set to -1 to set to the same as anneal_cycles
     int phys_validity_check_cycles=10;
-    bool strategic_v_freeze_reset=true;
-    bool reset_T_during_v_freeze_reset=true;
+    bool strategic_v_freeze_reset=false;
+    bool reset_T_during_v_freeze_reset=false;
 
     // calculated params (from annealing params)
     FPType Kc;                   // 1 / (4 pi eps)

@@ -280,9 +280,9 @@ void SimAnneal::initialize()
   // determine number of threads to run
   if (sp.num_instances == -1) {
     if (sp.n_dbs <= 9) {
-      sp.num_instances = 8;
-    } else if (sp.n_dbs <= 25) {
       sp.num_instances = 16;
+    } else if (sp.n_dbs <= 25) {
+      sp.num_instances = 32;
     } else {
       sp.num_instances = 128;
     }
