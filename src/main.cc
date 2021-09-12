@@ -85,7 +85,7 @@ int main(int argc, char *argv[])
   SimAnnealInterface interface(if_name, of_name, ext_pots_name, ext_pots_step);
 
   log.echo() << "\n*** Read Simulation parameters ***" << std::endl;
-  SimParams sparams = interface.loadSimParams();
+  SimParamsCuda sparams = interface.loadSimParams();
 
   log.echo() << "\n*** Invoke simulation ***" << std::endl;
   sw_simulation->start();

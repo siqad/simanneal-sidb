@@ -110,7 +110,24 @@ namespace phys {
     //! Return whether the given configuration is metastable.
     static bool isMetastable(const ublas::vector<int> &n_in);
 
+    //! Return the charge configuration in string form.
+    static std::string configToStr(const ublas::vector<int> &n_in)
+    {
+      std::string config_str;
+      for (int chg : n_in) {
+        assert(chg >= -1 && chg <= 1);
+        switch(chg) {
+          case -1:  config_str += "-"; break;
+          case 0:   config_str += "0"; break;
+          case +1:  config_str += "+"; break;
+        }
+      }
+      return config_str;
+    }
+
     static SimParamsCuda sim_params;
+
+    const std::vector<ublas::vector<int>> &receivedResults() {return received_results;}
 
   private:
 
@@ -131,7 +148,7 @@ namespace phys {
 
     // variables
     static FPType db_distance_scale;     //! convert db distances to m TODO make this configurable in user settings
-    std::vector<std::vector<int>> received_results;
+    std::vector<ublas::vector<int>> received_results;
   };
 
   class TestAdd {

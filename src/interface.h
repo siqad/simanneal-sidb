@@ -7,7 +7,7 @@
 //            SiQADConn as well as invokes SimAnneal instances.
 
 #include "siqadconn.h"
-#include "simanneal.h"
+#include "simanneal_cuda.h"
 #include <string>
 
 namespace phys {
@@ -29,7 +29,7 @@ namespace phys {
     ublas::vector<FPType> loadExternalPotentials(const int &n_dbs);
 
     //! Prepare simulation variables.
-    SimParams loadSimParams();
+    SimParamsCuda loadSimParams();
 
     //! Write the simulation results to output file. The only_suggested_gs flag
     //! instructs the function to only export the single suggested ground state 
@@ -39,13 +39,13 @@ namespace phys {
 
 
     //! Run the simulation, returns 0 if simulation was successful.
-    int runSimulation(SimParams sparams);
+    int runSimulation(SimParamsCuda &sparams);
 
   private:
 
     // Instances
     SiQADConnector *sqconn=nullptr;
-    SimAnneal *master_annealer=nullptr;
+    SimAnnealCuda *master_annealer=nullptr;
 
     // variables
     std::string in_path;

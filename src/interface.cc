@@ -63,17 +63,17 @@ ublas::vector<FPType> SimAnnealInterface::loadExternalPotentials(const int &n_db
   return v_ext;
 }
 
-SimParams SimAnnealInterface::loadSimParams()
+SimParamsCuda SimAnnealInterface::loadSimParams()
 {
   Logger log(saglobal::log_level);
 
-  SimParams sp;
+  SimParamsCuda sp;
 
   // grab all physical locations
   log.debug() << "Grab all physical locations..." << std::endl;
   std::vector<EuclCoord> db_locs;
   for(auto db : *(sqconn->dbCollection())) {
-    db_locs.push_back(SimParams::latToEuclCoord(db->n, db->m, db->l));
+    db_locs.push_back(SimParamsCuda::latToEuclCoord(db->n, db->m, db->l));
     log.debug() << "DB loc: x=" << db_locs.back().first
         << ", y=" << db_locs.back().second << std::endl;
   }
@@ -136,10 +136,10 @@ SimParams SimAnnealInterface::loadSimParams()
 void SimAnnealInterface::writeSimResults(bool only_suggested_gs, bool qubo_energy)
 {
   // create the vector of strings for the db locations
-  std::vector<std::pair<std::string, std::string>> dbl_data(SimAnneal::sim_params.db_locs.size());
-  for (unsigned int i = 0; i < SimAnneal::sim_params.db_locs.size(); i++) { //need the index
-    dbl_data[i].first = std::to_string(SimAnneal::sim_params.db_locs[i].first);
-    dbl_data[i].second = std::to_string(SimAnneal::sim_params.db_locs[i].second);
+  std::vector<std::pair<std::string, std::string>> dbl_data(SimAnnealCuda::sim_params.db_locs.size());
+  for (unsigned int i = 0; i < SimAnnealCuda::sim_params.db_locs.size(); i++) { //need the index
+    dbl_data[i].first = std::to_string(SimAnnealCuda::sim_params.db_locs[i].first);
+    dbl_data[i].second = std::to_string(SimAnnealCuda::sim_params.db_locs[i].second);
   }
   sqconn->setExport("db_loc", dbl_data);
 
@@ -157,13 +157,37 @@ void SimAnnealInterface::writeSimResults(bool only_suggested_gs, bool qubo_energ
 
   // process result and insert to result map
   auto process_result = [&elec_result_map, qubo_energy](
+    const ublas::vector<int> &n
+  ) {
+    std::string n_str = SimAnnealCuda::configToStr(n);
+    ExportElecConfigResult export_result;
+    export_result.config = n;
+
+    // attempt insertion
+    std::pair<ElecResultMapType::iterator,bool> insert_result;
+    insert_result = elec_result_map.insert({n_str, export_result});
+
+    if (!insert_result.second) {
+      // result already exists, increment counter
+      insert_result.first->second.occ_count++;
+    } else {
+      // new result, calculate the rest of the properties
+      ExportElecConfigResult &result = insert_result.first->second;
+      result.is_metastable = SimAnnealCuda::isMetastable(n);
+      result.system_energy = SimAnnealCuda::systemEnergy(n, qubo_energy);
+      result.occ_count = 1;
+    }
+  };
+
+  /*
+  auto process_result = [&elec_result_map, qubo_energy](
       const ChargeConfigResult &elec_result)
   {
     if (!elec_result.isResult())
       return;
 
     // prepare key and val for insertion
-    std::string elec_result_str = SimAnneal::configToStr(elec_result.config);
+    std::string elec_result_str = SimAnnealCuda::configToStr(elec_result.config);
     ExportElecConfigResult export_result;
     export_result.config = elec_result.config;
 
@@ -178,14 +202,20 @@ void SimAnnealInterface::writeSimResults(bool only_suggested_gs, bool qubo_energ
       // if insertion succeeds, calculate the rest of the properties
       ExportElecConfigResult &result = insert_result.first->second;
       result.is_metastable = elec_result.pop_likely_stable ? 
-        SimAnneal::isMetastable(result.config) : false;
+        SimAnnealCuda::isMetastable(result.config) : false;
       // recalculate the energy for each configuration to get better accuracy
-      result.system_energy = SimAnneal::systemEnergy(result.config, qubo_energy);
+      result.system_energy = SimAnnealCuda::systemEnergy(result.config, qubo_energy);
       result.occ_count = 1;
     }
   };
+  */
 
   // iterate through results depending on command line arguments
+  for (const ublas::vector<int> &n : master_annealer->receivedResults()) {
+    process_result(n);
+  }
+
+  /*
   if (only_suggested_gs) {
     for (ChargeConfigResult result : master_annealer->suggestedConfigResults(false)) {
       process_result(result);
@@ -197,6 +227,7 @@ void SimAnnealInterface::writeSimResults(bool only_suggested_gs, bool qubo_energ
       }
     }
   }
+  */
 
   std::vector<std::vector<std::string>> db_dist_data;
   auto result_it = elec_result_map.cbegin();
@@ -212,23 +243,12 @@ void SimAnnealInterface::writeSimResults(bool only_suggested_gs, bool qubo_energ
   }
   sqconn->setExport("db_charge", db_dist_data);
 
-  // export misc thread timing data
-  /*
-  unsigned int t_count = master_annealer->CPUTimeingResults().size();
-  std::vector<std::pair<std::string, std::string>> misc_data(t_count);
-  for (unsigned int i=0; i<t_count; i++) {
-    misc_data[i] = std::make_pair("time_s_cpu"+std::to_string(i), 
-                                  std::to_string(master_annealer->CPUTimeingResults().at(i)));
-  }
-  sqconn->setExport("misc", misc_data);
-  */
-
   sqconn->writeResultsXml();
 }
 
-int SimAnnealInterface::runSimulation(SimParams sparams)
+int SimAnnealInterface::runSimulation(SimParamsCuda &sparams)
 {
-  master_annealer = new SimAnneal(sparams);
-  master_annealer->invokeSimAnneal();
+  master_annealer = new SimAnnealCuda(sparams);
+  master_annealer->invoke();
   return 0;
 }

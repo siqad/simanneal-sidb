@@ -45,8 +45,13 @@ include_directories(
 
 # shared source files
 set(SOURCES
+    src/main.cc
+    src/interface.cc 
     src/simanneal_cuda.cu
     src/global.cc
+    src/siqadconn.cc
+    #src/simanneal_cuda.cu
+    #src/global.cc
 )
 
 if(SKBUILD)
