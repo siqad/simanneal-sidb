@@ -8,11 +8,8 @@
 #include <cuda_runtime.h>
 #include <cublas_v2.h>  // TODO might not use this one
 #include <curand_kernel.h>
-//#include <cutlass/numeric_types.h>
-//#include <cutlass/gemm/kernel/gemm.h>
 #include "constants.h"
 #include "phys_model.cu"
-//#include "gemm.cu"
 
 // GLOBAL VARS
 
@@ -40,15 +37,6 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
       if (abort) exit(code);
    }
 }
-
-/**
- * cuBLAS error checking.
- */
-#define cublasCheckErrors(cublas_status) \
-  if (cublas_status != CUBLAS_STATUS_SUCCESS) { \
-    printf("Fatal cuBLAS error: %d (at %s, %d)\n", (int)(cublas_status), \
-        __FILE__, __LINE__); \
-  }
 
 /**
  * Only include code if debug build.
@@ -109,19 +97,6 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
 // FUNCTIONS
 
 /**
- * Minimal add function for testing. TODO remove when done.
- */
-__global__ void add(int n, float *x, float *y)
-{
-  int index = blockIdx.x * blockDim.x + threadIdx.x;
-  int stride = blockDim.x * gridDim.x;
-  for (int i = index; i < n; i += stride) {
-    y[i] = x[i] + y[i];
-    //y[i] = x[i] + y[i];
-  }
-}
-
-/**
  * Generate a random integer in range [0, cap) and write to output pointer.
  * Note that cuRAND generates a float in range (0,1].
  * @param curand_state the cuRAND handle.
@@ -145,81 +120,6 @@ __device__ void evalProb(curandState *curand_state, float prob, bool *result)
   float rand = curand_uniform(curand_state);
   *result = rand < prob;
   //return curand_uniform(curand_state) < prob;
-}
-
-/**
- * Test math operations
- */
-__global__ void testMath()
-{
-  int t_id = blockIdx.x * blockDim.x + threadIdx.x;
-
-  // test matrix multiplication
-  __shared__ int r_dim_1;
-  __shared__ int c_dim_1;
-  __shared__ float *m1, *m2, *v1, *v2, *out, *mv_out, *vv_out;
-  __shared__ float *temp_arr;
-  if (t_id == 0) {
-    //cudaMalloc(&m1, in_arr_size * sizeof(float));
-    r_dim_1 = 3;
-    c_dim_1 = 3;
-    int in_arr_size = r_dim_1 * c_dim_1;
-    m1 = new float[in_arr_size];
-    m2 = new float[in_arr_size];
-    v1 = new float[r_dim_1];
-    v2 = new float[r_dim_1];
-    out = new float[r_dim_1*r_dim_1];
-    mv_out = new float[r_dim_1];
-    vv_out = new float;
-    temp_arr = new float[r_dim_1];
-    m1[IDX2C(0, 0, c_dim_1)] = 1;
-    m1[IDX2C(0, 1, c_dim_1)] = 2;
-    m1[IDX2C(0, 2, c_dim_1)] = 3;
-    m1[IDX2C(1, 0, c_dim_1)] = 4;
-    m1[IDX2C(1, 1, c_dim_1)] = 5;
-    m1[IDX2C(1, 2, c_dim_1)] = 6;
-    m1[IDX2C(2, 0, c_dim_1)] = 7;
-    m1[IDX2C(2, 1, c_dim_1)] = 8;
-    m1[IDX2C(2, 2, c_dim_1)] = 9;
-    m2[IDX2C(0, 0, c_dim_1)] = 1;
-    m2[IDX2C(0, 1, c_dim_1)] = 2;
-    m2[IDX2C(0, 2, c_dim_1)] = 3;
-    m2[IDX2C(1, 0, c_dim_1)] = 4;
-    m2[IDX2C(1, 1, c_dim_1)] = 5;
-    m2[IDX2C(1, 2, c_dim_1)] = 6;
-    m2[IDX2C(2, 0, c_dim_1)] = 7;
-    m2[IDX2C(2, 1, c_dim_1)] = 8;
-    m2[IDX2C(2, 2, c_dim_1)] = 9;
-    print2DArrayFloat("m1", m1, r_dim_1);
-    print2DArrayFloat("m2", m2, r_dim_1);
-    v1[0] = 3;
-    v1[1] = 6;
-    v1[2] = 9;
-    v2[0] = 2;
-    v2[1] = 4;
-    v2[2] = 6;
-  }
-  __syncthreads();
-  mmProd2D(m1, m2, out, r_dim_1, c_dim_1);
-  __syncthreads();
-  if (t_id == 0) {
-    print2DArrayFloat("out", out, r_dim_1);
-  }
-  mvProd(m1, v1, mv_out, r_dim_1, c_dim_1);
-  __syncthreads();
-  if (t_id == 0) {
-    printf("mv_out = [%f, %f, %f]\n", mv_out[0], mv_out[1], mv_out[2]);
-  }
-  vvInnerProdOfMatrixExtractedArrays(m1, m2, vv_out, 1, r_dim_1, c_dim_1, temp_arr);
-  __syncthreads();
-  if (t_id == 0) {
-    printf("vv_out = %f\n", *vv_out);
-  }
-  vvInnerProd(v1, v2, vv_out, r_dim_1, temp_arr);
-  __syncthreads();
-  if (t_id == 0) {
-    printf("vv_out_2 = %f\n", *vv_out);
-  }
 }
 
 /**
@@ -315,42 +215,17 @@ __device__ void chooseHopIndices(int *dbm_occ, int *db0_occ, int *dbp_occ,
                                  int *to_occ_ind, int *from_db_ind,
                                  int *to_db_ind, curandState *curand_state)
 {
-  int t_id = blockIdx.x * blockDim.x + threadIdx.x;
-  int stride = blockDim.x * gridDim.x;
-
-  // only need threads 0 and 1 to generate from and to indices
-  if (t_id >= 2) {
-    return;
+  *from_occ_ind = randInt(curand_state, dbm_count + dbp_count);
+  if (*from_occ_ind < dbm_count) {
+    *from_state = -1;
+    *from_db_ind = dbm_occ[*from_occ_ind];
+  } else {
+    *from_state = 1;
+    *from_occ_ind -= dbm_count;
+    *from_db_ind = dbp_occ[*from_occ_ind];
   }
-
-  int cap;
-  for (int i=t_id; i<2; i+=stride) {
-    if (i == 0) {
-      // from index
-      cap = dbm_count + dbp_count;
-    } else {
-      // to index
-      cap = db0_count;
-    }
-    int hop_ind = randInt(curand_state, cap);
-
-    if (i == 0) {
-      // set from index
-      if (hop_ind < dbm_count) {
-        *from_state = -1;
-        *from_occ_ind = hop_ind;
-        *from_db_ind = dbm_occ[*from_occ_ind];
-      } else {
-        *from_state = 1;
-        *from_occ_ind = hop_ind - dbm_count;
-        *from_db_ind = dbp_occ[*from_occ_ind];
-      }
-    } else {
-      // set to index
-      *to_occ_ind = hop_ind;
-      *to_db_ind = db0_occ[hop_ind];
-    }
-  }
+  *to_occ_ind = randInt(curand_state, db0_count);
+  *to_db_ind = db0_occ[*to_occ_ind];
 }
 
 /**
@@ -369,13 +244,9 @@ __device__ void calcHopEnergyDelta(TCharge *n, int n_dbs, int *from_state,
                                    TFloat *v_local, TFloat *v_ij, TFloat *E_delta)
 {
   int t_id = blockIdx.x * blockDim.x + threadIdx.x;
-  if (t_id != 0) {
-    return;
-  }
-
   int dn_i = - *from_state;
   int dn_j = *from_state;
-  *E_delta = -v_local[*from_db_ind] * dn_i - v_local[*to_db_ind] * dn_j - v_ij[IDX2C(*from_db_ind, *to_db_ind, n_dbs)];
+  E_delta[t_id] = -v_local[*from_db_ind] * dn_i - v_local[*to_db_ind] * dn_j - v_ij[IDX2C(*from_db_ind, *to_db_ind, n_dbs)];
 }
 
 /**
@@ -389,14 +260,11 @@ template <typename TFloat>
 __device__ void acceptHop(TFloat *E_delta, TFloat *kT, bool *accept, curandState *curand_state)
 {
   int t_id = blockIdx.x * blockDim.x + threadIdx.x;
-  if (t_id != 0) {
-    return;
-  }
 
-  if (*E_delta < 0) {
+  if (E_delta[t_id] < 0) {
     *accept = true;
   } else {
-    TFloat prob = exp(-(*E_delta) / (*kT));
+    TFloat prob = exp(-(E_delta[t_id]) / (*kT));
     //*accept = evalProb(curand_state, prob);
     evalProb(curand_state, prob, accept);
   }
@@ -420,15 +288,11 @@ __device__ void performHopUpdates(TCharge *n, int n_dbs, int *from_state,
                                   TFloat *v_local, TFloat *v_ij)
 {
   int t_id = blockIdx.x * blockDim.x + threadIdx.x;
-  int stride = blockDim.x * gridDim.x;
-  
-  if (t_id == 0) {
-    n[*from_db_ind] += - *from_state;
-    n[*to_db_ind] += *from_state;
-    *E_sys += *E_delta;
-  }
 
-  for (int i=t_id; i<n_dbs; i+=stride) {
+  n[*from_db_ind] += - *from_state;
+  n[*to_db_ind] += *from_state;
+  E_sys[t_id] += E_delta[t_id];
+  for (int i=0; i<n_dbs; i++) {
     v_local[i] = v_local[i] - ((- *from_state) * v_ij[IDX2C(i, *from_db_ind, n_dbs)] + (*from_state) * v_ij[IDX2C(i, *to_db_ind, n_dbs)]);
   }
 }
@@ -442,41 +306,43 @@ __device__ void performHopUpdates(TCharge *n, int n_dbs, int *from_state,
 __global__ void runAnneal(int stream_id, int *n_out)
 {
   int t_id = blockIdx.x * blockDim.x + threadIdx.x;
+  int stride = blockDim.x * gridDim.x;
+  /*
+  printf("blockIdx.x=%d, blockDim.x=%d, threadIdx.x=%d\n", blockIdx.x, blockDim.x, threadIdx.x);
+  printf("t_id=%d\n", t_id);
+  */
 
   // RNG
   curandState curand_state;
-  curand_init((unsigned long long)clock() + t_id, 0, 0, &curand_state);
+  curand_init((unsigned long long)clock() + t_id + stream_id, 0, 0, &curand_state);
 
   // best charge state tracking
-  float *best_n;      // current best charge configuration
-  float best_E;       // current best system energy
+  // TODO: it might not be worth it to keep track of best config and best E because
+  // the lowest energy might not be metastable, additional checks take time
+  //float *best_n;      // current best charge configuration
+  //float best_E;       // current best system energy
 
   // copy arrays over from global memory
-  __shared__ float *v_ij_l, *v_ext_l;
+  __shared__ float *v_ij_s, *v_ext_s;
   if (t_id == 0) {
-    v_ij_l = new float[n_dbs*n_dbs];
-    v_ext_l = new float[n_dbs];
+    v_ij_s = new float[n_dbs*n_dbs];
+    v_ext_s = new float[n_dbs];
     for (int i=0; i<n_dbs*n_dbs; i++) {
-      v_ij_l[i] = v_ij[i];
+      v_ij_s[i] = v_ij[i];
     }
     for (int i=0; i<n_dbs; i++) {
-      v_ext_l[i] = v_ext_l[i];
+      v_ext_s[i] = v_ext_s[i];
     }
   }
 
   // charge state, population, and env tracking
   __shared__ float *n, *dn;             // current/delta DB site charge state (float due to linalg)
-  __shared__ int dbm_occ_count, db0_occ_count, dbp_occ_count;
-  __shared__ int *dbm_occ, *db0_occ, *dbp_occ;  // DB indices currently at -ve/neutral/+ve charge state
   __shared__ bool *pop_changed;         // whether population is updated
   __shared__ float *E_sys, *E_delta;
   __shared__ float *v_local;            // local potential at each site
   if (t_id == 0) {
     n = new float[n_dbs];
     dn = new float[n_dbs];
-    dbm_occ = new int[n_dbs];
-    db0_occ = new int[n_dbs];
-    dbp_occ = new int[n_dbs];
     pop_changed = new bool;
     E_sys = new float;
     E_delta = new float;
@@ -488,25 +354,43 @@ __global__ void runAnneal(int stream_id, int *n_out)
     }
   }
 
+  // DB-, DB0, DB+ sites tracking
+  int dbm_occ_count, db0_occ_count, dbp_occ_count;
+  int *dbm_occ, *db0_occ, *dbp_occ;  // DB site indices currently at -ve/neutral/+ve charge state
+  dbm_occ = new int[n_dbs];
+  db0_occ = new int[n_dbs];
+  dbp_occ = new int[n_dbs];
+
   // hop tracking
-  __shared__ int hop_attempts, max_hop_attempts;
-  __shared__ int *from_state, *from_occ_ind, *to_occ_ind, *from_db_ind, *to_db_ind;
-  __shared__ bool *accept_hop;
+  int hop_attempts, max_hop_attempts;
+  __shared__ float *E_sys_hop, *E_delta_hop;
+  //float *E_sys_hop, *E_delta_hop;
+  float *v_local_l;
+  float *n_l;
+  int *from_state, *from_occ_ind, *to_occ_ind, *from_db_ind, *to_db_ind;
+  bool *accept_hop;
+  v_local_l = new float[n_dbs];
+  n_l = new float[n_dbs];
+  from_state = new int;
+  from_occ_ind = new int;
+  to_occ_ind = new int;
+  from_db_ind = new int;
+  to_db_ind = new int;
+  accept_hop = new bool;
   if (t_id == 0) {
-    from_state = new int;
-    from_occ_ind = new int;
-    to_occ_ind = new int;
-    from_db_ind = new int;
-    to_db_ind = new int;
-    accept_hop = new bool;
+    E_sys_hop = new float[blockDim.x];
+    E_delta_hop = new float[blockDim.x];
   }
-  // TODO: initialize above
+
+  // best hop thread selection
+  __shared__ int best_t_id;
+  __shared__ float E_best;
 
   // annealing cycle tracking
   __shared__ int cycle; // current anneal cycle
   __shared__ float *v_freeze, *kT;
   if (t_id == 0) {
-    cycle=0;  // current anneal cycle
+    cycle = 0; // current anneal cycle
     v_freeze = new float;
     kT = new float;
     *v_freeze = 0.;
@@ -529,38 +413,21 @@ __global__ void runAnneal(int stream_id, int *n_out)
   __syncthreads();
   randomizeChargeStates(n, n_dbs, &curand_state);
   __syncthreads();
-  calcSystemEnergy(n, n_dbs, v_ij_l, v_ext_l, E_sys, temp_scalar, temp_vec_ndbs_0, temp_vec_ndbs_1);
-  calcLocalPotentials(n, n_dbs, v_ij_l, v_ext_l, v_local, temp_vec_ndbs_0);
+  calcSystemEnergy(n, n_dbs, v_ij_s, v_ext_s, E_sys, temp_scalar, temp_vec_ndbs_0, temp_vec_ndbs_1);
+  calcLocalPotentials(n, n_dbs, v_ij_s, v_ext_s, v_local, temp_vec_ndbs_0);
   __syncthreads();
-  if (t_id == 0) {
-    print1DArrayFloat("randomized n", n, n_dbs);
-    printf("E_sys=%.3e\n", *E_sys);
-    print1DArrayFloat("v_local", v_local, n_dbs);
-  }
-
-  // test system energy calc
-  /*
-  n[0] = -1;
-  n[1] = 0;
-  n[2] = 0;
-  n[3] = -1;
-  n[4] = -1;
-  n[5] = 0;
-  n[6] = -1;
-  __shared__ float *energy;
-  if (t_id == 0) {
-    energy = new float;
-  }
-  __syncthreads();
-  calcSystemEnergy(n, n_dbs, v_ij, v_ext, energy);
-  printf("energy=%.3e\n", *energy);
-  */
+  DEBUG_RUN(
+    if (t_id == 0) {
+      print1DArrayFloat("randomized n", n, n_dbs);
+      printf("E_sys=%.3e\n", *E_sys);
+      print1DArrayFloat("v_local", v_local, n_dbs);
+    }
+  )
 
   // run algorithm
   if (t_id == 0) {
-    printf("***** Begin SimAnneal algorithm *****\n\n");
+    printf("***** Begin SimAnneal Algorithm Stream %d *****\n", stream_id);
   }
-  //anneal_cycles = 10; // TODO: remove
   while (cycle < anneal_cycles) {
     // Population update
     genPopDelta(n, dn, pop_changed, v_local, v_freeze, kT, muzm, mupz, n_dbs, &curand_state);
@@ -572,7 +439,7 @@ __global__ void runAnneal(int stream_id, int *n_out)
     )
     if (pop_changed) {
       vvAdd(n, dn, n, n_dbs); // update the charge list
-      popChangeDeltaUpdates(dn, n_dbs, v_ij_l, v_local, E_sys, temp_scalar, temp_vec_ndbs_0, temp_vec_ndbs_1);
+      popChangeDeltaUpdates(dn, n_dbs, v_ij_s, v_local, E_sys, temp_scalar, temp_vec_ndbs_0, temp_vec_ndbs_1);
       __syncthreads();
       DEBUG_RUN(
         if (t_id == 0) {
@@ -581,7 +448,7 @@ __global__ void runAnneal(int stream_id, int *n_out)
         }
       )
       DEBUG_RUN(
-        calcSystemEnergy(n, n_dbs, v_ij_l, v_ext_l, temp_scalar, temp_scalar_1, temp_vec_ndbs_0, temp_vec_ndbs_1);
+        calcSystemEnergy(n, n_dbs, v_ij_s, v_ext_s, temp_scalar, temp_scalar_1, temp_vec_ndbs_0, temp_vec_ndbs_1);
         if (t_id == 0) {
           printf("E_sys_calc=%.3e\n", *temp_scalar);
           print1DArrayFloat("v_local", v_local, n_dbs); // TODO: remove
@@ -589,56 +456,67 @@ __global__ void runAnneal(int stream_id, int *n_out)
       )
 
       // update occupation lists
-      if (t_id == 0) {
-        int dbm_ind=0, db0_ind=0, dbp_ind=0;
-        for (int db_ind=0; db_ind<n_dbs; db_ind++) {
-          if (n[db_ind] == -1) {
-            dbm_occ[dbm_ind++] = db_ind;
-          } else if (n[db_ind] == 0) {
-            db0_occ[db0_ind++] = db_ind;
-          } else {
-            dbp_occ[dbp_ind++] = db_ind;
-          }
+      int dbm_ind=0, db0_ind=0, dbp_ind=0;
+      for (int db_ind=0; db_ind<n_dbs; db_ind++) {
+        if (n[db_ind] == -1) {
+          dbm_occ[dbm_ind++] = db_ind;
+        } else if (n[db_ind] == 0) {
+          db0_occ[db0_ind++] = db_ind;
+        } else {
+          dbp_occ[dbp_ind++] = db_ind;
         }
-        dbm_occ_count = dbm_ind;
-        db0_occ_count = db0_ind;
-        dbp_occ_count = dbp_ind;
-        DEBUG_RUN(
-          if (t_id == 0) {
-            printf("DB-: %d, DB0: %d, DB+: %d\n", dbm_occ_count, db0_occ_count, dbp_occ_count);
-            print1DArrayInt("dbm_occ", dbm_occ, n_dbs);
-            print1DArrayInt("db0_occ", db0_occ, n_dbs);
-            print1DArrayInt("dbp_occ", dbp_occ, n_dbs);
-          }
-        )
       }
+      dbm_occ_count = dbm_ind;
+      db0_occ_count = db0_ind;
+      dbp_occ_count = dbp_ind;
+      DEBUG_RUN(
+        if (t_id == 0) {
+          printf("DB-: %d, DB0: %d, DB+: %d\n", dbm_occ_count, db0_occ_count, dbp_occ_count);
+          print1DArrayInt("dbm_occ", dbm_occ, n_dbs);
+          print1DArrayInt("db0_occ", db0_occ, n_dbs);
+          print1DArrayInt("dbp_occ", dbp_occ, n_dbs);
+        }
+      )
     }
 
+    // calculate how many hops should be attempted
     __syncthreads();
-    if (t_id == 0) {
-      hop_attempts = 0;
-      max_hop_attempts = 0;
-      if (dbm_occ_count + dbp_occ_count < n_dbs && db0_occ_count < n_dbs) {
-        max_hop_attempts = max(dbm_occ_count+dbp_occ_count, db0_occ_count);
-        max_hop_attempts *= hop_attempt_factor;
-      }
+    hop_attempts = 0;
+    max_hop_attempts = 0;
+    if (dbm_occ_count + dbp_occ_count < n_dbs && db0_occ_count < n_dbs) {
+      max_hop_attempts = max(dbm_occ_count+dbp_occ_count, db0_occ_count);
+      max_hop_attempts *= hop_attempt_factor;
+    }
+
+    // copy v_local and n to local thread
+    __syncthreads();
+    E_sys_hop[t_id] = *E_sys;
+    for (int i=0; i<n_dbs; i++) {
+      v_local_l[i] = v_local[i];
+      n_l[i] = n[i];
     }
 
     // Hopping
     __syncthreads();
+    DEBUG_RUN(
+      if (t_id == 0) {
+        print1DArrayFloat("E_sys_hop before", E_sys_hop, blockDim.x);
+      }
+    )
     while (hop_attempts < max_hop_attempts) {
       chooseHopIndices(dbm_occ, db0_occ, dbp_occ, dbm_occ_count, db0_occ_count,
                        dbp_occ_count, from_state, from_occ_ind, to_occ_ind,
                        from_db_ind, to_db_ind, &curand_state);
       __syncthreads();
       DEBUG_RUN(
+        // TODO: loop through all threads to print their corresponding hops instead
         if (t_id == 0) {
           printf("Chose to hop from %d to %d (from state is %d)\n", *from_db_ind, *to_db_ind, *from_state);
         }
       )
-      calcHopEnergyDelta(n, n_dbs, from_state, from_db_ind, to_db_ind, v_local, v_ij_l, E_delta);
+      calcHopEnergyDelta(n_l, n_dbs, from_state, from_db_ind, to_db_ind, v_local_l, v_ij_s, E_delta_hop);
       __syncthreads();
-      acceptHop(E_delta, kT, accept_hop, &curand_state);
+      acceptHop(E_delta_hop, kT, accept_hop, &curand_state);
       __syncthreads();
       if (*accept_hop) {
         DEBUG_RUN(
@@ -647,87 +525,125 @@ __global__ void runAnneal(int stream_id, int *n_out)
           }
         )
         // hop accepted, update telemetry
-        performHopUpdates(n, n_dbs, from_state, from_db_ind, to_db_ind, E_sys, E_delta, v_local, v_ij_l);
-        __syncthreads();
+        performHopUpdates(n_l, n_dbs, from_state, from_db_ind, to_db_ind, E_sys_hop, E_delta_hop, v_local_l, v_ij_s);
+        //__syncthreads();
         DEBUG_RUN(
           if (t_id == 0) {
-            print1DArrayFloat("n after hop", n, n_dbs);
+            print1DArrayFloat("n after hop", n_l, n_dbs);
           }
         )
-        if (t_id == 0) {
-          if (*from_state == -1) {
-            dbm_occ[*from_occ_ind] = *to_db_ind;
-          } else {
-            dbp_occ[*from_occ_ind] = *to_db_ind;
-          }
-          db0_occ[*to_occ_ind] = *from_db_ind;
+        if (*from_state == -1) {
+          dbm_occ[*from_occ_ind] = *to_db_ind;
+        } else {
+          dbp_occ[*from_occ_ind] = *to_db_ind;
         }
+        db0_occ[*to_occ_ind] = *from_db_ind;
       }
 
-      if (t_id == 0) {
-        hop_attempts++;
-      }
+      hop_attempts++;
       __syncthreads();
     }
 
+    // choose best hop and write back to main n and v_local
+    __syncthreads();
+    DEBUG_RUN(
+      if (t_id == 0) {
+        print1DArrayFloat("E_sys_hop after", E_sys_hop, blockDim.x);
+      }
+    )
+    // find out which thread has the best energy solution
+    if (t_id == 0) {
+      best_t_id = 0;
+      E_best = E_sys_hop[0];
+      for (int i = 1; i < n_dbs; i++) {
+        if (E_sys_hop[i] < E_best) {
+          best_t_id = i;
+          E_best = E_sys_hop[i];
+        }
+      }
+      DEBUG_RUN(
+        printf("Best hopping t_id=%d\n", best_t_id);
+      )
+    }
+    __syncthreads();
+    // take the best solution from the best performing thread
+    if (t_id == best_t_id) {
+      *E_sys = E_sys_hop[best_t_id];
+      for (int i = 0; i < n_dbs; i++) {
+        v_local[i] = v_local_l[i];
+        n[i] = n_l[i];
+      }
+      DEBUG_RUN(
+        print1DArrayFloat("Best hopped config", n, n_dbs);
+      )
+    }
+    __syncthreads();
 
     // Annealing schedule update
     if (t_id == 0)
     {
-      // TODO: annealing schedule parameter update
+      // TODO: update best energy & config tracking
+      // TODO: every now and then, recalculate system energy from scratch to reset FP errors
+      // annealing schedule parameter update
       cycle++;
       *kT = kT_min + (*kT - kT_min) * alpha;
       if (*v_freeze < v_freeze_thresh) {
         *v_freeze += v_freeze_step;
       }
+      DEBUG_RUN(printf("new v_freeze=%f\n", *v_freeze);)
       DEBUG_RUN(printf("\n\n");)
     }
     __syncthreads();
   }
 
   if (t_id == 0) {
-    printf("Final configuration:\n");
-    print1DArrayFloat("n", n, n_dbs);
-    printf("Final energy: %.3e\n", *E_sys);
+    printf("***** End SimAnneal Algorithm Stream %d *****\n", stream_id);
+  }
+  DEBUG_RUN(
+    if (t_id == 0) {
+      printf("Final configuration:\n");
+      print1DArrayFloat("n", n, n_dbs);
+      printf("Final energy: %.3e\n", *E_sys);
+    }
+  )
+  // write-out the final charge configuration found in this stream
+  for (int i = t_id; i < n_dbs; i += stride) {
+    n_out[i] = n[i];
   }
 
-  // test RNG
-  /*
-  for (int i=0; i<20; i++) {
-    int num = randInt(&curand_state, 20);
-    printf("Rand int: %d\n", num);
-  }
-  */
-
-  // free memory
+  // clean up
+  // free shared memory
+  __syncthreads();
   if (t_id == 0) {
-    printf("Free pointer memories...\n");
-    free(v_ij_l);
-    free(v_ext_l);
+    free(E_sys_hop);
+    free(E_delta_hop);
+    free(v_ij_s);
+    free(v_ext_s);
     free(n);
     free(dn);
-    free(dbm_occ);
-    free(db0_occ);
-    free(dbp_occ);
     free(pop_changed);
     free(E_sys);
     free(E_delta);
     free(v_local);
-    free(from_state);
-    free(from_occ_ind);
-    free(to_occ_ind);
-    free(from_db_ind);
-    free(to_db_ind);
-    free(accept_hop);
     free(v_freeze);
     free(kT);
     free(temp_scalar);
     free(temp_scalar_1);
     free(temp_vec_ndbs_0);
     free(temp_vec_ndbs_1);
-    // TODO: some new variables aren't freed here, check back
-    printf("Finished destroying pointers.\n\n");
   }
+  // free local memory
+  free(dbm_occ);
+  free(db0_occ);
+  free(dbp_occ);
+  free(v_local_l);
+  free(n_l);
+  free(from_state);
+  free(from_occ_ind);
+  free(to_occ_ind);
+  free(from_db_ind);
+  free(to_db_ind);
+  free(accept_hop);
 }
 
 __global__ void initVij(int n_dbs, float eps_r, float debye_length, float *db_locs)
@@ -791,7 +707,6 @@ __global__ void initDeviceVars(int t_n_dbs, float t_muzm, float t_mupz, float t_
   //printf("Device vars initialized\n");
 }
 
-///*
 __global__ void cleanUpDeviceVars(int num_streams)
 {
   //for (int i=0; i<num_streams; i++) {
@@ -800,24 +715,3 @@ __global__ void cleanUpDeviceVars(int num_streams)
   free(v_ij);
   free(v_ext);
 }
-
-__device__ void initVLocal(cublasHandle_t cublas_handle, int n_dbs, float *n, float *v_ext, float *v_local)
-{
-  // v_local = v_ext - dot(v_ij, n)
-  for (int i=0; i<n_dbs; i++) {
-    v_local[i] = 0;
-  }
-
-  // dot(v_ij, n)
-  float alpha=1;
-  float beta=0;
-  cublasCheckErrors(cublasSgemv(cublas_handle, CUBLAS_OP_N, n_dbs, n_dbs, &alpha, v_ij, n_dbs, n, 1, 
-      &beta, v_local, 1));
-  __syncthreads();
-
-  // v_ext - above
-  alpha=-1;
-  cublasCheckErrors(cublasSaxpy(cublas_handle, n_dbs, &alpha, v_local, 1, v_ext, 1));
-  __syncthreads();
-}
-//*/

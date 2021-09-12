@@ -129,8 +129,9 @@ namespace phys {
     static FPType hopEnergyDelta(ublas::vector<int> n_in, const int &from_ind,
         const int &to_ind);
 
-    // Simulation variables
+    // variables
     static FPType db_distance_scale;     //! convert db distances to m TODO make this configurable in user settings
+    std::vector<std::vector<int>> received_results;
   };
 
   class TestAdd {

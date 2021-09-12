@@ -7,7 +7,7 @@
 
 #include <cuda_runtime.h>
 #include "constants.h"
-#include "gemm.cu"
+#include "math.cu"
 
 /**
  * Calculate the system energy of the provided configuration.
@@ -25,15 +25,6 @@ __device__ void calcSystemEnergy(float *n, int n_dbs, float *v_ij, float *v_ext,
   int t_id = blockIdx.x * blockDim.x + threadIdx.x;
 
   __shared__ float sum;
-  /* TODO: remove
-  __shared__ float *temp_s, *temp, *temp2;
-  if (t_id == 0) {
-    sum = 0;
-    temp_s = new float;
-    temp = new float[n_dbs];
-    temp2 = new float[n_dbs];
-  }
-  */
   __syncthreads();
   vvInnerProd(n, v_ext, temp_scalar, n_dbs, temp_vec_0);
   __syncthreads();
@@ -73,15 +64,6 @@ __device__ void calcLocalPotentials(TCharge *n, int n_dbs, TFloat *v_ij, TFloat 
   int t_id = blockIdx.x * blockDim.x + threadIdx.x;
   int stride = blockDim.x * gridDim.x;
 
-  /* TODO: remove
-  __shared__ TFloat *temp_vec;
-  if (t_id == 0) {
-    temp_vec = new TFloat[n_dbs];
-    *temp_vec = 0;
-  }
-  __syncthreads();
-  */
-
   mvProd(v_ij, n, temp_vec, n_dbs, n_dbs);
   __syncthreads();
 
@@ -106,15 +88,6 @@ __device__ void popChangeDeltaUpdates(TCharge *dn, int n_dbs, TFloat *v_ij, TFlo
 {
   int t_id = blockIdx.x * blockDim.x + threadIdx.x;
 
-  /* TODO: remove
-  __shared__ TFloat *temp_scalar, *temp_vec_0, *temp_vec_1;
-  if (t_id == 0) {
-    temp_scalar = new TFloat;
-    temp_vec_0 = new TFloat[n_dbs];
-    temp_vec_1 = new TFloat[n_dbs];
-  }
-  */
-
   // update E_sys
   __syncthreads();
   vvInnerProd(v_local, dn, temp_scalar, n_dbs, temp_vec_0);
@@ -136,29 +109,4 @@ __device__ void popChangeDeltaUpdates(TCharge *dn, int n_dbs, TFloat *v_ij, TFlo
   __syncthreads();
   vvScaledAdd(v_local, temp_vec_0, (TFloat) 1., (TFloat) -1., v_local, n_dbs);
   __syncthreads();
-
-  // free memories
-  /* TODO: remove
-  if (t_id == 0) {
-    free(temp_scalar);
-    free(temp_vec_0);
-    free(temp_vec_1);
-  }
-  */
-}
-
-/**
- * Calculate the total energy resulting from Coulombic repulsion.
- * @param n the charge configuration.
- * @param n_dbs count of DBs.
- * @param v_ij precomputed inter-DB repulsion.
- */
-__device__ void interDbPotential(float *n, int n_dbs, float *v_ij)
-{
-  /*
-  int t_id = blockIdx.x * blockDim.x + threadIdx.x;
-  int stride = blockDim.x * gridDim.x;
-  */
-
-  
 }

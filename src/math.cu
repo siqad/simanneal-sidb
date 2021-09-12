@@ -1,4 +1,4 @@
-// @file:     gemm.cu
+// @file:     math.cu
 // @author:   Samuel
 // @created:  2021.08.19
 // @license:  Apache License 2.0
@@ -65,7 +65,6 @@ __device__ void mmProd2D(T *m1, T *m2, T *out, int r_dim_1, int c_dim_1)
   int t_id = blockIdx.x * blockDim.x + threadIdx.x;
   int stride = blockDim.x * gridDim.x;
 
-  // TODO: further optimizations possible
   for (int r1=t_id; r1<r_dim_1; r1+=stride) {
     for (int c1=0; c1<c_dim_1; c1++) {
       printf("r1=%d, c1=%d\n", r1, c1);
@@ -116,8 +115,6 @@ __device__ void vvInnerProdOfMatrixExtractedArrays(T *m1, T *m2, T *out, int arr
   int t_id = blockIdx.x * blockDim.x + threadIdx.x;
   int stride = blockDim.x * gridDim.x;
 
-  // TODO: let unneeded threads return first
-
   if (t_id == 0) {
     *out = 0;
   }
@@ -150,8 +147,6 @@ __device__ void vvInnerProd(T *v1, T *v2, T *out, int dim, T *temp_arr)
 {
   int t_id = blockIdx.x * blockDim.x + threadIdx.x;
   int stride = blockDim.x * gridDim.x;
-
-  // TODO: let unneeded threads return first
 
   if (t_id == 0) {
     *out = 0;

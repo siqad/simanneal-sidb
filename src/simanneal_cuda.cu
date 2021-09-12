@@ -71,19 +71,18 @@ void SimAnnealCuda::invoke()
   cudaFree(0);  // absorb the startup delay when profiling
 
   // vars to be shared with GPU
-  FPType *best_energy;
-  int *best_config;
+  //FPType *best_energy;
+  //int *returned_configs;
   float *v_ext;
   float *db_locs_eucl;
-  cudaMallocManaged(&best_energy, sizeof(FPType));
-  cudaMallocManaged(&best_config, sp.n_dbs*sizeof(int));
+  //cudaMallocManaged(&best_energy, sizeof(FPType));
+  //cudaMallocManaged(&returned_configs, sp.n_dbs*sizeof(int));
   cudaMallocManaged(&v_ext, sp.n_dbs*sizeof(FPType));
   cudaMallocManaged(&db_locs_eucl, 2*sp.n_dbs*sizeof(FPType));
 
   // init vars to be shared
-  *best_energy = std::numeric_limits<FPType>::max();
   for (int i=0; i<sparams->n_dbs; i++) {
-    best_config[i] = -2;  // -2 is an invalid charge state so init to it
+    //returned_configs[i] = -2;  // -2 is an invalid charge state so init to it
     v_ext[i] = sp.v_ext[i];
     db_locs_eucl[IDX2C(i,0,sp.n_dbs)] = sp.db_locs[i].first;
     db_locs_eucl[IDX2C(i,1,sp.n_dbs)] = sp.db_locs[i].second;
@@ -98,22 +97,50 @@ void SimAnnealCuda::invoke()
   ::initVij<<<1, 1>>>(sp.n_dbs, sp.eps_r, sp.debye_length, db_locs_eucl); // TODO check multi-thread
   // TODO initialize handles
 
-  // test math
-  //::testMath<<<1,16>>>();
-
   // test with just one stream
   log.debug() << "Starting simanneal" << std::endl;
   cudaDeviceSynchronize();
-  ::runAnneal<<<1, 8>>>(0, best_config);
+  //int numBlocks = (N + blockSize - 1) / blockSize;
+  int num_streams = 10; // TODO: read from problem
+  cudaStream_t streams[num_streams];
+  //FPType *best_energy[num_streams];
+  int *returned_configs[num_streams];
+
+  int numBlocks = 1;
+  int blockSize = 16;
+  for (int i=0; i<num_streams; i++) {
+    gpuErrChk(cudaStreamCreate(&streams[i]));
+
+    //gpuErrChk(cudaMallocManaged(&best_energy[i], sizeof(FPType)));
+    gpuErrChk(cudaMallocManaged(&returned_configs[i], sp.n_dbs * sizeof(int)));
+
+    ::runAnneal<<<numBlocks, blockSize, 0, streams[i]>>>(i, returned_configs[i]);
+    //::runAnneal<<<numBlocks, blockSize, 0, streams[i]>>>();
+  }
 
   // wait for GPU to finish before accessing on host
-  cudaDeviceSynchronize();
-  log.debug() << best_config[0] << std::endl;
+  for (int i=0; i<num_streams; i++) {
+    gpuErrChk(cudaStreamSynchronize(streams[i]));
+  }
   log.debug() << "Ended simanneal" << std::endl;
 
-  // free memory
-  cudaFree(best_energy);
-  cudaFree(best_config);
+  // get results and free memory
+  received_results.resize(num_streams);
+  for (int stream_id=0; stream_id<num_streams; stream_id++) {
+    received_results[stream_id].resize(sp.n_dbs);
+    log.debug() << "Received result for stream " << stream_id << ": [";
+    for (int db_i = 0; db_i < sp.n_dbs; db_i++) {
+      received_results[stream_id][db_i] = returned_configs[stream_id][db_i];
+      log.debug() << received_results[stream_id][db_i];
+      if (db_i != sp.n_dbs - 1) {
+        log.debug() << ", ";
+      }
+    }
+    log.debug() << "]" << std::endl;
+
+    //cudaFree(best_energy[stream_id]);
+    cudaFree(returned_configs[stream_id]);
+  }
 }
 
 FPType SimAnnealCuda::systemEnergy(const ublas::vector<int> &n_in, bool qubo)
@@ -299,56 +326,96 @@ FPType SimAnnealCuda::hopEnergyDelta(ublas::vector<int> n_in, const int &from_in
   return systemEnergy(n_in) - orig_energy;
 }
 
-void TestAdd::runAdd() {
-  int N = 1<<20; // 1M elements
-
-  float *x, *y;
-  cudaMallocManaged(&x, N*sizeof(float));
-  cudaMallocManaged(&y, N*sizeof(float));
-
-  cudaDeviceSynchronize();
-
-  // initialize x and y arrays on the host
-  for (int i = 0; i < N; i++) {
-    x[i] = 1.0f;
-    y[i] = 2.0f;
-  }
-
-  // run kernel on 1M elements on the CPU
-  int blockSize = 256;
-  int numBlocks = (N + blockSize - 1) / blockSize;
-  ::add<<<numBlocks, blockSize>>>(N, x, y);
-
-  // wait for GPU to finish before accessing on host
-  cudaDeviceSynchronize();
-
-  // check for errors (all values should be 3.0f)
-  float maxError = 0.0f;
-  for (int i = 0; i < N; i++) {
-    maxError = fmax(maxError, fabs(y[i]-3.0f));
-  }
-  std::cout << "Max error: " << maxError << std::endl;
-
-  // free memory
-  cudaFree(x);
-  cudaFree(y);
-}
-
 int main(void)
 {
   //phys::TestAdd testAdd;
   //testAdd.runAdd();
 
   phys::SimParamsCuda sp;
-  sp.setDBLocs({
-    {-4,-3,0},
-    {-2,-2,0},
-    {2,-2,0},
-    {4,-3,0},
-    {0,0,0},
-    {0,1,1},
-    {0,3,1}
-  });
+  sp.hop_attempt_factor = 2;
+  sp.setDBLocs({{-4, -3, 0},
+                {-2, -2, 0},
+                {2, -2, 0},
+                {4, -3, 0},
+                {0, 0, 0},
+                {0, 1, 1},
+                {0, 3, 1}});
+  /*
+  sp.setDBLocs({{8, 8, 1},
+                {40, 22, 0},
+                {36, 27, 1},
+                {32, 22, 0},
+                {36, 25, 1},
+                {36, 24, 1},
+                {42, 21, 0},
+                {30, 21, 0},
+                {8, 9, 1},
+                {24, 19, 0},
+                {26, 20, 0},
+                {25, -2, 0},
+                {25, -5, 1},
+                {31, -5, 1},
+                {31, -2, 0},
+                {21, -7, 1},
+                {40, -7, 1},
+                {41, -8, 1},
+                {41, -11, 0},
+                {41, -10, 0},
+                {46, 20, 0},
+                {48, 19, 0},
+                {36, 28, 1},
+                {9, 11, 1},
+                {11, 12, 1},
+                {20, 17, 0},
+                {20, 14, 1},
+                {14, 14, 1},
+                {14, 17, 0},
+                {24, 12, 0},
+                {10, 19, 0},
+                {4, 21, 0},
+                {8, 20, 0},
+                {2, 22, 0},
+                {1, 25, 1},
+                {1, 28, 1},
+                {1, 27, 1},
+                {1, 24, 0},
+                {1, 30, 1},
+                {36, 30, 1},
+                {41, -1, 0},
+                {43, 0, 0},
+                {49, 11, 0},
+                {49, 10, 0},
+                {49, 13, 0},
+                {49, 14, 0},
+                {22, 0, 0},
+                {19, 1, 1},
+                {1, 2, 1},
+                {3, 3, 1},
+                {13, 3, 1},
+                {15, 2, 1},
+                {8, 5, 0},
+                {8, 6, 0},
+                {37, -5, 1},
+                {37, -2, 0},
+                {49, 8, 0},
+                {49, 7, 0},
+                {49, 5, 0},
+                {49, 4, 0},
+                {47, 1, 0},
+                {49, 2, 0},
+                {49, 17, 0},
+                {49, 16, 0},
+                {-1, 0, 1},
+                {-1, -1, 0},
+                {-1, -3, 0},
+                {-1, -4, 0},
+                {-1, -6, 0},
+                {-1, -7, 0},
+                {-1, -9, 0},
+                {-1, -10, 0},
+                {41, -13, 1},
+                {-1, -12, 1}});
+                */
   phys::SimAnnealCuda sa(sp);
   sa.invoke();
 
