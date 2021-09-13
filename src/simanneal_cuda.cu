@@ -101,13 +101,22 @@ void SimAnnealCuda::invoke()
   log.debug() << "Starting simanneal" << std::endl;
   cudaDeviceSynchronize();
   //int numBlocks = (N + blockSize - 1) / blockSize;
-  int num_streams = 10; // TODO: read from problem
+  int num_streams = sp.num_instances;
+  if (num_streams == -1) {
+    if (sp.n_dbs <= 9) {
+      num_streams = 10;
+    } else if (sp.n_dbs <= 25) {
+      num_streams = 20;
+    } else {
+      num_streams = 40;
+    }
+  }
   cudaStream_t streams[num_streams];
   //FPType *best_energy[num_streams];
   int *returned_configs[num_streams];
 
   int numBlocks = 1;
-  int blockSize = 16;
+  int blockSize = sp.threads_in_instance;
   for (int i=0; i<num_streams; i++) {
     gpuErrChk(cudaStreamCreate(&streams[i]));
 
@@ -325,99 +334,3 @@ FPType SimAnnealCuda::hopEnergyDelta(ublas::vector<int> n_in, const int &from_in
   n_in[to_ind] = from_state;
   return systemEnergy(n_in) - orig_energy;
 }
-
-// int main(void)
-// {
-//   //phys::TestAdd testAdd;
-//   //testAdd.runAdd();
-
-//   phys::SimParamsCuda sp;
-//   sp.hop_attempt_factor = 2;
-//   sp.setDBLocs({{-4, -3, 0},
-//                 {-2, -2, 0},
-//                 {2, -2, 0},
-//                 {4, -3, 0},
-//                 {0, 0, 0},
-//                 {0, 1, 1},
-//                 {0, 3, 1}});
-//   /*
-//   sp.setDBLocs({{8, 8, 1},
-//                 {40, 22, 0},
-//                 {36, 27, 1},
-//                 {32, 22, 0},
-//                 {36, 25, 1},
-//                 {36, 24, 1},
-//                 {42, 21, 0},
-//                 {30, 21, 0},
-//                 {8, 9, 1},
-//                 {24, 19, 0},
-//                 {26, 20, 0},
-//                 {25, -2, 0},
-//                 {25, -5, 1},
-//                 {31, -5, 1},
-//                 {31, -2, 0},
-//                 {21, -7, 1},
-//                 {40, -7, 1},
-//                 {41, -8, 1},
-//                 {41, -11, 0},
-//                 {41, -10, 0},
-//                 {46, 20, 0},
-//                 {48, 19, 0},
-//                 {36, 28, 1},
-//                 {9, 11, 1},
-//                 {11, 12, 1},
-//                 {20, 17, 0},
-//                 {20, 14, 1},
-//                 {14, 14, 1},
-//                 {14, 17, 0},
-//                 {24, 12, 0},
-//                 {10, 19, 0},
-//                 {4, 21, 0},
-//                 {8, 20, 0},
-//                 {2, 22, 0},
-//                 {1, 25, 1},
-//                 {1, 28, 1},
-//                 {1, 27, 1},
-//                 {1, 24, 0},
-//                 {1, 30, 1},
-//                 {36, 30, 1},
-//                 {41, -1, 0},
-//                 {43, 0, 0},
-//                 {49, 11, 0},
-//                 {49, 10, 0},
-//                 {49, 13, 0},
-//                 {49, 14, 0},
-//                 {22, 0, 0},
-//                 {19, 1, 1},
-//                 {1, 2, 1},
-//                 {3, 3, 1},
-//                 {13, 3, 1},
-//                 {15, 2, 1},
-//                 {8, 5, 0},
-//                 {8, 6, 0},
-//                 {37, -5, 1},
-//                 {37, -2, 0},
-//                 {49, 8, 0},
-//                 {49, 7, 0},
-//                 {49, 5, 0},
-//                 {49, 4, 0},
-//                 {47, 1, 0},
-//                 {49, 2, 0},
-//                 {49, 17, 0},
-//                 {49, 16, 0},
-//                 {-1, 0, 1},
-//                 {-1, -1, 0},
-//                 {-1, -3, 0},
-//                 {-1, -4, 0},
-//                 {-1, -6, 0},
-//                 {-1, -7, 0},
-//                 {-1, -9, 0},
-//                 {-1, -10, 0},
-//                 {41, -13, 1},
-//                 {-1, -12, 1}});
-//                 */
-//   phys::SimAnnealCuda sa(sp);
-//   sa.invoke();
-
-//   return 0;
-// }

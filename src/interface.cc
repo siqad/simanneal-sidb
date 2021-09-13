@@ -28,7 +28,7 @@ SimAnnealInterface::SimAnnealInterface(std::string t_in_path,
   : in_path(t_in_path), out_path(t_out_path), ext_pots_path(t_ext_pots_path),
     ext_pots_step(t_ext_pots_step)
 {
-  sqconn = new SiQADConnector(std::string("SimAnneal"), in_path, out_path);
+  sqconn = new SiQADConnector(std::string("SimAnneal CUDA"), in_path, out_path);
   loadSimParams();
 }
 
@@ -100,6 +100,7 @@ SimParamsCuda SimAnnealInterface::loadSimParams()
 
   // variables: schedule
   sp.num_instances = std::stoi(sqconn->getParameter("num_instances"));
+  sp.threads_in_instance = std::stoi(sqconn->getParameter("threads_in_instance"));
   sp.anneal_cycles = std::stoi(sqconn->getParameter("anneal_cycles"));
   //sp.preanneal_cycles = std::stoi(sqconn->getParameter("preanneal_cycles"));
   sp.hop_attempt_factor = std::stoi(sqconn->getParameter("hop_attempt_factor"));

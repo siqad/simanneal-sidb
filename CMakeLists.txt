@@ -50,8 +50,6 @@ set(SOURCES
     src/simanneal_cuda.cu
     src/global.cc
     src/siqadconn.cc
-    #src/simanneal_cuda.cu
-    #src/global.cc
 )
 
 if(SKBUILD)

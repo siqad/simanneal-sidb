@@ -49,6 +49,7 @@ namespace phys {
 
     // runtime params
     int num_instances=-1;         // Number of threads to spawn
+    int threads_in_instance=16;
     float result_queue_factor=.1; // Number of results to store (per thread)
     int result_queue_size;        // Number of results to store (per thread)
     int hop_attempt_factor=5;     // total hop attempt = hop_attempt_factor * (num_occ - num_vac)

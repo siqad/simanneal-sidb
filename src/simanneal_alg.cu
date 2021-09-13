@@ -439,6 +439,7 @@ __global__ void runAnneal(int stream_id, int *n_out)
     )
     if (pop_changed) {
       vvAdd(n, dn, n, n_dbs); // update the charge list
+      __syncthreads();
       popChangeDeltaUpdates(dn, n_dbs, v_ij_s, v_local, E_sys, temp_scalar, temp_vec_ndbs_0, temp_vec_ndbs_1);
       __syncthreads();
       DEBUG_RUN(
@@ -555,7 +556,7 @@ __global__ void runAnneal(int stream_id, int *n_out)
     if (t_id == 0) {
       best_t_id = 0;
       E_best = E_sys_hop[0];
-      for (int i = 1; i < n_dbs; i++) {
+      for (int i = 1; i < blockDim.x; i++) {
         if (E_sys_hop[i] < E_best) {
           best_t_id = i;
           E_best = E_sys_hop[i];
@@ -580,8 +581,7 @@ __global__ void runAnneal(int stream_id, int *n_out)
     __syncthreads();
 
     // Annealing schedule update
-    if (t_id == 0)
-    {
+    if (t_id == 0) {
       // TODO: update best energy & config tracking
       // TODO: every now and then, recalculate system energy from scratch to reset FP errors
       // annealing schedule parameter update
