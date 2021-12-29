@@ -186,11 +186,10 @@ void SimAnnealInterface::writeSimResults(bool only_suggested_gs, bool qubo_energ
   };
 
   // iterate through results depending on command line arguments
-  if (only_suggested_gs) {
-    for (ChargeConfigResult result : master_annealer->suggestedConfigResults(false)) {
-      process_result(result);
-    }
-  } else {
+  for (ChargeConfigResult result : master_annealer->suggestedConfigResults(false)) {
+    process_result(result);
+  }
+  if (!only_suggested_gs) {
     for (auto elec_result_set : master_annealer->chargeResults()) {
       for (ChargeConfigResult elec_result : elec_result_set) {
         process_result(elec_result);
