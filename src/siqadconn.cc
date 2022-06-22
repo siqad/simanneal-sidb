@@ -1,7 +1,7 @@
 // @file:     siqadconn.cc
 // @author:   Samuel
 // @created:  2017.08.23
-// @editted:  2020.01.10 - Samuel
+// @editted:  2020.01.28 - Samuel
 // @license:  Apache License 2.0
 //
 // @desc:     Convenient functions for interacting with SiQAD
@@ -12,6 +12,7 @@
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/xml_parser.hpp>
 #include <boost/algorithm/string/join.hpp>
+#include <boost/optional/optional.hpp>
 
 
 using namespace phys;
@@ -36,9 +37,16 @@ SiQADConnector::SiQADConnector(const std::string &eng_name,
   elec_col = new ElectrodeCollection(item_tree);
   elec_poly_col = new ElectrodePolyCollection(item_tree);
   db_col = new DBCollection(item_tree);
+  defect_col = new DefectCollection(item_tree);
 
   // read problem from input_path
   readProblem(input_path);
+}
+
+SiQADConnector::~SiQADConnector()
+{
+  if (output_path != "")
+    writeResultsXml();
 }
 
 void SiQADConnector::setExport(std::string type, std::vector< std::pair< std::string, std::string > > &data_in)
@@ -81,7 +89,7 @@ void SiQADConnector::addSQCommand(SQCommand *command)
 // parse problem XML, return true if successful
 void SiQADConnector::readProblem(const std::string &path)
 {
-  std::cout << "Reading problem file: " << input_path << std::endl;
+  debugStream << "Reading problem file: " << input_path << std::endl;
 
   boost::property_tree::ptree tree; // create empty property tree object
   boost::property_tree::read_xml(path, tree, boost::property_tree::xml_parser::no_comments); // parse the input file into property tree
@@ -125,6 +133,8 @@ void SiQADConnector::readLayerProp(const boost::property_tree::ptree &layer_node
   Layer lay;
   lay.name = layer_node.get<std::string>("name");
   lay.type = layer_node.get<std::string>("type");
+  if (layer_node.count("role") != 0)
+    lay.role = layer_node.get<std::string>("role");
   lay.zoffset = layer_node.get<float>("zoffset");
   lay.zheight = layer_node.get<float>("zheight");
 
@@ -152,6 +162,9 @@ void SiQADConnector::readDesign(const boost::property_tree::ptree &subtree, cons
     } else if ( (!layer_type.compare("Electrode"))) {
       debugStream << "Encountered node " << layer_tree.first << " with type " << layer_type << ", entering" << std::endl;
       readItemTree(layer_tree.second, agg_parent);
+    } else if (!layer_type.compare("Defects")) {
+      debugStream << "Encountered node " << layer_tree.first << " with type " << layer_type << ", entering" << std::endl;
+      readItemTree(layer_tree.second, agg_parent);
     } else {
       debugStream << "Encountered node " << layer_tree.first << " with type " << layer_type << ", no defined action for this layer. Skipping." << std::endl;
     }
@@ -176,6 +189,9 @@ void SiQADConnector::readItemTree(const boost::property_tree::ptree &subtree, co
     } else if (!item_name.compare("electrode_poly")) {
       // add Electrode to tree
       readElectrodePoly(item_tree.second, agg_parent);
+    } else if (!item_name.compare("defect")) {
+      // add Defect to tree
+      readDefect(item_tree.second, agg_parent);
     } else {
       debugStream << "Encountered unknown item node: " << item_tree.first << std::endl;
     }
@@ -269,11 +285,66 @@ void SiQADConnector::readDBDot(const boost::property_tree::ptree &subtree, const
             << std::endl;
 }
 
+void SiQADConnector::readDefect(const boost::property_tree::ptree &subtree, const std::shared_ptr<Aggregate> &agg_parent)
+{
+  bool has_eucl = false;
+  float x, y, z;
+  bool has_lat_coord = false;
+  int n, m, l;
+  int w, h;
+  float charge;
+  float eps_r, lambda_tf;
+
+  // read anchor lat coord and width/height
+  boost::optional<const boost::property_tree::ptree &> child = subtree.get_child_optional("latcoord");
+  if (child) {
+    debugStream << "******* has lat coord in siqadconn **********" << std::endl;
+    has_lat_coord = true;
+    n = subtree.get<int>("latcoord.<xmlattr>.n");
+    m = subtree.get<int>("latcoord.<xmlattr>.m");
+    l = subtree.get<int>("latcoord.<xmlattr>.l");
+    w = subtree.get<int>("latdim.<xmlattr>.w");
+    h = subtree.get<int>("latdim.<xmlattr>.h");
+  }
+
+  // read x and y physical locations
+  child = subtree.get_child_optional("physloc");
+  if (child) {
+    debugStream << "******* has eucl in siqadconn **********" << std::endl;
+    has_eucl = true;
+    x = subtree.get<float>("physloc.<xmlattr>.x");
+    y = subtree.get<float>("physloc.<xmlattr>.y");
+    z = subtree.get<float>("physloc.<xmlattr>.z");
+  }
+
+  // read electrostatic props
+  charge = subtree.get<float>("coulomb.<xmlattr>.charge");
+  eps_r = subtree.get<float>("coulomb.<xmlattr>.eps_r");
+  lambda_tf = subtree.get<float>("coulomb.<xmlattr>.lambda_tf");
+
+  if (has_lat_coord) {
+    agg_parent->defects.push_back(std::make_shared<Defect>(n, m, l, w, h, charge, eps_r, lambda_tf));
+  } else if (has_eucl) {
+    agg_parent->defects.push_back(std::make_shared<Defect>(x, y, z, charge, eps_r, lambda_tf));
+  }
+
+  debugStream << "Defect created with x=" << agg_parent->defects.back()->x
+            << ", y=" << agg_parent->defects.back()->y
+            << ", z=" << agg_parent->defects.back()->z
+            << ", charge=" << agg_parent->defects.back()->charge
+            << ", eps_r=" << agg_parent->defects.back()->eps_r
+            << ", lambda_tf=" << agg_parent->defects.back()->lambda_tf
+            << std::endl;
+}
+
 void SiQADConnector::writeResultsXml()
 {
+  if (output_path == "")
+    throw std::invalid_argument("Output path not set.");
+
   boost::property_tree::ptree node_root;
 
-  std::cout << "Write results to XML..." << std::endl;
+  debugStream << "Write results to XML..." << std::endl;
 
   // eng_info
   node_root.add_child("eng_info", engInfoPropertyTree());
@@ -316,7 +387,7 @@ void SiQADConnector::writeResultsXml()
   tree.add_child("sim_out", node_root);
   boost::property_tree::write_xml(output_path, tree, std::locale(), boost::property_tree::xml_writer_make_settings<std::string>(' ',4));
 
-  std::cout << "Write to XML complete." << std::endl;
+  debugStream << "Write to XML complete." << std::endl;
 }
 
 boost::property_tree::ptree SiQADConnector::engInfoPropertyTree()
@@ -502,6 +573,60 @@ void DBIterator::pop()
     db_iter = curr->dbs.cend();   // don't reread dbs
   }
 }
+
+
+// FIXED CHARGE ITERATOR
+
+DefectIterator::DefectIterator(std::shared_ptr<Aggregate> root, bool begin)
+{
+  if(begin){
+    // keep finding deeper aggregates until one that contains dbs is found
+    while(root->defects.empty() && !root->aggs.empty()) {
+      push(root);
+      root = root->aggs.front();
+    }
+    push(root);
+  }
+  else{
+    defect_iter = root->defects.cend();
+  }
+}
+
+DefectIterator& DefectIterator::operator++()
+{
+  // exhaust the current Aggregate DBs first
+  if(defect_iter != curr->defects.cend())
+    return ++defect_iter != curr->defects.cend() ? *this : ++(*this);
+
+  // if available, push the next aggregate onto the stack
+  if(agg_stack.top().second != curr->aggs.cend()){
+    push(*agg_stack.top().second);
+    return defect_iter != curr->defects.cend() ? *this : ++(*this);
+  }
+
+  // aggregate is complete, pop off stack
+  pop();
+  return agg_stack.size() == 0 ? *this : ++(*this);
+}
+
+void DefectIterator::push(std::shared_ptr<Aggregate> agg)
+{
+  if(!agg_stack.empty())
+    ++agg_stack.top().second;
+  agg_stack.push(std::make_pair(agg, agg->aggs.cbegin()));
+  defect_iter = agg->defects.cbegin();
+  curr = agg;
+}
+
+void DefectIterator::pop()
+{
+  agg_stack.pop();              // pop complete aggregate off stack
+  if(agg_stack.size() > 0){
+    curr = agg_stack.top().first; // update current to new top
+    defect_iter = curr->defects.cend();   // don't reread dbs
+  }
+}
+
 
 
 // ELEC ITERATOR

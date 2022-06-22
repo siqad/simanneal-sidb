@@ -24,11 +24,12 @@ using namespace phys;
 SimAnnealInterface::SimAnnealInterface(std::string t_in_path, 
                                        std::string t_out_path,
                                        std::string t_ext_pots_path,
-                                       int t_ext_pots_step)
+                                       int t_ext_pots_step,
+                                       bool verbose)
   : in_path(t_in_path), out_path(t_out_path), ext_pots_path(t_ext_pots_path),
     ext_pots_step(t_ext_pots_step)
 {
-  sqconn = new SiQADConnector(std::string("SimAnneal"), in_path, out_path);
+  sqconn = new SiQADConnector(std::string("SimAnneal"), in_path, out_path, verbose);
   loadSimParams();
 }
 
@@ -87,6 +88,66 @@ SimParams SimAnnealInterface::loadSimParams()
     log.debug() << "No external potentials file supplied, set to 0." << std::endl;
     for (auto &v : sp.v_ext) {
       v = 0;
+    }
+  }
+
+  // grab defects
+  log.debug() << "Grab all defects..." << std::endl;
+  std::vector<EuclCoord3d> defect_locs;
+  std::vector<FPType> fixed_charges;
+  std::vector<FPType> fixed_charge_eps_rs;
+  std::vector<FPType> fixed_charge_lambdas;
+  for (auto defect : *(sqconn->defectCollection())) {
+    if (defect->has_eucl) {
+      log.debug() << "**** HAS EUCL ****" << std::endl;
+      defect_locs.push_back(EuclCoord3d(defect->x, defect->y, defect->z));
+    } else if (defect->has_lat_coord) {
+      log.debug() << "**** HAS LATCOORD ****" << std::endl;
+      // TODO find center point and calculate that x y z
+      EuclCoord anchor_tl = SimParams::latToEuclCoord(defect->n, defect->m, defect->l);
+      log.debug() << "tl -- n=" << defect->n << ", m=" << defect->m << ", l=" << defect->l << std::endl;
+      log.debug() << "tl -- x=" << anchor_tl.first << ", y=" << anchor_tl.second << std::endl;
+      if (defect->w == 1 && defect->h == 1) {
+        defect_locs.push_back(EuclCoord3d(anchor_tl.first, anchor_tl.second, 0));
+      } else {
+        int n_br = defect->n + defect->w;
+        int m_br = defect->m + (int) floor((defect->h - defect->l)/ 2);
+        int l_br = (defect->h - defect->l) % 2;
+        log.debug() << "br -- n=" << n_br << ", m=" << m_br << ", l=" << l_br << std::endl;
+        EuclCoord anchor_br = SimParams::latToEuclCoord(n_br, m_br, l_br);
+        log.debug() << "br -- x=" << anchor_br.first << ", y=" << anchor_br.second << std::endl;
+        FPType x_mean = (anchor_br.first + anchor_tl.first) / 2;
+        FPType y_mean = (anchor_br.second + anchor_tl.second)  / 2;
+        log.debug() << "mean -- x=" << x_mean << ", y=" << y_mean << std::endl;
+        defect_locs.push_back(EuclCoord3d(x_mean, y_mean, 0));
+      }
+    } else {
+      log.debug() << "No location info provided for one of the defects, skipping" << std::endl;
+      continue;
+    }
+    fixed_charges.push_back(defect->charge);
+    fixed_charge_eps_rs.push_back(defect->eps_r);
+    fixed_charge_lambdas.push_back(defect->lambda_tf);
+
+    log.debug() << "Defect loc: x=" << defect_locs.back().x 
+        << ", y=" << defect_locs.back().y
+        << ", z=" << defect_locs.back().z
+        << ", charge=" << fixed_charges.back()
+        << std::endl;
+  }
+  // fold fixed charge defect effects into V_ext
+  for (int db_i = 0; db_i < db_locs.size(); db_i++) {
+    for (int defect_i = 0; defect_i < defect_locs.size(); defect_i++) {
+      FPType db_x = db_locs[db_i].first;
+      FPType db_y = db_locs[db_i].second;
+      FPType db_z = 0;
+      FPType defect_x = defect_locs[defect_i].x;
+      FPType defect_y = defect_locs[defect_i].y;
+      FPType defect_z = defect_locs[defect_i].z;
+      FPType r = SimAnneal::distance(db_x, db_y, db_z, defect_x, defect_y, defect_z) * SimAnneal::db_distance_scale;
+      sp.v_ext[db_i] += SimAnneal::coulombicPotential(fixed_charges[defect_i], 1,
+        fixed_charge_eps_rs[defect_i], fixed_charge_lambdas[defect_i], r);
+      log.debug() << "v_ext[" << db_i << "] after defects: " << sp.v_ext[db_i] << std::endl;
     }
   }
 

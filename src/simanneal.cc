@@ -67,6 +67,16 @@ EuclCoord SimParams::latToEuclCoord(const int &n, const int &m, const int &l)
   return std::make_pair(x, y);
 }
 
+void SimParams::setFixedCharges(const std::vector<EuclCoord3d> &t_fc_locs, 
+  const ublas::vector<FPType> &t_fcs, const ublas::vector<FPType> &t_fc_eps_rs,
+  const ublas::vector<FPType> &t_fc_lambdas)
+{
+  fixed_charge_locs = t_fc_locs;
+  fixed_charges = t_fcs;
+  fixed_charge_eps_rs = t_fc_eps_rs;
+  fixed_charge_lambdas = t_fc_lambdas;
+}
+
 // SimAnneal (master) Implementation
 
 SimAnneal::SimAnneal(SimParams &sparams)
@@ -218,6 +228,16 @@ SuggestedResults SimAnneal::suggestedConfigResults(bool tidy)
         filtered_results.push_back(result);
   }
   return filtered_results;
+}
+
+FPType SimAnneal::coulombicPotential(FPType c_1, FPType c_2, FPType eps_r, FPType lambda, FPType r)
+{
+  return constants::Q0 / (4 * constants::PI * constants::EPS0 * eps_r) * exp(-r/(lambda*1e-9)) / r * c_1 * c_2;
+}
+
+FPType SimAnneal::distance(FPType x1, FPType y1, FPType z1, FPType x2, FPType y2, FPType z2)
+{
+  return sqrt(pow(x2-x1, 2) + pow(y2-y1, 2) + pow(z2-z1, 2));
 }
 
 

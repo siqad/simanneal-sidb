@@ -21,7 +21,7 @@ namespace phys {
     //! you don't want simulation parameters to be loaded immediately from
     //! SiQADConn.
     SimAnnealInterface(std::string t_in_path, std::string t_out_path, 
-        std::string t_ext_pots_path, int t_ext_pots_step);
+        std::string t_ext_pots_path, int t_ext_pots_step, bool verbose=false);
 
     ~SimAnnealInterface();
 

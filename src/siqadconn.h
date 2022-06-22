@@ -1,7 +1,7 @@
 // @file:     siqadconn.h
 // @author:   Samuel
 // @created:  2017.08.23
-// @editted:  2020.01.10 - Samuel
+// @editted:  2020.01.28 - Samuel
 // @license:  Apache License 2.0
 //
 // @desc:     Convenient functions for interacting with SiQAD including
@@ -35,6 +35,9 @@ namespace phys{
   struct DBDot;
   class DBIterator;
   class DBCollection;
+  struct Defect;
+  class DefectIterator;
+  class DefectCollection;
   struct Electrode;
   class ElecIterator;
   class ElectrodeCollection;
@@ -46,10 +49,11 @@ namespace phys{
   class SQCommand;
   class AggregateCommand;
 
-  typedef std::vector<std::shared_ptr<DBDot>>::const_iterator DBIter;
-  typedef std::vector<std::shared_ptr<Electrode>>::const_iterator ElecIter;
-  typedef std::vector<std::shared_ptr<ElectrodePoly>>::const_iterator ElecPolyIter;
-  typedef std::vector<std::shared_ptr<Aggregate>>::const_iterator AggIter;
+  typedef std::vector< std::shared_ptr<DBDot> >::const_iterator DBIter;
+  typedef std::vector< std::shared_ptr<Defect> >::const_iterator DefectIter;
+  typedef std::vector< std::shared_ptr<Electrode> >::const_iterator ElecIter;
+  typedef std::vector< std::shared_ptr<ElectrodePoly> >::const_iterator ElecPolyIter;
+  typedef std::vector< std::shared_ptr<Aggregate> >::const_iterator AggIter;
 
   // SiQAD connector class
   class SiQADConnector
@@ -57,12 +61,9 @@ namespace phys{
   public:
     // CONSTRUCTOR
     SiQADConnector(const std::string &eng_name, const std::string &input_path,
-        const std::string &output_path, const bool &verbose=false);
+        const std::string &output_path="", const bool &verbose=false);
     // DESTRUCTOR
-    ~SiQADConnector()
-    {
-      writeResultsXml();
-    }
+    ~SiQADConnector();
 
     // Write results to the provided output_path
     void writeResultsXml();
@@ -95,6 +96,10 @@ namespace phys{
     // Return pointer to DB collection, which allows iteration through DBs
     // across all aggregate levels.
     DBCollection* dbCollection() {return db_col;}
+
+    // Return pointer to defect collection, which allows iteration through
+    // defects across all defect layers.
+    DefectCollection* defectCollection() {return defect_col;}
 
     // Return pointer to Electrode collection, which allows iteration through
     // electrodes across all electrode layers.
@@ -132,6 +137,7 @@ namespace phys{
     void readElectrode(const boost::property_tree::ptree &, const std::shared_ptr<Aggregate> &);
     void readElectrodePoly(const boost::property_tree::ptree &, const std::shared_ptr<Aggregate> &);
     void readDBDot(const boost::property_tree::ptree &, const std::shared_ptr<Aggregate> &);
+    void readDefect(const boost::property_tree::ptree &, const std::shared_ptr<Aggregate> &);
 
     // Generate property trees for writing
     boost::property_tree::ptree engInfoPropertyTree();
@@ -153,6 +159,7 @@ namespace phys{
     // Iterable collections
     ElectrodeCollection* elec_col;
     DBCollection* db_col;
+    DefectCollection* defect_col;
     ElectrodePolyCollection* elec_poly_col;
 
     // Retrieved items and properties
@@ -162,14 +169,14 @@ namespace phys{
     std::map<std::string, std::string> sim_params;    // simulation parameters
 
     // Exportable data
-    std::vector<std::vector<std::string>> pot_data;
-    std::vector<std::vector<std::string>> db_pot_data;
+    std::vector< std::vector<std::string> > pot_data;
+    std::vector< std::vector<std::string> > db_pot_data;
     // std::vector<std::vector<std::vector<std::string>>> db_pot_history;
-    std::vector<std::vector<std::string>> elec_data;
-    std::vector<std::pair<std::string, std::string>> dbl_data;  // pair of location x and y
-    std::vector<std::vector<std::string>> db_charge_data;       // pair of elec dist and energy
+    std::vector< std::vector<std::string> > elec_data;
+    std::vector< std::pair<std::string, std::string> > dbl_data;  // pair of location x and y
+    std::vector< std::vector<std::string> > db_charge_data;       // pair of elec dist and energy
     std::vector<std::string> export_commands;                   // SQCommands to be exported
-    std::vector<std::pair<std::string, std::string>> misc_data; // misc data output that is ignored by SiQAD, first string for element name and second string for value
+    std::vector< std::pair<std::string, std::string> > misc_data; // misc data output that is ignored by SiQAD, first string for element name and second string for value
 
     // Runtime information
     bool verbose;
@@ -186,6 +193,7 @@ namespace phys{
     Layer() {};
     std::string name;   // layer name
     std::string type;   // layer type
+    std::string role;   // layer role
     float zoffset=0;    // layer offset from lattice surface
     float zheight=0;    // layer thickness
   };
@@ -215,7 +223,7 @@ namespace phys{
 
     DBIter db_iter;                   // points to the current DB
     std::shared_ptr<Aggregate> curr;  // current working Aggregate
-    std::stack<std::pair<std::shared_ptr<Aggregate>, AggIter>> agg_stack;
+    std::stack< std::pair<std::shared_ptr<Aggregate>, AggIter> > agg_stack;
 
     // add a new aggregate pair to the stack
     void push(std::shared_ptr<Aggregate> agg);
@@ -235,16 +243,70 @@ namespace phys{
   };
 
 
+  // fixed charges
+  struct Defect {
+    bool has_lat_coord;
+    int n, m, l;    // physical anchor in lattice coordinates
+    int w, h;       // lattice coordinate width and height
+    bool has_eucl;
+    float x, y, z;  // physical location in angstrom
+    float charge;   // contained electron charge
+    float eps_r, lambda_tf; // relative permittivity and screening length for this fixed charge
+    Defect(float t_x, float t_y, float t_z, float t_charge, float t_eps_r, float t_lambda_tf)
+      : has_eucl(true), has_lat_coord(false), x(t_x), y(t_y), z(t_z), charge(t_charge), eps_r(t_eps_r),
+        lambda_tf(t_lambda_tf) {};
+    Defect(int t_n, int t_m, int t_l, int t_w, int t_h, float t_charge, float t_eps_r, float t_lambda_tf)
+      : has_eucl(false), has_lat_coord(true), n(t_n), m(t_m), l(t_l), w(t_w), h(t_h), charge(t_charge),
+        eps_r(t_eps_r), lambda_tf(t_lambda_tf) {};
+  };
+
+  // a constant iterator that iterates through all fixed charges in the problem
+  class DefectIterator
+  {
+  public:
+    explicit DefectIterator(std::shared_ptr<Aggregate> root, bool begin=true);
+    DefectIterator& operator++();
+    bool operator==(const DefectIterator &other) {return other.defect_iter == defect_iter;}
+    bool operator!=(const DefectIterator &other) {return other.defect_iter != defect_iter;}
+    std::shared_ptr<Defect> operator*() const {return *defect_iter;}
+
+    void setCollection(DefectCollection *coll) {collection = coll;}
+    DefectCollection *collection;  // needed for python wrapper
+  
+  private:
+    DefectIter defect_iter;    // points tot he current fixed charge
+    std::shared_ptr<Aggregate> curr;      // current working Aggregate
+    std::stack< std::pair<std::shared_ptr<Aggregate>, AggIter> > agg_stack;
+
+    // add a new aggregate pair to the stack
+    void push(std::shared_ptr<Aggregate> agg);
+
+    // pop the aggregate stack
+    void pop();
+  };
+
+  class DefectCollection
+  {
+  public:
+    DefectCollection(std::shared_ptr<Aggregate> defect_in)
+      : defect_tree_inner(defect_in) {};
+    DefectIterator begin() {return DefectIterator(defect_tree_inner);}
+    DefectIterator end() {return DefectIterator(defect_tree_inner, false);}
+    std::shared_ptr<Aggregate> defect_tree_inner;
+  };
+
+
+
   // electrode_poly
   struct ElectrodePoly {
     int layer_id;
-    std::vector<std::pair<double, double>> vertices;  // vertex points
+    std::vector< std::pair<double, double> > vertices;  // vertex points
     double potential;
     double phase;
     int electrode_type;
     int net;
     double pixel_per_angstrom;
-    ElectrodePoly(int in_layer_id, std::vector<std::pair<double, double>> in_vertices, \
+    ElectrodePoly(int in_layer_id, std::vector< std::pair<double, double> > in_vertices, \
               double in_potential, double in_phase, int in_electrode_type, double in_pixel_per_angstrom, int in_net)
       : layer_id(in_layer_id), vertices(in_vertices), \
         potential(in_potential), phase(in_phase), electrode_type(in_electrode_type), \
@@ -265,7 +327,7 @@ namespace phys{
   private:
     ElecPolyIter elec_poly_iter;               // points to the current electrode
     std::shared_ptr<Aggregate> curr;  // current working Aggregate
-    std::stack<std::pair<std::shared_ptr<Aggregate>, AggIter>> agg_stack;
+    std::stack<std::pair< std::shared_ptr<Aggregate>, AggIter> > agg_stack;
     // add a new aggregate pair to the stack
     void push(std::shared_ptr<Aggregate> agg);
     // pop the aggregate stack
@@ -314,7 +376,7 @@ namespace phys{
   private:
     ElecIter elec_iter;               // points to the current electrode
     std::shared_ptr<Aggregate> curr;  // current working Aggregate
-    std::stack<std::pair<std::shared_ptr<Aggregate>, AggIter>> agg_stack;
+    std::stack< std::pair<std::shared_ptr<Aggregate>, AggIter> > agg_stack;
     // add a new aggregate pair to the stack
     void push(std::shared_ptr<Aggregate> agg);
     // pop the aggregate stack
@@ -335,10 +397,11 @@ namespace phys{
   struct Aggregate
   {
   public:
-    std::vector<std::shared_ptr<Aggregate>> aggs;
-    std::vector<std::shared_ptr<DBDot>> dbs;
-    std::vector<std::shared_ptr<Electrode>> elecs;
-    std::vector<std::shared_ptr<ElectrodePoly>> elec_polys;
+    std::vector< std::shared_ptr<Aggregate> > aggs;
+    std::vector< std::shared_ptr<DBDot> > dbs;
+    std::vector< std::shared_ptr<Defect> > defects;
+    std::vector< std::shared_ptr<Electrode> > elecs;
+    std::vector< std::shared_ptr<ElectrodePoly> > elec_polys;
 
     // Properties
     int size(); // returns the number of contained elecs, including those in children aggs
@@ -365,7 +428,7 @@ namespace phys{
       : action(commandActionEnum(str_action)), item(commandItemEnum(str_item)) {};
 
     // Destructor.
-    ~SQCommand() {};
+    virtual ~SQCommand() {};
 
     // TODO need a way to uniquely reference all items in order to implement
     // movement and removal commands.
@@ -425,7 +488,7 @@ namespace phys{
 
     // Constructor taking a vector of DB physical locations that should be
     // contained in a new Aggregate, implies an Add action.
-    AggregateCommand(const std::vector<std::pair<float, float>> &t_db_locs,
+    AggregateCommand(const std::vector< std::pair<float, float> > &t_db_locs,
                      const int &t_layer=-1)
       : SQCommand(Add, Aggregate), layer(t_layer)
     {
@@ -440,16 +503,16 @@ namespace phys{
 
     // Return the Aggregate creation command. The format should be:
     // add Aggregate (db_x1 db_y1) (db_x2 db_y2) ...
-    std::vector<std::string> addActionArguments() override;
+    std::vector<std::string> addActionArguments();
 
     // Add DB physical locations (only successful if the command action is Add.
-    void addDBsToAggregateFormation(const std::vector<std::pair<float, float>> &t_db_locs)
+    void addDBsToAggregateFormation(const std::vector< std::pair<float, float> > &t_db_locs)
     {
       db_locs.insert(db_locs.end(), t_db_locs.begin(), t_db_locs.end());
     }
 
     // Return the db_locs vector.
-    std::vector<std::pair<float, float>> dbLocations() {return db_locs;}
+    std::vector< std::pair<float, float> > dbLocations() {return db_locs;}
 
     // TODO need a way to uniquely reference Aggregates in order to reference
     // aggregates for forming higher level aggregates, movement or removal.
@@ -457,7 +520,7 @@ namespace phys{
   private:
 
     int layer=-1;   // store the layer which this command affects, or auto if -1
-    std::vector<std::pair<float, float>> db_locs;
+    std::vector< std::pair<float, float> > db_locs;
 
   }; // end of AggregateCommand class
 
