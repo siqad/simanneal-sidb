@@ -79,9 +79,10 @@ namespace phys {
 
     static EuclCoord latToEuclCoord(const int &n, const int &m, const int &l);
 
+    // Clear old fixed charges and set new ones
     void setFixedCharges(const std::vector<EuclCoord3d> &t_fc_locs, 
-      const ublas::vector<FPType> &t_fcs, const ublas::vector<FPType> &t_fc_eps_rs,
-      const ublas::vector<FPType> &t_fc_lambdas);
+      const std::vector<FPType> &t_fcs, const std::vector<FPType> &t_fc_eps_rs,
+      const std::vector<FPType> &t_fc_lambdas);
 
     // used for alpha and v_freeze_cycles calculation
     int anneal_cycles=10000;      // Total number of annealing cycles
@@ -133,10 +134,12 @@ namespace phys {
     ublas::vector<FPType> v_ext; // External potential influences
 
     // fixed charges (idea is to use them for defects)
-    std::vector<EuclCoord3d> fixed_charge_locs;
-    ublas::vector<FPType> fixed_charges;           // fixed charges
-    ublas::vector<FPType> fixed_charge_eps_rs;  // relative permittivities of fixed charges
-    ublas::vector<FPType> fixed_charge_lambdas; // thomas-fermi screening length of fixed charges
+    // std::vector<EuclCoord3d> fixed_charge_locs;
+    // std::vector<FPType> fixed_charges;        // fixed charges
+    // std::vector<FPType> fixed_charge_eps_rs;  // relative permittivities of fixed charges
+    // std::vector<FPType> fixed_charge_lambdas; // thomas-fermi screening length of fixed charges
+
+    ublas::vector<FPType> v_fc; // External potential influences from fixed charges
   };
 
   // ChargeConfigs that are written to the shared simulation results list which 

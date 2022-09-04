@@ -75,14 +75,14 @@ namespace std {
             if len(db_locs[0]) == 3:
                 dbs = IntVectorVector(db_locs)
             elif len(db_locs[0]) == 2:
-                dbs = FloatPairVector(db_locs)
+                dbs = DoublePairVector(db_locs)
             else:
                 raise Exception('db_locs[0] must have a length of 2 or 3.')
             self.setDBLocs(dbs)
 
         def set_v_ext(self, v_ext):
             self.pySetVExt(FloatVector(v_ext))
-
+        
         def set_param(self, pname, pval):
             try:
                 self.__swig_setmethods__[pname](self, pval)

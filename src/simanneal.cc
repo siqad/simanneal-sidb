@@ -48,6 +48,7 @@ void SimParams::setDBLocs(const std::vector<EuclCoord> &t_db_locs)
   db_r.resize(n_dbs, n_dbs);
   v_ij.resize(n_dbs, n_dbs);
   v_ext.resize(n_dbs);
+  v_fc.resize(n_dbs);
 }
 
 void SimParams::setDBLocs(const std::vector<LatCoord> &t_db_locs)
@@ -68,13 +69,24 @@ EuclCoord SimParams::latToEuclCoord(const int &n, const int &m, const int &l)
 }
 
 void SimParams::setFixedCharges(const std::vector<EuclCoord3d> &t_fc_locs, 
-  const ublas::vector<FPType> &t_fcs, const ublas::vector<FPType> &t_fc_eps_rs,
-  const ublas::vector<FPType> &t_fc_lambdas)
+  const std::vector<FPType> &t_fcs, const std::vector<FPType> &t_fc_eps_rs,
+  const std::vector<FPType> &t_fc_lambdas)
 {
-  fixed_charge_locs = t_fc_locs;
-  fixed_charges = t_fcs;
-  fixed_charge_eps_rs = t_fc_eps_rs;
-  fixed_charge_lambdas = t_fc_lambdas;
+  // fold fixed charge defect effects into v_fc
+  for (int db_i = 0; db_i < db_locs.size(); db_i++) {
+    v_fc[db_i] = 0;
+    for (int defect_i = 0; defect_i < t_fc_locs.size(); defect_i++) {
+      FPType db_x = db_locs[db_i].first;
+      FPType db_y = db_locs[db_i].second;
+      FPType db_z = 0;
+      FPType defect_x = t_fc_locs[defect_i].x;
+      FPType defect_y = t_fc_locs[defect_i].y;
+      FPType defect_z = t_fc_locs[defect_i].z;
+      FPType r = SimAnneal::distance(db_x, db_y, db_z, defect_x, defect_y, defect_z) * SimAnneal::db_distance_scale;
+      v_fc[db_i] += SimAnneal::coulombicPotential(t_fcs[defect_i], 1,
+        t_fc_eps_rs[defect_i], t_fc_lambdas[defect_i], r);
+    }
+  }
 }
 
 // SimAnneal (master) Implementation
@@ -117,7 +129,7 @@ FPType SimAnneal::systemEnergy(const ublas::vector<int> &n_in, bool qubo)
 
   //FPType E = 0.5 * ublas::inner_prod(n_in, ublas::prod(sim_params.v_ij, n_in))
     //- ublas::inner_prod(n_in, sim_params.v_ext);
-  FPType E = ublas::inner_prod(n_in, sim_params.v_ext)
+  FPType E = ublas::inner_prod(n_in, sim_params.v_ext + sim_params.v_fc)
     + 0.5 * ublas::inner_prod(n_in, ublas::prod(sim_params.v_ij, n_in));
     
 
@@ -143,7 +155,7 @@ bool SimAnneal::isMetastable(const ublas::vector<int> &n_in)
   log.debug() << "V_i and Charge State Config " << n_in << ":" << std::endl;
   for (unsigned int i=0; i<n_in.size(); i++) {
     // calculate v_i
-    v_local[i] = - sim_params.v_ext[i];
+    v_local[i] = - (sim_params.v_ext[i] + sim_params.v_fc[i]);
     for (unsigned int j=0; j<n_in.size(); j++) {
       if (i == j) continue;
       v_local[i] -= sim_params.v_ij(i,j) * n_in[j];
@@ -409,7 +421,7 @@ void SimAnnealThread::anneal()
   };
 
   E_sys = systemEnergy();
-  v_local = - sparams->v_ext - ublas::prod(sparams->v_ij, n);
+  v_local = - (sparams->v_ext + sparams->v_fc) - ublas::prod(sparams->v_ij, n);
 
   Logger log(saglobal::log_level);
 
@@ -651,7 +663,7 @@ int SimAnnealThread::randInt(const int &min, const int &max)
 
 FPType SimAnnealThread::systemEnergy() const
 {
-  return ublas::inner_prod(n, sparams->v_ext)
+  return ublas::inner_prod(n, (sparams->v_ext + sparams->v_fc))
     + 0.5 * ublas::inner_prod(n, ublas::prod(sparams->v_ij, n));
 }
 

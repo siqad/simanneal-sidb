@@ -135,21 +135,7 @@ SimParams SimAnnealInterface::loadSimParams()
         << ", charge=" << fixed_charges.back()
         << std::endl;
   }
-  // fold fixed charge defect effects into V_ext
-  for (int db_i = 0; db_i < db_locs.size(); db_i++) {
-    for (int defect_i = 0; defect_i < defect_locs.size(); defect_i++) {
-      FPType db_x = db_locs[db_i].first;
-      FPType db_y = db_locs[db_i].second;
-      FPType db_z = 0;
-      FPType defect_x = defect_locs[defect_i].x;
-      FPType defect_y = defect_locs[defect_i].y;
-      FPType defect_z = defect_locs[defect_i].z;
-      FPType r = SimAnneal::distance(db_x, db_y, db_z, defect_x, defect_y, defect_z) * SimAnneal::db_distance_scale;
-      sp.v_ext[db_i] += SimAnneal::coulombicPotential(fixed_charges[defect_i], 1,
-        fixed_charge_eps_rs[defect_i], fixed_charge_lambdas[defect_i], r);
-      log.debug() << "v_ext[" << db_i << "] after defects: " << sp.v_ext[db_i] << std::endl;
-    }
-  }
+  sp.setFixedCharges(defect_locs, fixed_charges, fixed_charge_eps_rs, fixed_charge_lambdas);
 
   // VAIRABLE INITIALIZATION
   log.echo() << "Retrieving variables from SiQADConn..." << std::endl;
