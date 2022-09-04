@@ -27,6 +27,8 @@ include_directories(
 
 if(SKBUILD)
     add_definitions(-Wall -g -std=c++11)
+
+    # set_target_properties(libraryname PROPERTIES LINK_FLAGS "-Wl,-znodelete")
     
     find_package(SWIG REQUIRED)
     include(${SWIG_USE_FILE})
@@ -39,7 +41,9 @@ if(SKBUILD)
 
     swig_add_library(simanneal LANGUAGE python SOURCES swig/simanneal.i src/simanneal.cc src/global.cc)
 
-    swig_link_libraries(simanneal ${Boost_LIBRARIES})
+    swig_link_libraries(simanneal ${Boost_LIBRARIES} ${Python3_LIBRARY})
+
+    # set_target_properties(simanneal PROPERTIES LINK_FLAGS "-lpython,-dynamiclib")
 
     install(TARGETS ${SWIG_MODULE_simanneal_REAL_NAME}
             DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/../cmake-install/pysimanneal)
