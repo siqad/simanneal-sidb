@@ -29,6 +29,12 @@ sp.mu = -0.28
 # omitted if external potentials are zero.
 sp.set_v_ext(np.zeros(len(sp.db_locs))) 
 
+# use SimParams.set_fixed_charges to add fixed charge defects.
+#fc_locs = [[0, 0, -4]]  # list of 3d eucl coords in angstroms
+#fc_c = [-1]             # list of corresponding charges
+#fc_eps = [10.6]         # list of relative permittivities
+#fc_lambdas = [5.9]      # list of debye lengths
+#sp.set_fixed_charges(fc_locs, fc_c, fc_eps, fc_lambdas);
 
 sa = simanneal.SimAnneal(sp)
 sa.invokeSimAnneal()
