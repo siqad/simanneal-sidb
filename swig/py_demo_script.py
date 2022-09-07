@@ -41,3 +41,4 @@ sa.invokeSimAnneal()
 
 results = sa.suggested_gs_results()
 print(results)
+import pdb; pdb.set_trace();

@@ -41,7 +41,11 @@ if(SKBUILD)
 
     swig_add_library(simanneal LANGUAGE python SOURCES swig/simanneal.i src/simanneal.cc src/global.cc)
 
-    swig_link_libraries(simanneal ${Boost_LIBRARIES} ${Python3_LIBRARY})
+    if (WIN32 OR APPLE)
+        swig_link_libraries(simanneal ${Boost_LIBRARIES} ${PYTHON_LIBRARY})
+    else()
+        swig_link_libraries(simanneal ${Boost_LIBRARIES})
+    endif()
 
     # set_target_properties(simanneal PROPERTIES LINK_FLAGS "-lpython,-dynamiclib")
 
