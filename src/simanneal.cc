@@ -472,6 +472,23 @@ void SimAnnealThread::anneal()
         throw;
       }
       hop_E_del = hopEnergyDelta(from_ind, to_ind);
+
+      /* Energy test */
+      FPType orig_E = systemEnergy();
+      n[to_ind] = n[from_ind];
+      n[from_ind] = 0;
+      FPType new_E = systemEnergy();
+      FPType real_E_delta = new_E - orig_E;
+      if (abs(real_E_delta - hop_E_del) > 0.00000001) {
+        std::cout << "hop_E_del: " << hop_E_del << std::endl;
+        std::cout << "real_E_delta: " << real_E_delta << std::endl;
+        throw "Real E delta deviates from speedy delta E too much";
+      }
+      // swap back
+      n[from_ind] = n[to_ind];
+      n[to_ind] = 0;
+      /* End of energy test */
+
       if (acceptHop(hop_E_del)) {
         performHop(from_ind, to_ind, E_sys, hop_E_del);
         // update occupation indices list
