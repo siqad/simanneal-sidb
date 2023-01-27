@@ -65,8 +65,8 @@ namespace std {
 
 %extend phys::SimParams {
     
-    void phys::SimParams::pySetVExt(std::vector<float> s_vec) {
-        boost::numeric::ublas::vector<float> u_vec(s_vec.size());
+    void phys::SimParams::pySetVExt(std::vector<double> s_vec) {
+        boost::numeric::ublas::vector<double> u_vec(s_vec.size());
         for (unsigned int i=0; i<s_vec.size(); i++) {
             u_vec[i] = s_vec[i];
         }
