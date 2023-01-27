@@ -97,7 +97,7 @@ namespace std {
             self.setDBLocs(dbs)
 
         def set_v_ext(self, v_ext):
-            self.pySetVExt(FloatVector(v_ext))
+            self.pySetVExt(DoubleVector(v_ext))
         
         def set_fixed_charges(self, eucl_coords_3d, charges, eps_rs, lambdas):
             self.pySetFixedCharges(
