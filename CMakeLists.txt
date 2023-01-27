@@ -65,8 +65,9 @@ else()
         set(SIMANNEAL_INSTALL_DIR "release")
     ENDIF()
 
-    set(CMAKE_CXX_STANDARD 11)
-    set(CMAKE_CXX_STANDARD_REQUIRED True)
+    add_subdirectory(libs/siqadconn)
+    include_directories(libs/siqadconn/src)
+
     #set(CMAKE_CXX_FLAGS "-Wall -Wextra")
     #set(CMAKE_CXX_FLAGS_DEBUG "-g")
     #set(CMAKE_CXX_FLAGS_RELEASE "-O3")
@@ -76,13 +77,15 @@ else()
         src/global.cc
         src/interface.cc
         src/simanneal.cc
-        src/siqadconn.cc
     )
 
-
     add_executable(simanneal ${SOURCES})
+    set_property(TARGET simanneal PROPERTY CXX_STANDARD 11)
+    set_property(TARGET simanneal PROPERTY CXX_STANDARD_REQUIRED True)
 
-    target_link_libraries(${PROJECT_NAME} ${Boost_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})
+    add_dependencies(simanneal siqadconn)
+
+    target_link_libraries(${PROJECT_NAME} siqadconn ${Boost_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})
 
     add_custom_command(
         TARGET simanneal POST_BUILD
