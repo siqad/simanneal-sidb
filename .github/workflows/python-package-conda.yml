@@ -1,0 +1,42 @@
+name: Python Package using Conda
+
+on:
+  push:
+    branches: [ "master", "dev", "ci-test" ]
+
+jobs:
+  build-pysimanneal-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.6', '3.7', '3.8', '3.9', '3.10', '3.11']
+      max-parallel: 5
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v3
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Add conda to system path
+      run: |
+        # $CONDA is an environment variable pointing to the root of the miniconda directory
+        echo $CONDA/bin >> $GITHUB_PATH
+    - name: Install apt dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake libboost-dev libboost-random-dev 
+    - name: Install conda dependencies
+      run: |
+        # conda env update --file environment.yml --name base
+        conda install -y scikit-build pytest numpy=1.22.3
+    - name: Run compilation
+      working-directory: ${{github.workspace}}
+      run: |
+        python3 setup.py bdist_wheel
+        # conda install --file 'dist/pysimanneal-0.2.1-cp39-cp39-linux_x86_64.whl'
+        pip3 install dist/pysimanneal-*.whl
+    - name: Run test
+      working-directory: ${{github.workspace}}
+      run: |
+        pytest
