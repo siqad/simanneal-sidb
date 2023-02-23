@@ -101,8 +101,8 @@ void SimAnnealCuda::invoke()
   log.debug() << "Starting simanneal" << std::endl;
   cudaDeviceSynchronize();
   //int numBlocks = (N + blockSize - 1) / blockSize;
-  int num_streams = 1;
-  // int num_streams = sp.num_instances;
+  // int num_streams = 1;
+  int num_streams = sp.num_instances;
   // if (num_streams == -1) {
   //   if (sp.n_dbs <= 9) {
   //     num_streams = 10;
