@@ -157,11 +157,22 @@ __device__ void genPopDelta(TCharge *n, TCharge *dn, bool *changed, TFloat *v_lo
   __syncthreads();
 
   float prob;
-  float x;
+  float x, x_zm, x_pz;
   int change_dir;
   bool accept;
 
   for (int i=t_id; i<n_dbs; i+=stride) {
+    // new less branch attempt
+    // bool start_from_db0 = n[i] == 0;
+    // x_zm = v_local[i] + muzm;
+    // x_pz = v_local[i] + mupz;
+    // bool from_db0_closer_to_zm = fabs(x_zm) < fabs(x_pz);
+    // bool start_from_dbm = n[i] == -1;
+    // x = *v_freeze + start_from_db0 * (!from_db0_closer_to_zm * -1 * x_pz + from_db0_closer_to_zm * x_zm)
+    //     + !start_from_db0 * (n[i] * (start_from_dbm * x_zm + !start_from_dbm * x_pz));
+    // change_dir = start_from_db0 * (1 - 2 * from_db0_closer_to_zm) + !start_from_db0 * (-1 + start_from_dbm * 2);
+    // Above is an attempt at reducing branching
+    // Below is the original code
     if (n[i] == -1) {
       // probability from DB- to DB0
       x = - (v_local[i] + muzm) + *v_freeze;
@@ -184,13 +195,16 @@ __device__ void genPopDelta(TCharge *n, TCharge *dn, bool *changed, TFloat *v_lo
     prob = 1. / (1 + (exp(x / *kT)));
 
     evalProb(curand_state, prob, &accept);
-    //if (evalProb(curand_state, prob)) {
-    if (accept) {
-      dn[i] = change_dir;
-      *changed = true;
-    } else {
-      dn[i] = 0;
-    }
+    // new less branch attempt
+    dn[i] = change_dir * accept;
+    *changed = accept;
+    // Above is an attempt to get rid of the branching by implicitly casting bool to int
+    // if (accept) {
+    //   dn[i] = change_dir;
+    //   *changed = true;
+    // } else {
+    //   dn[i] = 0;
+    // }
   }
 }
 
@@ -216,14 +230,22 @@ __device__ void chooseHopIndices(int *dbm_occ, int *db0_occ, int *dbp_occ,
                                  int *to_db_ind, curandState *curand_state)
 {
   *from_occ_ind = randInt(curand_state, dbm_count + dbp_count);
-  if (*from_occ_ind < dbm_count) {
-    *from_state = -1;
-    *from_db_ind = dbm_occ[*from_occ_ind];
-  } else {
-    *from_state = 1;
-    *from_occ_ind -= dbm_count;
-    *from_db_ind = dbp_occ[*from_occ_ind];
-  }
+
+  // new less branch attempt
+  bool choose_dbp = *from_occ_ind >= dbm_count;
+  *from_state = 2 * choose_dbp - 1;  // equiv to choose_dbp ? 1 : -1;
+  *from_occ_ind -= dbm_count * choose_dbp;
+  *from_db_ind = choose_dbp ? dbp_occ[*from_occ_ind] : dbm_occ[*from_occ_ind];
+  // Above is an attempt to minimize branching
+  // Not sure if it helps more than it hurts though since there's still a condition
+  // if (*from_occ_ind < dbm_count) {
+  //   *from_state = -1;
+  //   *from_db_ind = dbm_occ[*from_occ_ind];
+  // } else {
+  //   *from_state = 1;
+  //   *from_occ_ind -= dbm_count;
+  //   *from_db_ind = dbp_occ[*from_occ_ind];
+  // }
   *to_occ_ind = randInt(curand_state, db0_count);
   *to_db_ind = db0_occ[*to_occ_ind];
 }
@@ -261,13 +283,16 @@ __device__ void acceptHop(TFloat *E_delta, TFloat *kT, bool *accept, curandState
 {
   int t_id = blockIdx.x * blockDim.x + threadIdx.x;
 
-  if (E_delta[t_id] < 0) {
-    *accept = true;
-  } else {
-    TFloat prob = exp(-(E_delta[t_id]) / (*kT));
-    //*accept = evalProb(curand_state, prob);
-    evalProb(curand_state, prob, accept);
-  }
+  TFloat prob = fminf(1.0, exp(-(E_delta[t_id]) / (*kT)));
+  evalProb(curand_state, prob, accept);
+
+  // if (E_delta[t_id] < 0) {
+  //   *accept = true;
+  // } else {
+  //   TFloat prob = exp(-(E_delta[t_id]) / (*kT));
+  //   //*accept = evalProb(curand_state, prob);
+  //   evalProb(curand_state, prob, accept);
+  // }
 }
 
 /**
@@ -611,6 +636,12 @@ __global__ void runAnneal(int stream_id, int *n_out)
     n_out[i] = n[i];
   }
 
+  DEBUG_RUN(
+    if (t_id == 0) {
+      printf("Write-out complete.\n");
+    }
+  )
+
   // clean up
   // free shared memory
   __syncthreads();
@@ -665,7 +696,9 @@ __global__ void initVij(int n_dbs, float eps_r, float debye_length, float *db_lo
       r *= powf(10, -10); // convert angstrom to m
       v_ij[IDX2C(i,j,n_dbs)] = constants::Q0 * Kc * expf(-r/(debye_length*1e-9)) / r;
       v_ij[IDX2C(j,i,n_dbs)] = v_ij[IDX2C(i,j,n_dbs)];
-      printf("r(%d,%d)=%.3e, v_ij[%d,%d]=%.3e\n", i, j, r, i, j, v_ij[IDX2C(i,j,n_dbs)]);
+      DEBUG_RUN(
+        printf("r(%d,%d)=%.3e, v_ij[%d,%d]=%.3e\n", i, j, r, i, j, v_ij[IDX2C(i,j,n_dbs)]);
+      )
     }
   }
 }

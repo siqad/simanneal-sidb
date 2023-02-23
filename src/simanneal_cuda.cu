@@ -101,30 +101,33 @@ void SimAnnealCuda::invoke()
   log.debug() << "Starting simanneal" << std::endl;
   cudaDeviceSynchronize();
   //int numBlocks = (N + blockSize - 1) / blockSize;
-  int num_streams = sp.num_instances;
-  if (num_streams == -1) {
-    if (sp.n_dbs <= 9) {
-      num_streams = 10;
-    } else if (sp.n_dbs <= 25) {
-      num_streams = 20;
-    } else {
-      num_streams = 40;
-    }
-  }
+  int num_streams = 1;
+  // int num_streams = sp.num_instances;
+  // if (num_streams == -1) {
+  //   if (sp.n_dbs <= 9) {
+  //     num_streams = 10;
+  //   } else if (sp.n_dbs <= 25) {
+  //     num_streams = 20;
+  //   } else {
+  //     num_streams = 40;
+  //   }
+  // }
   cudaStream_t streams[num_streams];
   //FPType *best_energy[num_streams];
   int *returned_configs[num_streams];
 
   int numBlocks = 1;
   int blockSize = sp.threads_in_instance;
+  // TODO: sanitize block size or just choose automatically
+  dim3 threadsPerBlock(blockSize, 1);
   for (int i=0; i<num_streams; i++) {
     gpuErrChk(cudaStreamCreate(&streams[i]));
 
     //gpuErrChk(cudaMallocManaged(&best_energy[i], sizeof(FPType)));
     gpuErrChk(cudaMallocManaged(&returned_configs[i], sp.n_dbs * sizeof(int)));
 
-    ::runAnneal<<<numBlocks, blockSize, 0, streams[i]>>>(i, returned_configs[i]);
-    //::runAnneal<<<numBlocks, blockSize, 0, streams[i]>>>();
+    ::runAnneal<<<numBlocks, threadsPerBlock, 0, streams[i]>>>(i, returned_configs[i]);
+    // ::runAnneal<<<numBlocks, blockSize, 0, streams[i]>>>(i, returned_configs[i]);
   }
 
   // wait for GPU to finish before accessing on host

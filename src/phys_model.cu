@@ -105,8 +105,8 @@ __device__ void popChangeDeltaUpdates(TCharge *dn, int n_dbs, TFloat *v_ij, TFlo
   }
 
   // update v_local
-  __syncthreads();
   mvProd(v_ij, dn, temp_vec_0, n_dbs, n_dbs);
   __syncthreads();
   vvScaledAdd(v_local, temp_vec_0, (TFloat) 1., (TFloat) -1., v_local, n_dbs);
+  __syncthreads();
 }

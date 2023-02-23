@@ -9,6 +9,7 @@ _skbuild
 *.egg-info
 /dist/
 build/
+build-docker/
 bin/
 /*.xml
 *.swp

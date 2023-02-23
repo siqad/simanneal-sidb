@@ -4,6 +4,11 @@ if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.12")
     cmake_policy(SET CMP0074 NEW)
 endif()
 
+if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+#   set(CMAKE_CUDA_ARCHITECTURES 75)  # RTX 2000 series and up
+  set(CMAKE_CUDA_ARCHITECTURES 61)  # 1080 Ti
+endif()
+
 # TODO compile CUDA and C++ files separately and link together
 # https://gist.github.com/erikzenker/713c4ff76949058d5d5d
 #SET(CUDA_SEPARABLE_COMPILATION ON)

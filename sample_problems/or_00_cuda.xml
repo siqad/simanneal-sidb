@@ -13,15 +13,15 @@
         <T_schedule>exponential</T_schedule>
         <anneal_cycles>10000</anneal_cycles>
         <debye_length>5</debye_length>
+        <num_instances>1</num_instances>
+        <threads_in_instance>16</threads_in_instance>
         <eps_r>5.599999904632568</eps_r>
         <hop_attempt_factor>5</hop_attempt_factor>
         <muzm>-0.2800000011920929</muzm>
-        <num_instances>1</num_instances>
         <phys_validity_check_cycles>10</phys_validity_check_cycles>
         <reset_T_during_v_freeze_reset>false</reset_T_during_v_freeze_reset>
         <result_queue_size>0.10000000149011612</result_queue_size>
         <strategic_v_freeze_reset>false</strategic_v_freeze_reset>
-        <threads_in_instance>1</threads_in_instance>
         <v_freeze_end_point>0.4000000059604645</v_freeze_end_point>
         <v_freeze_init>-1</v_freeze_init>
         <v_freeze_reset>-1</v_freeze_reset>
