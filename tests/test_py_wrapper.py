@@ -1,9 +1,9 @@
 #/usr/bin/env/python
 # encoding: utf-8
 
-# this import assumes that a pysimanneal directory containing __init__.py,
-# simanneal.py, and the compiled simanneal library (_simanneal.so for Linux or
-# _simanneal.pyd for Windows) are present.
+# Assumes that pysimanneal is installed as a library.
+# An easy way to do that is to create a venv then run `python3 setup.py install` at the
+# root of this repository.
 from pysimanneal import simanneal
 import numpy as np
 
