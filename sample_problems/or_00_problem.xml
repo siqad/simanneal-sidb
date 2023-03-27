@@ -16,7 +16,7 @@
         <eps_r>5.6</eps_r>
         <hop_attempt_factor>5</hop_attempt_factor>
         <muzm>-0.28</muzm>
-        <num_instances>1</num_instances>
+        <num_instances>-1</num_instances>
         <phys_validity_check_cycles>10</phys_validity_check_cycles>
         <reset_T_during_v_freeze_reset>false</reset_T_during_v_freeze_reset>
         <result_queue_size>0.1</result_queue_size>
