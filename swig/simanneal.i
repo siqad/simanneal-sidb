@@ -44,6 +44,8 @@ namespace std {
     %template(FloatPair) pair<float, float>;
     %template(FloatPairVector) vector< pair <float, float> >;
     %template(FloatVector) vector<float>;
+    %template(DoubleVector) vector<double>;
+    %template(DoubleVectorVector) vector<vector<double>>;
     %template(IntVector) vector<int>;
     %template(IntVectorVector) vector< vector<int> >;
     %template(StringPair) pair<string, string>;
@@ -63,11 +65,25 @@ namespace std {
 
 %extend phys::SimParams {
     
-    void phys::SimParams::pySetVExt(std::vector<float> s_vec) {
-        boost::numeric::ublas::vector<float> u_vec(s_vec.size());
-        for (unsigned int i=0; i<s_vec.size(); i++)
+    void phys::SimParams::pySetVExt(std::vector<double> s_vec) {
+        boost::numeric::ublas::vector<double> u_vec(s_vec.size());
+        for (unsigned int i=0; i<s_vec.size(); i++) {
             u_vec[i] = s_vec[i];
+        }
         $self->v_ext = u_vec;
+    }
+
+    void phys::SimParams::pySetFixedCharges(
+        const std::vector<std::vector<double>> &eucl_coords,
+        const std::vector<double> &charges,
+        const std::vector<double> &eps_rs,
+        const std::vector<double> &lambdas
+    ) {
+        std::vector<phys::EuclCoord3d> eucl_coord_objs;
+        for (auto c : eucl_coords) {
+            eucl_coord_objs.push_back(phys::EuclCoord3d(c[0], c[1], c[2]));
+        }
+        $self->setFixedCharges(eucl_coord_objs, charges, eps_rs, lambdas);
     }
     
     %pythoncode{
@@ -82,7 +98,15 @@ namespace std {
 
         def set_v_ext(self, v_ext):
             self.pySetVExt(DoubleVector(v_ext))
-
+        
+        def set_fixed_charges(self, eucl_coords_3d, charges, eps_rs, lambdas):
+            self.pySetFixedCharges(
+                DoubleVectorVector(eucl_coords_3d),
+                DoubleVector(charges),
+                DoubleVector(eps_rs),
+                DoubleVector(lambdas)
+            )
+        
         def set_param(self, pname, pval):
             try:
                 self.__swig_setmethods__[pname](self, pval)

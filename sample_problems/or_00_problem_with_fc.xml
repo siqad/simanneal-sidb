@@ -16,7 +16,7 @@
         <eps_r>5.6</eps_r>
         <hop_attempt_factor>5</hop_attempt_factor>
         <muzm>-0.28</muzm>
-        <num_instances>-1</num_instances>
+        <num_instances>1</num_instances>
         <phys_validity_check_cycles>10</phys_validity_check_cycles>
         <reset_T_during_v_freeze_reset>false</reset_T_during_v_freeze_reset>
         <result_queue_size>0.1</result_queue_size>
@@ -81,6 +81,14 @@
             <visible>1</visible>
             <active>0</active>
         </layer_prop>
+        <layer_prop>
+            <name>Defects</name>
+            <type>Defects</type>
+            <zoffset>0</zoffset>
+            <zheight>0</zheight>
+            <visible>1</visible>
+            <active>0</active>
+        </layer_prop>
     </layers>
     <!--Item Hierarchy-->
     <design>
@@ -90,12 +98,14 @@
         <layer type="Misc"/>
         <!--Surface-->
         <layer type="DB">
+            <!--
             <dbdot>
                 <layer_id>2</layer_id>
                 <latcoord n="-5" m="-2" l="0"/>
                 <physloc x="-19.2" y="-15.36"/>
                 <color>#ffc8c8c8</color>
             </dbdot>
+            -->
             <dbdot>
                 <layer_id>2</layer_id>
                 <latcoord n="-3" m="-1" l="0"/>
@@ -137,5 +147,22 @@
         <layer type="Electrode"/>
         <!--AFM-->
         <layer type="AFMTip"/>
+        <!--Defects-->
+        <layer type="Defects">
+            <!--
+            <defect>
+                <layer_id>5</layer_id>
+                <physloc x="0" y="0" z="-0.8" />
+                <coulomb charge="1" eps_r="9.7" lambda_tf="2.1" />
+            </defect>
+            -->
+            <defect>
+                <layer_id>5</layer_id>
+                <latcoord n="-5" m="-2" l="0" />
+                <latdim w="2" h="2" />
+                <!--<physloc x="-19.2" y="-15.36" z="0" />-->
+                <coulomb charge="-1" eps_r="5.6" lambda_tf="5" />
+            </defect>
+        </layer>
     </design>
 </siqad>

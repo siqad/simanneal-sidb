@@ -42,6 +42,7 @@ int main(int argc, char *argv[])
   int ext_pots_step=0;
   bool only_suggested_gs=false;
   bool qubo_energy=false;
+  bool verbose=false;
   unsigned long cml_i=0;
   while (cml_i < cml_args.size()) {
     if (cml_args[cml_i] == "--ext-pots") {
@@ -59,6 +60,7 @@ int main(int argc, char *argv[])
     } else if (cml_args[cml_i] == "--debug") {
       // show additional debug information
       std::cout << "--debug: Showing additional outputs." << std::endl;
+      verbose = true;
       saglobal::log_level = Logger::DBG;
     /* NOTE: current QUBO implementation is incomplete
     } else if (cml_args[cml_i] == "--qubo") {
@@ -82,7 +84,7 @@ int main(int argc, char *argv[])
   log.echo() << "External Potentials File: " << ext_pots_name << std::endl;
 
   log.echo() << "\n*** Initiate SimAnneal interface ***" << std::endl;
-  SimAnnealInterface interface(if_name, of_name, ext_pots_name, ext_pots_step);
+  SimAnnealInterface interface(if_name, of_name, ext_pots_name, ext_pots_step, verbose);
 
   log.echo() << "\n*** Read Simulation parameters ***" << std::endl;
   SimParams sparams = interface.loadSimParams();

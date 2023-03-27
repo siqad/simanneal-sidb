@@ -1,0 +1,3 @@
+[submodule "libs/siqadconn"]
+	path = libs/siqadconn
+	url = https://github.com/siqad/siqadconn.git

@@ -62,6 +62,12 @@ namespace phys {
   typedef std::pair<FPType,FPType> EuclCoord;
   typedef std::vector<int> LatCoord;
   //typedef std::vector<EuclCoord2D> DBLocs;
+  struct EuclCoord3d {
+    FPType x;
+    FPType y;
+    FPType z;
+    EuclCoord3d(FPType t_x, FPType t_y, FPType t_z): x(t_x), y(t_y), z(t_z) {};
+  };
 
   struct SimParams
   {
@@ -72,6 +78,11 @@ namespace phys {
     void setDBLocs(const std::vector<LatCoord> &);
 
     static EuclCoord latToEuclCoord(const int &n, const int &m, const int &l);
+
+    // Clear old fixed charges and set new ones
+    void setFixedCharges(const std::vector<EuclCoord3d> &t_fc_locs, 
+      const std::vector<FPType> &t_fcs, const std::vector<FPType> &t_fc_eps_rs,
+      const std::vector<FPType> &t_fc_lambdas);
 
     // used for alpha and v_freeze_cycles calculation
     int anneal_cycles=10000;      // Total number of annealing cycles
@@ -104,8 +115,8 @@ namespace phys {
     FPType v_freeze_reset=-1;    // Freeze-out voltage to reset to
     int v_freeze_cycles;        // Cycles per v_freeze_period, set to -1 to set to the same as anneal_cycles
     int phys_validity_check_cycles=10;
-    bool strategic_v_freeze_reset=true;
-    bool reset_T_during_v_freeze_reset=true;
+    bool strategic_v_freeze_reset=false;
+    bool reset_T_during_v_freeze_reset=false;
 
     // calculated params (from annealing params)
     FPType Kc;                   // 1 / (4 pi eps)
@@ -121,6 +132,14 @@ namespace phys {
     ublas::matrix<FPType> db_r;  // Matrix of distances between all DBs
     ublas::matrix<FPType> v_ij;  // Matrix of coulombic repulsion between occupied DBs
     ublas::vector<FPType> v_ext; // External potential influences
+
+    // fixed charges (idea is to use them for defects)
+    // std::vector<EuclCoord3d> fixed_charge_locs;
+    // std::vector<FPType> fixed_charges;        // fixed charges
+    // std::vector<FPType> fixed_charge_eps_rs;  // relative permittivities of fixed charges
+    // std::vector<FPType> fixed_charge_lambdas; // thomas-fermi screening length of fixed charges
+
+    ublas::vector<FPType> v_fc; // External potential influences from fixed charges
   };
 
   // ChargeConfigs that are written to the shared simulation results list which 
@@ -210,8 +229,15 @@ namespace phys {
     //! Return suggested config results.
     SuggestedResults suggestedConfigResults(bool tidy);
 
+    static FPType coulombicPotential(FPType c_1, FPType c_2, FPType eps_r, FPType lambda, FPType r);
+
+    static FPType distance(FPType x1, FPType y1, FPType z1, FPType x2, FPType y2, FPType z2);
+
     //! Publically accessible simulation parameters
     static SimParams sim_params;
+
+    // Simulation variables
+    static FPType db_distance_scale;     //! convert db distances to m TODO make this configurable in user settings
 
   private:
 
@@ -237,8 +263,6 @@ namespace phys {
     // Runtime variables
     std::vector<std::thread> anneal_threads;  //! threads spawned
 
-    // Simulation variables
-    static FPType db_distance_scale;     //! convert db distances to m TODO make this configurable in user settings
 
     // Write-out variables
     static AllChargeResults charge_results; // vector for storing db_charges
