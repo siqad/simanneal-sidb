@@ -6,7 +6,7 @@
 // @desc:     Simulation interface which manages reads and writes with 
 //            SiQADConn as well as invokes SimAnneal instances.
 
-#include "siqadconn.h"
+#include "libs/siqadconn/src/siqadconn.h"
 #include "simanneal.h"
 #include <string>
 

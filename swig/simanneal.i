@@ -65,8 +65,8 @@ namespace std {
 
 %extend phys::SimParams {
     
-    void phys::SimParams::pySetVExt(std::vector<float> s_vec) {
-        boost::numeric::ublas::vector<float> u_vec(s_vec.size());
+    void phys::SimParams::pySetVExt(std::vector<double> s_vec) {
+        boost::numeric::ublas::vector<double> u_vec(s_vec.size());
         for (unsigned int i=0; i<s_vec.size(); i++) {
             u_vec[i] = s_vec[i];
         }
@@ -97,7 +97,7 @@ namespace std {
             self.setDBLocs(dbs)
 
         def set_v_ext(self, v_ext):
-            self.pySetVExt(FloatVector(v_ext))
+            self.pySetVExt(DoubleVector(v_ext))
         
         def set_fixed_charges(self, eucl_coords_3d, charges, eps_rs, lambdas):
             self.pySetFixedCharges(

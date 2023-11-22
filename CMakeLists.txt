@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.11)
 
 if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.12")
     cmake_policy(SET CMP0074 NEW)
@@ -9,7 +9,6 @@ endif()
 project(simanneal CXX)
 # TODO add way to push version number into source code
 
-#find_package(Boost COMPONENTS random REQUIRED)
 if (WIN32)
     set(Boost_USE_STATIC_LIBS ON)
 endif()
@@ -65,25 +64,34 @@ else()
         set(SIMANNEAL_INSTALL_DIR "release")
     ENDIF()
 
-    set(CMAKE_CXX_STANDARD 11)
-    set(CMAKE_CXX_STANDARD_REQUIRED True)
-    #set(CMAKE_CXX_FLAGS "-Wall -Wextra")
-    #set(CMAKE_CXX_FLAGS_DEBUG "-g")
-    #set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+    add_subdirectory(libs/siqadconn)
 
-    set(SOURCES
+    set(SIMANNEAL_SOURCES
         src/main.cc
         src/global.cc
         src/interface.cc
         src/simanneal.cc
-        src/siqadconn.cc
     )
 
+    set(SIMANNEAL_TESTS
+        tests/simanneal.test.cc
 
-    add_executable(simanneal ${SOURCES})
+        # HEADERS
+        libs/catch2/catch.hpp
+    )
 
-    target_link_libraries(${PROJECT_NAME} ${Boost_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})
+    add_library(simanneal_lib STATIC ${SIMANNEAL_SOURCES})
+    target_link_libraries(simanneal_lib siqadconn ${Boost_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})
 
+    add_executable(simanneal src/main.cc)
+    target_link_libraries(simanneal simanneal_lib)
+
+    add_dependencies(simanneal siqadconn)
+
+    set_property(TARGET simanneal PROPERTY CXX_STANDARD 11)
+    set_property(TARGET simanneal PROPERTY CXX_STANDARD_REQUIRED True)
+
+    # copy SiQAD integration files over to compiled binary dir
     add_custom_command(
         TARGET simanneal POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy
@@ -91,8 +99,25 @@ else()
                 ${CMAKE_CURRENT_SOURCE_DIR}/ubc_logo.png
                 ${CMAKE_CURRENT_BINARY_DIR})
 
-    #install(TARGETS simanneal RUNTIME DESTINATION ${CMAKE_BUILD_TYPE}/phys/simanneal)
-    #install(FILES simanneal.physeng DESTINATION ${CMAKE_BUILD_TYPE}/phys/simanneal)
+    option(BUILD_TEST "Build the test program." ON)
+    if (BUILD_TEST)
+        add_executable(simanneal_tests tests/tests_main.cc ${SIMANNEAL_TESTS})
+        target_link_libraries(simanneal_tests simanneal_lib)
+
+        add_dependencies(simanneal_tests simanneal)
+
+        set_property(TARGET simanneal_tests PROPERTY CXX_STANDARD 11)
+        set_property(TARGET simanneal_tests PROPERTY CXX_STANDARD_REQUIRED True)
+
+        enable_testing()
+        add_test(simanneal_tests simanneal_tests)
+        # add_custom_command(
+        #     TARGET simanneal_tests
+        #     POST_BUILD
+        #     COMMAND ctest -C $<CONFIGURATION> --output-on-failure --verbose
+        # )
+    endif()
+
     install(TARGETS simanneal RUNTIME DESTINATION ${SIMANNEAL_INSTALL_DIR})
     install(FILES simanneal.physeng ubc_logo.png DESTINATION ${SIMANNEAL_INSTALL_DIR})
 
