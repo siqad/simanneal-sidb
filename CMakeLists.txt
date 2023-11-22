@@ -88,11 +88,12 @@ else()
         TARGET simanneal POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy
                 ${CMAKE_CURRENT_SOURCE_DIR}/simanneal.physeng
+                ${CMAKE_CURRENT_SOURCE_DIR}/ubc_logo.png
                 ${CMAKE_CURRENT_BINARY_DIR})
 
     #install(TARGETS simanneal RUNTIME DESTINATION ${CMAKE_BUILD_TYPE}/phys/simanneal)
     #install(FILES simanneal.physeng DESTINATION ${CMAKE_BUILD_TYPE}/phys/simanneal)
     install(TARGETS simanneal RUNTIME DESTINATION ${SIMANNEAL_INSTALL_DIR})
-    install(FILES simanneal.physeng DESTINATION ${SIMANNEAL_INSTALL_DIR})
+    install(FILES simanneal.physeng ubc_logo.png DESTINATION ${SIMANNEAL_INSTALL_DIR})
 
 endif()
