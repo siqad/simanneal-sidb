@@ -96,6 +96,7 @@ else()
         TARGET simanneal POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy
                 ${CMAKE_CURRENT_SOURCE_DIR}/simanneal.physeng
+                ${CMAKE_CURRENT_SOURCE_DIR}/ubc_logo.png
                 ${CMAKE_CURRENT_BINARY_DIR})
 
     option(BUILD_TEST "Build the test program." ON)
@@ -118,8 +119,6 @@ else()
     endif()
 
     install(TARGETS simanneal RUNTIME DESTINATION ${SIMANNEAL_INSTALL_DIR})
-    # don't remember why this is needed when we already have POST_BUILD commands above
-    # TODO: come back later and check if this is needed
-    install(FILES simanneal.physeng DESTINATION ${SIMANNEAL_INSTALL_DIR})
+    install(FILES simanneal.physeng ubc_logo.png DESTINATION ${SIMANNEAL_INSTALL_DIR})
 
 endif()

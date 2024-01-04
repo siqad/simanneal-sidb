@@ -8,7 +8,7 @@ __pycache__
 _skbuild
 *.egg-info
 /dist/
-build/
+build*/
 bin/
 /*.xml
 *.swp

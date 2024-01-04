@@ -18,6 +18,30 @@ interpreter, bin_path, command
     <name>SimAnneal</name>
     <version>0.2.1</version>
     <description></description>
+    <!-- Plugin info -->
+    <plugin_info>
+        <plugin_logo>ubc_logo.png</plugin_logo>
+        <authors>
+            <name>Samuel Ng</name>
+            <name>Jacob Retallick</name>
+            <name>Robert Lupoiu</name>
+            <name>Konrad Walus</name>
+        </authors>
+        <institutions>
+            <institution>
+                <content>
+                    <line>Walus Lab</line>
+                    <line>Department of Electrical and Computer Engineering</line>
+                    <line>University of British Columbia</line>
+                </content>
+                <website href="https://waluslab.ece.ubc.ca">Walus Lab Website</website>
+            </institution>
+        </institutions>
+        <links>
+            <website href="https://github.com/siqad/simanneal-sidb">GitHub</website>
+            <website href="https://ieeexplore.ieee.org/document/8963859">TNANO Paper</website>
+        </links>
+    </plugin_info>
     <!-- Services this plugin provides, used by SimManager and DesignAssistant classes to identify the type of simulation or assistance this plugin can provide. Comma separated, spaces are neither ignored nor truncated. -->
     <services>ElectronGroundState</services>
     <!-- Path to the engine script or compiled binary. -->
