@@ -88,6 +88,8 @@ else()
 
     add_dependencies(simanneal siqadconn)
 
+    set_property(TARGET simanneal_lib PROPERTY CXX_STANDARD 11)
+    set_property(TARGET simanneal_lib PROPERTY CXX_STANDARD_REQUIRED True)
     set_property(TARGET simanneal PROPERTY CXX_STANDARD 11)
     set_property(TARGET simanneal PROPERTY CXX_STANDARD_REQUIRED True)
 
