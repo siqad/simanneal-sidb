@@ -70,11 +70,33 @@ SimParams SimAnnealInterface::loadSimParams()
 
   SimParams sp;
 
+  // find the lattice layer in the layer list and get the lattice vector
+  bool valid_lat_vec_found = false;
+  for (auto layer : sqconn->getLayers()) {
+    log.debug() << "Layer name: " << layer.name << ", layer type: " << layer.type << std::endl;
+    if (layer.type.compare("Lattice") == 0) {
+      if (!layer.lat_vec.isValid()) {
+        continue;
+      }
+      valid_lat_vec_found = true;
+      sp.lat_vec.a1 = layer.lat_vec.a1;
+      sp.lat_vec.a2 = layer.lat_vec.a2;
+      sp.lat_vec.atoms = layer.lat_vec.atoms;
+      log.debug() << "Lattice vector found: " << layer.lat_vec.name << std::endl;
+      log.debug() << "Lattice vector: a1=(" << sp.lat_vec.a1.first << "," << sp.lat_vec.a1.second << ")"
+          << ", a2=(" << sp.lat_vec.a2.first << "," << sp.lat_vec.a2.second << ")" << std::endl;
+      break;
+    }
+  }
+  if (!valid_lat_vec_found || !sp.lat_vec.isValid()) {
+    throw std::runtime_error("No valid lattice vector found.");
+  }
+
   // grab all physical locations
   log.debug() << "Grab all physical locations..." << std::endl;
   std::vector<EuclCoord> db_locs;
   for(auto db : *(sqconn->dbCollection())) {
-    db_locs.push_back(SimParams::latToEuclCoord(db->n, db->m, db->l));
+    db_locs.push_back(SimParams::latToEuclCoord(db->n, db->m, db->l, sp.lat_vec));
     log.debug() << "DB loc: x=" << db_locs.back().first
         << ", y=" << db_locs.back().second << std::endl;
   }
@@ -104,7 +126,7 @@ SimParams SimAnnealInterface::loadSimParams()
     } else if (defect->has_lat_coord) {
       log.debug() << "**** HAS LATCOORD ****" << std::endl;
       // TODO find center point and calculate that x y z
-      EuclCoord anchor_tl = SimParams::latToEuclCoord(defect->n, defect->m, defect->l);
+      EuclCoord anchor_tl = SimParams::latToEuclCoord(defect->n, defect->m, defect->l, sp.lat_vec);
       log.debug() << "tl -- n=" << defect->n << ", m=" << defect->m << ", l=" << defect->l << std::endl;
       log.debug() << "tl -- x=" << anchor_tl.first << ", y=" << anchor_tl.second << std::endl;
       if (defect->w == 1 && defect->h == 1) {
@@ -114,7 +136,7 @@ SimParams SimAnnealInterface::loadSimParams()
         int m_br = defect->m + (int) floor((defect->h - defect->l)/ 2);
         int l_br = (defect->h - defect->l) % 2;
         log.debug() << "br -- n=" << n_br << ", m=" << m_br << ", l=" << l_br << std::endl;
-        EuclCoord anchor_br = SimParams::latToEuclCoord(n_br, m_br, l_br);
+        EuclCoord anchor_br = SimParams::latToEuclCoord(n_br, m_br, l_br, sp.lat_vec);
         log.debug() << "br -- x=" << anchor_br.first << ", y=" << anchor_br.second << std::endl;
         FPType x_mean = (anchor_br.first + anchor_tl.first) / 2;
         FPType y_mean = (anchor_br.second + anchor_tl.second)  / 2;
