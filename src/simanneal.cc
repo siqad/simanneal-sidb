@@ -51,7 +51,7 @@ void SimParams::setDBLocs(const std::vector<EuclCoord> &t_db_locs)
   v_fc.resize(n_dbs);
 }
 
-void SimParams::setDBLocs(const std::vector<LatCoord> &t_db_locs, const LatticeVector &lat_vec)
+void SimParams::setDBLocs(const std::vector<LatCoord> &t_db_locs, const phys::LatticeVector &lat_vec)
 {
   std::vector<EuclCoord> db_locs;
   for (LatCoord lat_coord : t_db_locs) {
@@ -61,7 +61,7 @@ void SimParams::setDBLocs(const std::vector<LatCoord> &t_db_locs, const LatticeV
   setDBLocs(db_locs);
 }
 
-EuclCoord SimParams::latToEuclCoord(const int &n, const int &m, const int &l, const LatticeVector &lat_vec)
+EuclCoord SimParams::latToEuclCoord(const int &n, const int &m, const int &l, const phys::LatticeVector &lat_vec)
 {
   FPType x = n * (lat_vec.a1.first + lat_vec.a2.first) + lat_vec.atoms[l].first;
   FPType y = m * (lat_vec.a1.second + lat_vec.a2.second) + lat_vec.atoms[l].second;

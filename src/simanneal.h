@@ -71,9 +71,9 @@ namespace phys {
 
     void setDBLocs(const std::vector<EuclCoord> &);
 
-    void setDBLocs(const std::vector<LatCoord> &, const LatticeVector &);
+    void setDBLocs(const std::vector<LatCoord> &, const phys::LatticeVector &);
 
-    static EuclCoord latToEuclCoord(const int &n, const int &m, const int &l, const LatticeVector &lat_unit_cell);
+    static EuclCoord latToEuclCoord(const int &n, const int &m, const int &l, const phys::LatticeVector &lat_unit_cell);
 
     // Clear old fixed charges and set new ones
     void setFixedCharges(const std::vector<EuclCoord3d> &t_fc_locs, 
@@ -124,7 +124,7 @@ namespace phys {
     FPType eps_r=5.6;        // Relative premittivity on the surface
     FPType debye_length=5.0;     // Debye Length (nm)
     int n_dbs;                   // Number of DBs in the simulation
-    LatticeVector lat_vec;
+    phys::LatticeVector lat_vec;
     std::vector<std::pair<FPType,FPType>> db_locs;  // Location of DBs
     ublas::matrix<FPType> db_r;  // Matrix of distances between all DBs
     ublas::matrix<FPType> v_ij;  // Matrix of coulombic repulsion between occupied DBs
