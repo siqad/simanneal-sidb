@@ -78,8 +78,25 @@ interpreter, bin_path, command
             <T>int</T>
             <val>-1</val>
             <label>Instance count</label>
-            <tip>The number of SimAnneal instances used in multithreading. If left at -1, a number is automatically selected based on the DB layout.</tip>
+            <tip>The number of independent SimAnneal restarts. If left at -1, a number is automatically selected based on the DB layout.</tip>
         </num_instances>
+        <num_workers>
+            <T>int</T><val>0</val><label>Active workers</label>
+            <tip>Concurrent workers, capped by restart count. 0 uses hardware concurrency.</tip>
+        </num_workers>
+        <population_backend>
+            <T>string</T><val>auto</val><label>Population numerical backend</label>
+            <tip>auto uses Apple Accelerate when included in the build, otherwise portable. portable retains ordered portable population updates. accelerate requires an Accelerate-enabled build. Numerical reduction order can change seeded trajectories; nonfinite geometry always uses portable updates.</tip>
+        </population_backend>
+        <record_history>
+            <T>bool</T><val>0</val><label>Record diagnostic history</label>
+            <tip>Store bounded per-cycle history for full export. Default exports each restart's best likely valid state, or its final state if none was found. Occurrence counts count restart results; history mode also counts stored cycles.</tip>
+            <value_selection type="CheckBox"></value_selection>
+        </record_history>
+        <random_seed>
+            <T>string</T><val>random</val><label>Random seed</label>
+            <tip>Use random for fresh seeds, or a decimal integer from 0 to 4294967295 for reproducible legacy MT32 restart streams independent of worker count. Restart seeds increment modulo 2^32.</tip>
+        </random_seed>
         <eps_r>
             <T>float</T>
             <val>5.6</val>
@@ -130,7 +147,7 @@ interpreter, bin_path, command
         </hop_radius_nm>
         <hop_global_probability>
             <T>float</T><val>0.2</val><dp>2</dp><label>Global hop probability</label>
-            <tip>Uniform global proposal fraction, from 0 to 1. Empty local neighborhoods fall back globally except for strict local_radius proposals.</tip>
+            <tip>Uniform global proposal fraction, from 0 to 1. Empty local neighborhoods always fall back globally.</tip>
         </hop_global_probability>
         <T_init>
             <T>float</T>

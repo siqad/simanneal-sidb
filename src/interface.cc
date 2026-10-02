@@ -169,6 +169,20 @@ SimParams SimAnnealInterface::loadSimParams()
 
   // variables: schedule
   sp.num_instances = std::stoi(sqconn->getParameter("num_instances"));
+  const auto workers = sqconn->getParameter("num_workers");
+  if (!workers.empty()) sp.num_workers = std::stoi(workers);
+  const auto population_backend = sqconn->getParameter("population_backend");
+  if (population_backend == "portable") sp.population_backend = PopulationBackend::Portable;
+  else if (population_backend == "accelerate") sp.population_backend = PopulationBackend::Accelerate;
+  else if (!population_backend.empty() && population_backend != "auto")
+    throw std::invalid_argument("Unknown population_backend: " + population_backend);
+  const auto history = sqconn->getParameter("record_history");
+  sp.record_history = history == "true" || history == "1";
+  const auto seed = sqconn->getParameter("random_seed");
+  if (sqconn->parameterExists("random_seed") && seed != "random") {
+    sp.random_seed = SimParams::parseRandomSeed(seed);
+    sp.deterministic_seed = true;
+  }
   sp.anneal_cycles = std::stoi(sqconn->getParameter("anneal_cycles"));
   //sp.preanneal_cycles = std::stoi(sqconn->getParameter("preanneal_cycles"));
   sp.hop_attempt_factor = std::stoi(sqconn->getParameter("hop_attempt_factor"));
@@ -248,6 +262,11 @@ void SimAnnealInterface::writeSimResults(bool only_suggested_gs, bool qubo_energ
 
     // prepare key and val for insertion
     std::string elec_result_str = SimAnneal::configToStr(elec_result.config);
+    auto existing = elec_result_map.find(elec_result_str);
+    if (existing != elec_result_map.end()) {
+      ++existing->second.occ_count;
+      return;
+    }
     ExportElecConfigResult export_result;
     export_result.config = elec_result.config;
 
@@ -270,12 +289,12 @@ void SimAnnealInterface::writeSimResults(bool only_suggested_gs, bool qubo_energ
   };
 
   // iterate through results depending on command line arguments
-  for (ChargeConfigResult result : master_annealer->suggestedConfigResults(false)) {
+  for (const ChargeConfigResult &result : master_annealer->suggestedResults()) {
     process_result(result);
   }
   if (!only_suggested_gs) {
-    for (auto elec_result_set : master_annealer->chargeResults()) {
-      for (ChargeConfigResult elec_result : elec_result_set) {
+    for (const auto &elec_result_set : master_annealer->chargeResults()) {
+      for (const ChargeConfigResult &elec_result : elec_result_set) {
         process_result(elec_result);
       }
     }

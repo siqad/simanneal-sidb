@@ -30,6 +30,10 @@ int main(int argc, char **argv) {
       sp.v_ext.clear(); sp.v_fc.clear();
       sp.num_instances = 1;
       sp.result_queue_factor = 0; // same one-entry history for every policy
+      const std::string backend = r.get<std::string>("backend", "auto");
+      if (backend == "portable") sp.population_backend = PopulationBackend::Portable;
+      else if (backend == "accelerate") sp.population_backend = PopulationBackend::Accelerate;
+      else if (backend != "auto") throw std::invalid_argument("unknown benchmark backend");
       sp.mu = r.get<double>("mu", -0.25);
       sp.anneal_cycles = r.get<int>("cycles", 512);
       sp.hop_attempt_factor = r.get<int>("hop_factor", 5);

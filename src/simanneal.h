@@ -18,6 +18,9 @@
 #include <cmath>
 #include <mutex>
 #include <thread>
+#include <limits>
+#include <stdexcept>
+#include <string>
 #include "libs/siqadconn/src/siqadconn.h"
 
 //#include <boost/thread.hpp>
@@ -52,6 +55,7 @@ namespace phys {
 
   // enums
   enum TemperatureSchedule{LinearSchedule, ExponentialSchedule};
+  enum class PopulationBackend {Auto, Portable, Accelerate};
 
   // Forward declaration
   class SimAnnealThread;
@@ -87,7 +91,26 @@ namespace phys {
     FPType v_freeze_end_point=0.4;// Where in schedule does v_freeze stop growing
 
     // runtime params
-    int num_instances=-1;         // Number of threads to spawn
+    int num_instances=-1;         // Independent restarts (legacy name)
+    int num_workers=0;            // Active workers; 0 selects hardware concurrency
+    PopulationBackend population_backend=PopulationBackend::Auto; // Build-selected dense backend
+    bool record_history=false;    // Optional bounded per-cycle diagnostic history
+    bool deterministic_seed=false;
+    std::uint64_t random_seed=0; // Base seed must fit uint32_t for legacy MT32 streams
+    static std::uint64_t parseRandomSeed(const std::string &value) {
+      if (value.empty() || value.find_first_not_of("0123456789") != std::string::npos)
+        throw std::invalid_argument("random_seed must be random or an integer in [0,4294967295]");
+      // Validate during accumulation, including arbitrarily long decimal input.
+      std::uint64_t seed = 0;
+      const std::uint64_t limit = std::numeric_limits<std::uint32_t>::max();
+      for (const char digit : value) {
+        const unsigned next = digit - '0';
+        if (seed > (limit - next) / 10)
+          throw std::invalid_argument("random_seed must be in [0,4294967295]");
+        seed = seed * 10 + next;
+      }
+      return seed;
+    }
     float result_queue_factor=.1; // Number of results to store (per thread)
     int result_queue_size;        // Number of results to store (per thread)
     int hop_attempt_factor=5;     // total hop attempt = hop_attempt_factor * (num_occ - num_vac)
@@ -137,6 +160,7 @@ namespace phys {
     std::vector<std::pair<FPType,FPType>> db_locs;  // Location of DBs
     ublas::matrix<FPType> db_r;  // Matrix of distances between all DBs
     ublas::matrix<FPType> v_ij;  // Matrix of coulombic repulsion between occupied DBs
+    bool population_finite_matrix=true; // Recorded while initialize fills the shared matrix
     ublas::vector<FPType> v_ext; // External potential influences
 
     // fixed charges (idea is to use them for defects)
@@ -155,7 +179,7 @@ namespace phys {
     ChargeConfigResult() 
       : initialized(false), config(ublas::vector<int>()), 
         pop_likely_stable(false), system_energy(0) {};
-    ChargeConfigResult(ublas::vector<int> config, bool pop_likely_stable, 
+    ChargeConfigResult(const ublas::vector<int> &config, bool pop_likely_stable,
         FPType system_energy)
       : initialized(true), config(config), pop_likely_stable(pop_likely_stable), 
         system_energy(system_energy) {};
@@ -234,6 +258,7 @@ namespace phys {
 
     //! Return suggested config results.
     SuggestedResults suggestedConfigResults(bool tidy);
+    const SuggestedResults &suggestedResults() const {return suggested_gs_results;}
 
     static FPType coulombicPotential(FPType c_1, FPType c_2, FPType eps_r, FPType lambda, FPType r);
 
@@ -312,7 +337,7 @@ namespace phys {
     */
 
     // return the physically valid ground state of this thread.
-    ChargeConfigResult suggestedConfig() {return suggested_gs;}
+    ChargeConfigResult &suggestedConfig() {return suggested_gs;}
 
     int thread_id;              // the thread id of each class object
     ThreadChargeResults db_charges;       // charge configuration history
