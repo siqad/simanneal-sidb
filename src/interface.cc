@@ -172,6 +172,21 @@ SimParams SimAnnealInterface::loadSimParams()
   sp.anneal_cycles = std::stoi(sqconn->getParameter("anneal_cycles"));
   //sp.preanneal_cycles = std::stoi(sqconn->getParameter("preanneal_cycles"));
   sp.hop_attempt_factor = std::stoi(sqconn->getParameter("hop_attempt_factor"));
+  // Optional for backwards compatibility with existing problem XML files.
+  const auto hop_policy = sqconn->getParameter("hop_selection");
+  if (hop_policy == "local_uniform") sp.hop_selection = LocalUniformHop;
+  else if (hop_policy == "local_distance") sp.hop_selection = LocalDistanceHop;
+  else if (hop_policy == "local_radius") sp.hop_selection = LocalRadiusHop;
+  else if (!hop_policy.empty() && hop_policy != "uniform")
+    throw std::invalid_argument("Unknown hop_selection: " + hop_policy);
+  const auto hop_k = sqconn->getParameter("hop_neighbors");
+  const auto hop_length = sqconn->getParameter("hop_length_nm");
+  const auto hop_radius = sqconn->getParameter("hop_radius_nm");
+  const auto hop_global = sqconn->getParameter("hop_global_probability");
+  if (!hop_k.empty()) sp.hop_neighbors = std::stoi(hop_k);
+  if (!hop_length.empty()) sp.hop_length_nm = std::stod(hop_length);
+  if (!hop_radius.empty()) sp.hop_radius_nm = std::stod(hop_radius);
+  if (!hop_global.empty()) sp.hop_global_probability = std::stod(hop_global);
   sp.T_e_inv_point = std::stod(sqconn->getParameter("T_e_inv_point"));
 
   std::string T_schd = sqconn->getParameter("T_schedule");

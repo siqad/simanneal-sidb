@@ -10,6 +10,7 @@
 #define _PHYS_SIMANNEAL_H_
 
 #include "global.h"
+#include "hop_selector.h"
 #include <vector>
 #include <deque>
 #include <tuple>
@@ -90,6 +91,14 @@ namespace phys {
     float result_queue_factor=.1; // Number of results to store (per thread)
     int result_queue_size;        // Number of results to store (per thread)
     int hop_attempt_factor=5;     // total hop attempt = hop_attempt_factor * (num_occ - num_vac)
+
+    // Experimental target selection. Uniform preserves the original RNG path.
+    HopSelection hop_selection=UniformHop;
+    int hop_neighbors=16;
+    FPType hop_length_nm=2.0;
+    FPType hop_radius_nm=4.0;
+    FPType hop_global_probability=0.2;
+    HopNeighborhood hop_neighborhood;
 
     // annealing params
     int preanneal_cycles=0;       // Initial cycles where temperature doesn't change

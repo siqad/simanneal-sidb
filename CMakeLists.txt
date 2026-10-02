@@ -127,3 +127,10 @@ else()
     install(FILES simanneal.physeng ubc_logo.png DESTINATION ${SIMANNEAL_INSTALL_DIR})
 
 endif()
+
+option(BUILD_BENCHMARK "Build the reproducible hopping benchmark driver." OFF)
+if(BUILD_BENCHMARK AND NOT SKBUILD)
+    add_executable(anneal_bench benchmarks/anneal_bench.cc)
+    target_link_libraries(anneal_bench simanneal_lib)
+    set_property(TARGET anneal_bench PROPERTY CXX_STANDARD 11)
+endif()
