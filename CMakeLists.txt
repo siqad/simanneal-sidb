@@ -18,8 +18,43 @@ endif()
 find_package(Boost COMPONENTS random REQUIRED)
 find_package(Threads REQUIRED)
 
+# Explicitly enabled supported OpenBLAS installation; never inspect Python wheels.
+option(SIMANNEAL_ENABLE_OPENBLAS "Enable explicit OpenBLAS population backends" OFF)
+option(SIMANNEAL_NATIVE_ARCH "Compile for the build host (not portable binaries)" OFF)
+if(SIMANNEAL_ENABLE_OPENBLAS)
+    find_path(SIMANNEAL_OPENBLAS_INCLUDE_DIR cblas.h
+              HINTS ${SIMANNEAL_OPENBLAS_ROOT}/include
+              PATH_SUFFIXES openblas)
+    find_library(SIMANNEAL_OPENBLAS_LIBRARY NAMES openblas
+                 HINTS ${SIMANNEAL_OPENBLAS_ROOT}/lib ${SIMANNEAL_OPENBLAS_ROOT}/lib64)
+    if(NOT SIMANNEAL_OPENBLAS_INCLUDE_DIR OR NOT SIMANNEAL_OPENBLAS_LIBRARY)
+        message(FATAL_ERROR "OpenBLAS requested: provide its supported cblas.h and library via SIMANNEAL_OPENBLAS_ROOT or SIMANNEAL_OPENBLAS_INCLUDE_DIR/LIBRARY")
+    endif()
+    include(CheckCXXSourceCompiles)
+    set(CMAKE_REQUIRED_INCLUDES ${SIMANNEAL_OPENBLAS_INCLUDE_DIR})
+    set(CMAKE_REQUIRED_LIBRARIES ${SIMANNEAL_OPENBLAS_LIBRARY} ${CMAKE_THREAD_LIBS_INIT})
+    # Recheck when users change installations or ABI between configurations.
+    unset(SIMANNEAL_OPENBLAS_CBLAS_WORKS CACHE)
+    check_cxx_source_compiles("#include <cblas.h>
+int main() {
+  double a[1]={1}, x[1]={1}, y[1]={0};
+  openblas_set_num_threads(1);
+  cblas_dgemv(CblasRowMajor,CblasNoTrans,1,1,1,a,1,x,1,0,y,1);
+  cblas_dsymv(CblasRowMajor,CblasUpper,1,1,a,1,x,1,0,y,1);
+  return openblas_get_num_threads()!=1;
+}" SIMANNEAL_OPENBLAS_CBLAS_WORKS)
+    unset(CMAKE_REQUIRED_INCLUDES)
+    unset(CMAKE_REQUIRED_LIBRARIES)
+    if(NOT SIMANNEAL_OPENBLAS_CBLAS_WORKS)
+        message(FATAL_ERROR "OpenBLAS header/library must provide DGEMV, DSYMV and supported thread-control APIs")
+    endif()
+endif()
+
 # The portable implementation is always available. Apple builds may opt out.
 option(SIMANNEAL_ENABLE_ACCELERATE "Enable the Apple Accelerate population backend" ${APPLE})
+if(APPLE AND SIMANNEAL_ENABLE_ACCELERATE AND SIMANNEAL_ENABLE_OPENBLAS)
+    message(FATAL_ERROR "Accelerate and OpenBLAS export identical CBLAS symbols. Set SIMANNEAL_ENABLE_ACCELERATE=OFF for an OpenBLAS build.")
+endif()
 if(APPLE AND SIMANNEAL_ENABLE_ACCELERATE)
     find_library(SIMANNEAL_ACCELERATE_FRAMEWORK Accelerate)
     if(NOT SIMANNEAL_ACCELERATE_FRAMEWORK)
@@ -27,6 +62,26 @@ if(APPLE AND SIMANNEAL_ENABLE_ACCELERATE)
     endif()
 endif()
 function(simanneal_configure_population_backend target)
+    target_sources(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/population_blas.cc)
+    target_link_libraries(${target} Threads::Threads)
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /fp:strict)
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(${target} PRIVATE -fno-fast-math -ffp-contract=off)
+        if(SIMANNEAL_NATIVE_ARCH)
+            target_compile_options(${target} PRIVATE -march=native)
+        endif()
+    elseif(SIMANNEAL_NATIVE_ARCH)
+        message(FATAL_ERROR "SIMANNEAL_NATIVE_ARCH is supported only by GNU/Clang compilers")
+    endif()
+    if(MSVC AND SIMANNEAL_NATIVE_ARCH)
+        message(FATAL_ERROR "SIMANNEAL_NATIVE_ARCH requires GNU/Clang; choose an explicit MSVC architecture separately")
+    endif()
+    if(SIMANNEAL_ENABLE_OPENBLAS)
+        target_compile_definitions(${target} PUBLIC SIMANNEAL_HAVE_OPENBLAS=1)
+        target_include_directories(${target} PRIVATE ${SIMANNEAL_OPENBLAS_INCLUDE_DIR})
+        target_link_libraries(${target} ${SIMANNEAL_OPENBLAS_LIBRARY})
+    endif()
     if(APPLE AND SIMANNEAL_ENABLE_ACCELERATE)
         target_compile_definitions(${target} PUBLIC SIMANNEAL_HAVE_ACCELERATE=1)
         target_link_libraries(${target} ${SIMANNEAL_ACCELERATE_FRAMEWORK})
@@ -56,13 +111,19 @@ if(SKBUILD)
     set_property(SOURCE swig/simanneal.i PROPERTY CPLUSPLUS ON)
     file(COPY swig/__init__.py DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/swig")
 
-    swig_add_library(simanneal LANGUAGE python SOURCES swig/simanneal.i src/simanneal.cc src/global.cc)
+    swig_add_library(simanneal LANGUAGE python SOURCES swig/simanneal.i src/simanneal.cc src/global.cc src/physical_repair.cc src/refinement.cc)
     simanneal_configure_population_backend(${SWIG_MODULE_simanneal_REAL_NAME})
 
-    if (WIN32 OR APPLE)
+    if (WIN32)
         swig_link_libraries(simanneal ${Boost_LIBRARIES} ${PYTHON_LIBRARY})
     else()
-        swig_link_libraries(simanneal ${Boost_LIBRARIES})
+        swig_link_libraries(simanneal ${Boost_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})
+        if(APPLE)
+            # Resolve Python symbols from the importing interpreter. Linking a
+            # second libpython crashes statically embedded Python distributions.
+            set_property(TARGET ${SWIG_MODULE_simanneal_REAL_NAME}
+                         APPEND_STRING PROPERTY LINK_FLAGS " -undefined dynamic_lookup")
+        endif()
     endif()
 
     # set_target_properties(simanneal PROPERTIES LINK_FLAGS "-lpython,-dynamiclib")
@@ -90,11 +151,16 @@ else()
         src/global.cc
         src/interface.cc
         src/simanneal.cc
+        src/physical_repair.cc
+        src/refinement.cc
     )
 
     set(SIMANNEAL_TESTS
         tests/simanneal.test.cc
         tests/population_backend.test.cc
+        tests/population_blas.test.cc
+        tests/refinement.test.cc
+        tests/validated_search.test.cc
 
         # HEADERS
         libs/catch2/catch.hpp
@@ -134,6 +200,15 @@ else()
 
         enable_testing()
         add_test(simanneal_tests simanneal_tests)
+        if(CMAKE_VERSION VERSION_LESS "3.12")
+            find_package(PythonInterp 3 REQUIRED)
+            set(Python3_EXECUTABLE ${PYTHON_EXECUTABLE})
+        else()
+            find_package(Python3 COMPONENTS Interpreter REQUIRED)
+        endif()
+        add_test(NAME simanneal_cli_tests
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/cli_integration.py
+                    $<TARGET_FILE:simanneal> ${CMAKE_CURRENT_SOURCE_DIR})
         # add_custom_command(
         #     TARGET simanneal_tests
         #     POST_BUILD
@@ -151,4 +226,20 @@ if(BUILD_BENCHMARK AND NOT SKBUILD)
     add_executable(anneal_bench benchmarks/anneal_bench.cc)
     target_link_libraries(anneal_bench simanneal_lib)
     set_property(TARGET anneal_bench PROPERTY CXX_STANDARD 11)
+endif()
+
+option(BUILD_PRODUCTION_BENCHMARK "Build the complete-job search-profile benchmark." OFF)
+if(BUILD_PRODUCTION_BENCHMARK AND NOT SKBUILD)
+    add_executable(production_tts benchmarks/production_tts.cc)
+    target_link_libraries(production_tts simanneal_lib)
+    set_property(TARGET production_tts PROPERTY CXX_STANDARD 11)
+    set_property(TARGET production_tts PROPERTY CXX_STANDARD_REQUIRED True)
+    if(MSVC)
+        target_compile_options(production_tts PRIVATE /fp:strict)
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(production_tts PRIVATE -fno-fast-math -ffp-contract=off)
+        if(SIMANNEAL_NATIVE_ARCH)
+            target_compile_options(production_tts PRIVATE -march=native)
+        endif()
+    endif()
 endif()

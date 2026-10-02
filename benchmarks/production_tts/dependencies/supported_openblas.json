@@ -1,0 +1,23 @@
+{
+  "host": "gaming-pc-u",
+  "installation": "user-local Debian package extraction; no system installation",
+  "root": "/home/samuelshng/simanneal-supported-openblas-20261002/root",
+  "package_source": "Ubuntu jammy/jammy-updates apt metadata",
+  "packages": {
+    "libopenblas-pthread-dev_0.3.20+ds-1_amd64.deb": "47d50a58626f9e2fe2936dd5d1035ccd6d409bf7e2583e3e91c07cf9cd76019e",
+    "libopenblas0-pthread_0.3.20+ds-1_amd64.deb": "12f1a06f966803bc4c03b5ef5e587da182944a6727178d8e7ce62d58586127b4",
+    "libgfortran5_12.3.0-1ubuntu1~22.04.3_amd64.deb": "14dbb269458f60ca64af646c9300b8b85dd962ddbb434ba362062a54c07c4db6",
+    "libquadmath0_12.3.0-1ubuntu1~22.04.3_amd64.deb": "c4c59e67e76674c8c494ce5e0415b71d770a759b48893c0d3cbabddceeb690b2"
+  },
+  "enabled_wrapper_tests": {
+    "cases": 3,
+    "assertions": 346,
+    "result": "passed"
+  },
+  "portable_wrapper_tests": {
+    "cases": 1,
+    "assertions": 7,
+    "result": "passed"
+  },
+  "scope": "wrapper arithmetic/ABI/thread smoke, not integrated solver TTS"
+}

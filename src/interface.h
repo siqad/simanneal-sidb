@@ -9,6 +9,7 @@
 #include "libs/siqadconn/src/siqadconn.h"
 #include "simanneal.h"
 #include <string>
+#include <memory>
 
 namespace phys {
 
@@ -44,8 +45,8 @@ namespace phys {
   private:
 
     // Instances
-    SiQADConnector *sqconn=nullptr;
-    SimAnneal *master_annealer=nullptr;
+    std::unique_ptr<SiQADConnector> sqconn;
+    std::unique_ptr<SimAnneal> master_annealer;
 
     // variables
     std::string in_path;

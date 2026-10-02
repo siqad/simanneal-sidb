@@ -30,6 +30,10 @@ TEST_CASE("Population backends preserve incremental energy and charge bounds") {
 #ifdef SIMANNEAL_HAVE_ACCELERATE
     backends.push_back(phys::PopulationBackend::Accelerate);
 #endif
+#ifdef SIMANNEAL_HAVE_OPENBLAS
+    backends.push_back(phys::PopulationBackend::OpenBLAS);
+    backends.push_back(phys::PopulationBackend::OpenBLASSymmetric);
+#endif
     for (auto backend : backends) {
         for (std::uint64_t seed : {731ULL,998ULL}) {
             auto sp=backend_fixture(backend);
@@ -46,6 +50,16 @@ TEST_CASE("Population backends preserve incremental energy and charge bounds") {
         }
     }
 }
+
+#ifndef SIMANNEAL_HAVE_OPENBLAS
+TEST_CASE("Explicit unavailable OpenBLAS backends fail before simulation") {
+    for (auto backend : {phys::PopulationBackend::OpenBLAS,
+                         phys::PopulationBackend::OpenBLASSymmetric}) {
+        auto sp=backend_fixture(backend);
+        REQUIRE_THROWS_AS(phys::SimAnneal(sp),std::invalid_argument);
+    }
+}
+#endif
 
 TEST_CASE("Auto selects the compiled population backend") {
     auto actual=backend_history(backend_fixture(phys::PopulationBackend::Auto),731);
@@ -70,7 +84,7 @@ TEST_CASE("Nonfinite geometry retains portable population behavior") {
     auto points=sp.db_locs; points[1]=points[0]; sp.setDBLocs(points);
     sp.v_ext.clear(); sp.v_fc.clear();
     auto portable=backend_history(sp,731);
-    REQUIRE_FALSE(phys::SimAnneal::sim_params.population_finite_matrix);
+    // backend_history destroys its model, so global model state is reset here.
     sp.population_backend=phys::PopulationBackend::Accelerate;
     auto accelerated=backend_history(sp,731);
     REQUIRE(portable.size()==accelerated.size());

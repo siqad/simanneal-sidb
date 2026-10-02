@@ -1,0 +1,7 @@
+{
+  "source": "Consolidated frozen research suite, 2026-10-02",
+  "effective_settings_sha256": "ecbd6dc90b6012c7435f1728aa965b9b1666d76ca98f5e4c2a4863fbaffac1e5",
+  "targets_summary_sha256": "83c714824e0171f8d05f0125677c46b5127a8291a203be4242cafdb0d146e825",
+  "scope": "Geometry and thresholds retained unchanged. Large targets are validated witnesses or preset thresholds, not ground states. Three controls were previously exactly certified; this runner does not recertify them.",
+  "fixture_sha256": "f8f9c89217ea6318e084be10805db55dadd1ff1845face57a20413a04c321024"
+}

@@ -84,9 +84,51 @@ interpreter, bin_path, command
             <T>int</T><val>0</val><label>Active workers</label>
             <tip>Concurrent workers, capped by restart count. 0 uses hardware concurrency.</tip>
         </num_workers>
+        <search_profile>
+            <T>string</T><val>legacy</val><label>Search profile</label>
+            <tip>legacy preserves the original search. optimized enables PCG sampling, bounded repair, and the validated singleton shortcut.</tip>
+        </search_profile>
+        <random_backend>
+            <T>string</T><val>auto</val><label>Random generator</label>
+            <tip>auto selects MT for legacy and PCG32 for optimized. Explicit choices are mt and pcg32. Changing generators changes seeded trajectories.</tip>
+        </random_backend>
+        <repair>
+            <T>string</T><val>profile</val><label>Bounded repair</label>
+            <tip>profile follows the search profile. true enables repair; false disables it. Repair preserves an independently valid incumbent.</tip>
+        </repair>
+        <singleton_shortcut>
+            <T>string</T><val>profile</val><label>Singleton shortcut</label>
+            <tip>profile follows the search profile. true validates the sole admissible configuration and can avoid all restarts.</tip>
+        </singleton_shortcut>
+        <probability_shortcuts>
+            <T>bool</T><val>1</val><label>Probability shortcuts</label>
+            <tip>Avoid exponential evaluation when finite random-grid bounds determine the same decision. Random draws remain unchanged.</tip>
+            <value_selection type="CheckBox"></value_selection>
+        </probability_shortcuts>
+        <transient_domain_mask>
+            <T>bool</T><val>0</val><label>Restrict transient charges</label>
+            <tip>Exclude charges ruled out for final states during annealing too. This changes search paths and can help or harm convergence.</tip>
+            <value_selection type="CheckBox"></value_selection>
+        </transient_domain_mask>
+        <refinement>
+            <T>string</T><val>none</val><label>Local refinement</label>
+            <tip>none, k6, k10, or shared. shared refines the same candidates using fixed and shifted ten-site clusters.</tip>
+        </refinement>
+        <refinement_candidates>
+            <T>int</T><val>8</val><label>Refinement candidates</label>
+            <tip>Maximum distinct low-energy candidates for bounded local refinement. Range 1 to 32.</tip>
+        </refinement_candidates>
+        <refinement_rounds>
+            <T>int</T><val>1</val><label>Refinement rounds</label>
+            <tip>Maximum sequential rounds per candidate. More rounds cost more time and do not always improve time to solution.</tip>
+        </refinement_rounds>
+        <refinement_trials>
+            <T>int</T><val>1</val><label>Refinement trials</label>
+            <tip>Maximum lower-energy cluster proposals repaired per round. Range 1 to 2.</tip>
+        </refinement_trials>
         <population_backend>
             <T>string</T><val>auto</val><label>Population numerical backend</label>
-            <tip>auto uses Apple Accelerate when included in the build, otherwise portable. portable retains ordered portable population updates. accelerate requires an Accelerate-enabled build. Numerical reduction order can change seeded trajectories; nonfinite geometry always uses portable updates.</tip>
+            <tip>auto uses Apple Accelerate when included in the build, otherwise portable. portable retains ordered portable population updates. accelerate requires an Accelerate-enabled build. openblas and openblas_symmetric require an OpenBLAS-enabled build and use one BLAS thread per worker. Numerical reduction order can change seeded trajectories; nonfinite geometry always uses portable updates.</tip>
         </population_backend>
         <record_history>
             <T>bool</T><val>0</val><label>Record diagnostic history</label>

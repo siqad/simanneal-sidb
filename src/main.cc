@@ -17,7 +17,7 @@
 
 using namespace phys;
 
-int main(int argc, char *argv[])
+static int run(int argc, char *argv[])
 {
   std::cout << "Physeng invoked" << std::endl;
   std::string if_name, of_name, ext_pots_name;
@@ -47,10 +47,12 @@ int main(int argc, char *argv[])
   while (cml_i < cml_args.size()) {
     if (cml_args[cml_i] == "--ext-pots") {
       std::cout << "--ext-pots: Import external potentials." << std::endl;
+      if (cml_i + 1 >= cml_args.size()) throw std::invalid_argument("--ext-pots requires a path");
       ext_pots_name = cml_args[++cml_i];
     } else if (cml_args[cml_i] == "--ext-pots-step") {
       std::cout << "--ext-pots-step: Specify the step to use for potentials."
         << std::endl;
+      if (cml_i + 1 >= cml_args.size()) throw std::invalid_argument("--ext-pots-step requires an integer");
       ext_pots_step = stoi(cml_args[++cml_i]);
     } else if (cml_args[cml_i] == "--only-suggested-gs") {
       // each SimAnneal instance only returns one configuration
@@ -102,4 +104,13 @@ int main(int argc, char *argv[])
   tk->printAllStopwatches();
 
   delete tk;
+  return 0;
+}
+
+int main(int argc, char **argv) {
+  try { return run(argc, argv); }
+  catch (const std::exception &error) { std::cerr << error.what() << '\n'; }
+  catch (const std::string &error) { std::cerr << error << '\n'; }
+  catch (const char *error) { std::cerr << error << '\n'; }
+  return 1;
 }

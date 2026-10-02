@@ -6,7 +6,10 @@
 //
 // @desc:     Simulated annealing physics engine
 
+#include "charge_domains.h"
+#include "population_blas.h"
 #include "simanneal.h"
+#include <new>
 #ifdef SIMANNEAL_HAVE_ACCELERATE
 #include <Accelerate/Accelerate.h>
 #endif
@@ -32,6 +35,10 @@ using namespace phys;
 // static variables
 SimParams SimAnneal::sim_params;
 std::mutex SimAnneal::result_store_mutex;
+std::recursive_mutex SimAnneal::active_model_mutex;
+bool SimAnneal::model_active_ = false;
+std::unique_ptr<const simanneal_pair_bound::Geometry>
+    SimAnneal::repair_geometry_;
 FPType SimAnneal::db_distance_scale = 1E-10;
 AllChargeResults SimAnneal::charge_results;
 AllEnergyResults SimAnneal::energy_results;
@@ -47,6 +54,9 @@ constexpr auto sparams = &SimAnneal::sim_params;
 void SimParams::setDBLocs(const std::vector<EuclCoord> &t_db_locs)
 {
   db_locs = t_db_locs;
+  if (db_locs.size() >
+      static_cast<std::size_t>((std::numeric_limits<int>::max() - 8) / 4))
+    throw std::invalid_argument("Too many DB sites for bounded work counters");
   if (db_locs.size() == 0) {
     throw "There must be 1 or more DBs when setting DBs for SimParams.";
   }
@@ -74,38 +84,121 @@ EuclCoord SimParams::latToEuclCoord(const int &n, const int &m, const int &l, co
   return std::make_pair(x, y);
 }
 
-void SimParams::setFixedCharges(const std::vector<EuclCoord3d> &t_fc_locs, 
-  const std::vector<FPType> &t_fcs, const std::vector<FPType> &t_fc_eps_rs,
-  const std::vector<FPType> &t_fc_lambdas)
-{
-  // fold fixed charge defect effects into v_fc
-  for (int db_i = 0; db_i < db_locs.size(); db_i++) {
-    v_fc[db_i] = 0;
-    for (int defect_i = 0; defect_i < t_fc_locs.size(); defect_i++) {
-      FPType db_x = db_locs[db_i].first;
-      FPType db_y = db_locs[db_i].second;
-      FPType db_z = 0;
-      FPType defect_x = t_fc_locs[defect_i].x;
-      FPType defect_y = t_fc_locs[defect_i].y;
-      FPType defect_z = t_fc_locs[defect_i].z;
-      FPType r = SimAnneal::distance(db_x, db_y, db_z, defect_x, defect_y, defect_z) * SimAnneal::db_distance_scale;
-      v_fc[db_i] += SimAnneal::coulombicPotential(t_fcs[defect_i], 1,
-        t_fc_eps_rs[defect_i], t_fc_lambdas[defect_i], r);
-    }
+void SimParams::setFixedCharges(const std::vector<EuclCoord3d> &locations,
+                                const std::vector<FPType> &charges,
+                                const std::vector<FPType> &permittivities,
+                                const std::vector<FPType> &screening_lengths) {
+  const auto count = locations.size();
+  if (charges.size() != count || permittivities.size() != count ||
+      screening_lengths.size() != count)
+    throw std::invalid_argument(
+        "Fixed-charge parameter vectors must have equal lengths");
+  if (db_locs.empty() || v_fc.size() != db_locs.size())
+    throw std::invalid_argument("Set DB locations before fixed charges");
+  for (std::size_t j = 0; j < count; ++j) {
+    const auto &location = locations[j];
+    if (!std::isfinite(location.x) || !std::isfinite(location.y) ||
+        !std::isfinite(location.z) || !std::isfinite(charges[j]) ||
+        !std::isfinite(permittivities[j]) || permittivities[j] <= 0 ||
+        !std::isfinite(screening_lengths[j]) || screening_lengths[j] <= 0)
+      throw std::invalid_argument(
+          "Fixed charges require finite coordinates/charge and positive finite "
+          "physical parameters");
   }
+  ublas::vector<FPType> potential(db_locs.size());
+  potential.clear();
+  for (std::size_t i = 0; i < db_locs.size(); ++i)
+    for (std::size_t j = 0; j < count; ++j) {
+      const double radius =
+          SimAnneal::distance(db_locs[i].first, db_locs[i].second, 0,
+                              locations[j].x, locations[j].y, locations[j].z) *
+          SimAnneal::db_distance_scale;
+      if (!(radius > 0) || !std::isfinite(radius))
+        throw std::invalid_argument(
+            "Fixed charge distance must be finite and positive");
+      potential[i] += SimAnneal::coulombicPotential(
+          charges[j], 1, permittivities[j], screening_lengths[j], radius);
+      if (!std::isfinite(potential[i]))
+        throw std::invalid_argument(
+            "Fixed-charge potential must remain finite");
+    }
+  v_fc.swap(potential); // Failed validation never replaces the prior field.
 }
 
 // SimAnneal (master) Implementation
 
-SimAnneal::SimAnneal(SimParams &sparams)
-{
-  sim_params = sparams;
-  initialize();
+SimAnneal::SimAnneal(SimParams &parameters) {
+  {
+    std::lock_guard<std::recursive_mutex> lock(active_model_mutex);
+    if (model_active_)
+      throw std::logic_error("Only one SimAnneal model may be alive at a time");
+    model_active_ = true;
+  }
+  try {
+    sim_params = parameters;
+    initialize();
+  } catch (...) {
+    repair_geometry_.reset();
+    sim_params = SimParams();
+    std::lock_guard<std::recursive_mutex> lock(active_model_mutex);
+    model_active_ = false;
+    throw;
+  }
 }
 
+SimAnneal::~SimAnneal() {
+  for (auto &worker : anneal_threads)
+    if (worker.joinable())
+      worker.join();
+  refinement_geometry_.reset();
+  repair_geometry_.reset();
+  AllChargeResults().swap(charge_results);
+  AllEnergyResults().swap(energy_results);
+  SuggestedResults().swap(suggested_gs_results);
+  sim_params = SimParams();
+  std::lock_guard<std::recursive_mutex> lock(active_model_mutex);
+  model_active_ = false;
+}
+
+RepairResult
+SimAnneal::repairConfiguration(const ublas::vector<int> &configuration,
+                               bool known_initial_invalid) {
+  return boundedPhysicalRepair(sim_params, configuration,
+                               repair_geometry_.get(), known_initial_invalid);
+}
 
 void SimAnneal::invokeSimAnneal()
 {
+  std::unique_lock<std::recursive_mutex> invocation(invocation_mutex_,
+                                                    std::try_to_lock);
+  if (!invocation.owns_lock() || invocation_active_)
+    throw std::logic_error("SimAnneal invocation is already active");
+  invocation_active_ = true;
+  struct InvocationReset {
+    bool &active;
+    ~InvocationReset() { active = false; }
+  } reset{invocation_active_};
+  stats_ = SearchStats();
+  if (refinement_geometry_)
+    stats_.refinement_center_offset = refinement_geometry_->centerOffset();
+  if (sim_params.singleton_enabled) {
+    bool all = true;
+    ublas::vector<int> configuration(sim_params.n_dbs);
+    for (int i = 0; i < sim_params.n_dbs; ++i) {
+      all &= simanneal_domains::singleton(sim_params.final_domains[i]);
+      configuration[i] =
+          simanneal_domains::singletonCharge(sim_params.final_domains[i]);
+    }
+    FPType energy;
+    if (all && validatedEnergy(configuration, energy)) {
+      charge_results.clear();
+      energy_results.clear();
+      suggested_gs_results.assign(
+          1, ChargeConfigResult(configuration, true, energy));
+      stats_.singleton_used = true;
+      return;
+    }
+  }
   Logger log(saglobal::log_level);
   if (saglobal::log_level >= Logger::DBG) log.debug() << "Setting up SimAnnealThreads..." << std::endl;
 
@@ -150,6 +243,48 @@ void SimAnneal::invokeSimAnneal()
   for (auto &th : anneal_threads) th.join();
   anneal_threads.clear();
   if (failure) std::rethrow_exception(failure);
+  stats_.executed_restarts = sim_params.num_instances;
+  for (const auto &candidate : suggested_gs_results) {
+    stats_.repair_attempts += candidate.repair_attempted;
+    stats_.repair_budget_exhaustions += candidate.repair_budget_exhausted;
+  }
+  if (refinement_geometry_) {
+    const refinement::ModelView model(sim_params.v_ij, sim_params.v_ext,
+                                      sim_params.v_fc, sim_params.final_domains,
+                                      sim_params.mu, constants::eta,
+                                      constants::RECALC_STABILITY_ERR);
+    std::vector<refinement::Candidate> candidates;
+    for (const auto &candidate : suggested_gs_results)
+      if (candidate.initialized)
+        candidates.emplace_back(candidate.config, candidate.system_energy,
+                                true);
+    // Refinement owns one normalization pass. Public endpoint flags/energies
+    // are never used as a physical proof or as the normalized ranking.
+    refinement::Callbacks callbacks;
+    callbacks.validate = [](const ublas::vector<int> &q, FPType &e) {
+      return SimAnneal::validatedEnergy(q, e);
+    };
+    callbacks.repair = [](const ublas::vector<int> &q) {
+      const auto r = SimAnneal::repairConfiguration(q);
+      refinement::Candidate candidate(r.config, r.energy, r.valid);
+      candidate.budget_exhausted = r.budget_exhausted;
+      return candidate;
+    };
+    const auto result = refinement::run(
+        model, *refinement_geometry_, candidates, sim_params.refinement_options,
+        std::min(sim_params.num_workers,
+                 sim_params.refinement_options.candidates),
+        callbacks);
+    stats_.refinement = result.stats;
+    if (result.improved && result.candidate.valid) {
+      FPType energy;
+      if (validatedEnergy(result.candidate.config, energy)) {
+        suggested_gs_results.emplace_back(result.candidate.config, true,
+                                          energy);
+        suggested_gs_results.back().refinement_result = true;
+      }
+    }
+  }
 
   if (saglobal::log_level >= Logger::DBG) log.debug() << "All simulations complete." << std::endl;
 }
@@ -173,63 +308,61 @@ FPType SimAnneal::systemEnergy(const ublas::vector<int> &n_in, bool qubo)
   return E;
 }
 
-bool SimAnneal::isMetastable(const ublas::vector<int> &n_in)
-{
-  assert(n_in.size() > 0);
-  Logger log(saglobal::log_level);
-
-  const FPType &muzm = sparams->mu;
-  const FPType &mupz = sparams->mu - constants::eta;
-  const FPType &zero_equiv = constants::RECALC_STABILITY_ERR;
-
-  ublas::vector<FPType> v_local(n_in.size());
-  if (saglobal::log_level >= Logger::DBG) log.debug() << "V_i and Charge State Config " << n_in << ":" << std::endl;
-  for (unsigned int i=0; i<n_in.size(); i++) {
-    // calculate v_i
-    v_local[i] = - (sim_params.v_ext[i] + sim_params.v_fc[i]);
-    for (unsigned int j=0; j<n_in.size(); j++) {
-      if (i == j) continue;
-      v_local[i] -= sim_params.v_ij(i,j) * n_in[j];
-    }
-    if (saglobal::log_level >= Logger::DBG) log.debug() << "\tDB[" << i << "]: charge state=" << n_in[i]
-      << ", v_local[i]=" << v_local[i] << " eV, and v_local[i]+muzm=" << v_local[i] + muzm << "eV" << std::endl;
-
-    // return false if invalid
-    if (!(   (n_in[i] == -1 && v_local[i] + muzm < zero_equiv)    // DB- valid condition
-          || (n_in[i] == 1  && v_local[i] + mupz > - zero_equiv)  // DB+ valid condition
-          || (n_in[i] == 0  && v_local[i] + muzm > - zero_equiv   // DB0 valid condition
-                            && v_local[i] + mupz < zero_equiv))) {
-      if (saglobal::log_level >= Logger::DBG) log.debug() << "config " << n_in << " has an invalid population, failed at index " << i << std::endl;
-      if (saglobal::log_level >= Logger::DBG) log.debug() << "v_local[i]=" << v_local[i] << ", muzm=" << muzm << ", mupz=" << mupz << std::endl;
+bool SimAnneal::evaluateConfiguration(const ublas::vector<int> &charge,
+                                      FPType *energy) {
+  const auto &sp = sim_params;
+  const std::size_t size = charge.size();
+  if (size == 0 || size != static_cast<std::size_t>(sp.n_dbs) ||
+      sp.v_ext.size() != size || sp.v_fc.size() != size ||
+      sp.v_ij.size1() != size || sp.v_ij.size2() != size)
+    return false;
+  const FPType eps = constants::RECALC_STABILITY_ERR;
+  ublas::vector<FPType> potential(size);
+  for (std::size_t i = 0; i < size; ++i) {
+    if (charge[i] < -1 || charge[i] > 1 || sp.v_ij(i, i) != 0)
       return false;
-    }
+    potential[i] = -(sp.v_ext[i] + sp.v_fc[i]);
+    for (std::size_t j = 0; j < size; ++j)
+      if (i != j)
+        potential[i] -= sp.v_ij(i, j) * charge[j];
+    if (!std::isfinite(potential[i]))
+      return false;
+    const FPType value = potential[i] + sp.mu;
+    const FPType upper_value = potential[i] + (sp.mu - constants::eta);
+    if (!((charge[i] == -1 && value < eps) ||
+          (charge[i] == 1 && upper_value > -eps) ||
+          (charge[i] == 0 && value > -eps && upper_value < eps)))
+      return false;
   }
-  if (saglobal::log_level >= Logger::DBG) log.debug() << "config " << n_in << " has a valid population." << std::endl;
-
-  auto hopDel = [v_local, n_in](const int &i, const int &j) -> FPType {
-    int dn_i = (n_in[i]==-1) ? 1 : -1;
-    int dn_j = - dn_i;
-    return - v_local[i]*dn_i - v_local[j]*dn_j - sparams->v_ij(i,j);
-  };
-
-  for (unsigned int i=0; i<n_in.size(); i++) {
-    // do nothing with DB+
-    if (n_in[i] == 1)
-      continue;
-
-    for (unsigned int j=0; j<n_in.size(); j++) {
-      // attempt hops from more negative charge states to more positive ones
-      FPType E_del = hopDel(i, j);
-      if ((n_in[j] > n_in[i]) && (E_del < -zero_equiv)) {
-        if (saglobal::log_level >= Logger::DBG) log.debug() << "config " << n_in << " not stable since hopping from site "
-          << i << " to " << j << " would result in an energy change of "
-          << E_del << std::endl;
+  // Final acceptance never trusts cached proposal geometry. Rebuild every
+  // allowed ordered hop against the current full physical model.
+  for (std::size_t i = 0; i < size; ++i)
+    for (std::size_t j = 0; j < size; ++j)
+      if (charge[i] < charge[j] &&
+          -potential[i] + potential[j] - sp.v_ij(i, j) < -eps)
         return false;
-      }
-    }
+  if (energy) {
+    FPType sum = 0;
+    for (std::size_t i = 0; i < size; ++i)
+      sum += charge[i] * (sp.v_ext[i] + sp.v_fc[i] - potential[i]);
+    sum *= 0.5;
+    // The fused expression can overflow an intermediate for extreme finite
+    // fields even when the original Hamiltonian remains representable.
+    if (!std::isfinite(sum))
+      sum = systemEnergy(charge);
+    if (!std::isfinite(sum))
+      return false;
+    *energy = sum;
   }
-  if (saglobal::log_level >= Logger::DBG) log.debug() << "config " << n_in << " has a stable configuration." << std::endl;
   return true;
+}
+
+bool SimAnneal::isMetastable(const ublas::vector<int> &charge) {
+  return evaluateConfiguration(charge, nullptr);
+}
+bool SimAnneal::validatedEnergy(const ublas::vector<int> &charge,
+                                FPType &energy) {
+  return evaluateConfiguration(charge, &energy);
 }
 
 void SimAnneal::storeResults(SimAnnealThread *annealer, int thread_id)
@@ -293,13 +426,72 @@ void SimAnneal::initialize()
 #endif
   if (sp.population_backend != PopulationBackend::Auto &&
       sp.population_backend != PopulationBackend::Portable &&
-      sp.population_backend != PopulationBackend::Accelerate)
+      sp.population_backend != PopulationBackend::Accelerate &&
+      sp.population_backend != PopulationBackend::OpenBLAS &&
+      sp.population_backend != PopulationBackend::OpenBLASSymmetric)
     throw std::invalid_argument("Unknown population_backend");
 
+  if (sp.search_profile != SearchProfile::Legacy &&
+      sp.search_profile != SearchProfile::Optimized)
+    throw std::invalid_argument("Unknown search_profile");
+  if (sp.random_backend == RandomBackend::Auto)
+    sp.random_backend = sp.search_profile == SearchProfile::Optimized
+                            ? RandomBackend::PCG32
+                            : RandomBackend::MT;
+  if (sp.random_backend != RandomBackend::MT &&
+      sp.random_backend != RandomBackend::PCG32)
+    throw std::invalid_argument("Unknown random_backend");
+  const auto enabled = [&](FeatureSetting setting) {
+    if (setting != FeatureSetting::ProfileDefault &&
+        setting != FeatureSetting::Disabled &&
+        setting != FeatureSetting::Enabled)
+      throw std::invalid_argument("Unknown feature setting");
+    return setting == FeatureSetting::Enabled ||
+           (setting == FeatureSetting::ProfileDefault &&
+            sp.search_profile == SearchProfile::Optimized);
+  };
+  sp.repair_enabled = enabled(sp.repair);
+  sp.singleton_enabled = enabled(sp.singleton_shortcut);
+  if (sp.n_dbs <= 0 ||
+      sp.db_locs.size() != static_cast<std::size_t>(sp.n_dbs) ||
+      sp.v_ext.size() != static_cast<std::size_t>(sp.n_dbs) ||
+      sp.v_fc.size() != static_cast<std::size_t>(sp.n_dbs))
+    throw std::invalid_argument("Invalid model dimensions");
+  if (!std::isfinite(sp.mu) || !std::isfinite(sp.eps_r) || sp.eps_r <= 0 ||
+      !std::isfinite(sp.debye_length) || sp.debye_length <= 0)
+    throw std::invalid_argument("Invalid physical parameters");
+  for (int i = 0; i < sp.n_dbs; ++i)
+    if (!std::isfinite(sp.db_locs[i].first) ||
+        !std::isfinite(sp.db_locs[i].second) || !std::isfinite(sp.v_ext[i]) ||
+        !std::isfinite(sp.v_fc[i]))
+      throw std::invalid_argument("Coordinates and fields must be finite");
+  if (!std::isfinite(sp.result_queue_factor) || sp.result_queue_factor < 0 ||
+      sp.result_queue_factor > 1)
+    throw std::invalid_argument("result_queue_factor must be in [0,1]");
+  if (sp.anneal_cycles <= 0 || sp.preanneal_cycles < 0 ||
+      sp.preanneal_cycles > sp.anneal_cycles || sp.hop_attempt_factor < 0 ||
+      !std::isfinite(sp.T_init) || sp.T_init <= 0 || !std::isfinite(sp.T_min) ||
+      sp.T_min <= 0 || !std::isfinite(sp.T_e_inv_point) ||
+      sp.T_e_inv_point <= 0 || !std::isfinite(sp.v_freeze_end_point) ||
+      sp.v_freeze_end_point <= 0 || !std::isfinite(sp.v_freeze_threshold) ||
+      sp.v_freeze_threshold <= 0 || sp.phys_validity_check_cycles <= 0)
+    throw std::invalid_argument("Invalid annealing schedule");
+  if (sp.population_backend == PopulationBackend::OpenBLAS ||
+      sp.population_backend == PopulationBackend::OpenBLASSymmetric) {
+    if (!simanneal_blas::openblasAvailable())
+      throw std::invalid_argument("OpenBLAS is unavailable in this build");
+    simanneal_blas::configureSingleThread();
+  }
   if (sp.deterministic_seed && sp.random_seed > std::numeric_limits<std::uint32_t>::max())
     throw std::invalid_argument("random_seed must be in [0,4294967295]");
 
   if (saglobal::log_level >= Logger::DBG) log.debug() << "Performing pre-calculations..." << std::endl;
+
+  if (!std::isfinite(sp.v_freeze_init) || !std::isfinite(sp.v_freeze_reset))
+    throw std::invalid_argument(
+        "Freeze initial/reset potentials must be finite");
+  if (sp.hop_attempt_factor > std::numeric_limits<int>::max() / sp.n_dbs)
+    throw std::invalid_argument("Hop attempt budget exceeds supported range");
 
   // set default values
   if (sp.v_freeze_init < 0)
@@ -309,13 +501,20 @@ void SimAnneal::initialize()
 
   // apply schedule scaling
   sp.alpha = std::pow(std::exp(-1.), 1./(sp.T_e_inv_point * sp.anneal_cycles));
-  sp.v_freeze_cycles = sp.v_freeze_end_point * sp.anneal_cycles;
+  const double freeze_cycles = sp.v_freeze_end_point * sp.anneal_cycles;
+  if (!std::isfinite(freeze_cycles) ||
+      freeze_cycles >
+          std::numeric_limits<int>::max() - sp.phys_validity_check_cycles)
+    throw std::invalid_argument(
+        "Freeze schedule exceeds supported cycle range");
+  sp.v_freeze_cycles = freeze_cycles < 1 ? 1 : static_cast<int>(freeze_cycles);
   sp.v_freeze_step = sp.v_freeze_threshold / sp.v_freeze_cycles;
 
   if (saglobal::log_level >= Logger::DBG) log.debug() << "Anneal cycles: " << sp.anneal_cycles << ", alpha: "
     << sp.alpha << ", v_freeze_cycles: " << sp.v_freeze_cycles << std::endl;
 
-  sp.result_queue_size = sp.anneal_cycles * sp.result_queue_factor;
+  sp.result_queue_size = static_cast<int>(
+      static_cast<double>(sp.anneal_cycles) * sp.result_queue_factor);
   sp.result_queue_size = std::min(sp.result_queue_size, sp.anneal_cycles);
   sp.result_queue_size = std::max(sp.result_queue_size, 1);
   if (saglobal::log_level >= Logger::DBG) log.debug() << "Result queue size: " << sp.result_queue_size << std::endl;
@@ -379,6 +578,38 @@ void SimAnneal::initialize()
   if (sp.num_workers == 0)
     sp.num_workers = std::max(1u, std::thread::hardware_concurrency());
   sp.num_workers = std::min(sp.num_workers, sp.num_instances);
+  const auto &options = sp.refinement_options;
+  if (options.mode != refinement::Mode::Disabled &&
+      options.mode != refinement::Mode::K6 &&
+      options.mode != refinement::Mode::K10 &&
+      options.mode != refinement::Mode::SharedK10)
+    throw std::invalid_argument("Unknown refinement mode");
+  if (options.candidates < 1 || options.candidates > 32 || options.rounds < 1 ||
+      options.rounds > 8 || options.trials < 1 || options.trials > 2 ||
+      options.geometry_byte_cap == 0 ||
+      options.geometry_byte_cap > 8 * 1024 * 1024 ||
+      options.dedup_byte_cap == 0 || options.dedup_byte_cap > 8 * 1024 * 1024)
+    throw std::invalid_argument("Invalid bounded refinement settings");
+  sp.final_domains = simanneal_domains::finalCharges(
+      sp.v_ij, sp.v_ext, sp.v_fc, sp.n_dbs, sp.mu, constants::eta,
+      std::max(constants::POP_STABILITY_ERR, constants::RECALC_STABILITY_ERR));
+  if (sp.population_finite_matrix && sp.n_dbs >= 256 &&
+      (sp.repair_enabled ||
+       sp.refinement_options.mode != refinement::Mode::Disabled))
+    repair_geometry_.reset(
+        new simanneal_pair_bound::Geometry(sp.n_dbs, sp.v_ij));
+  if (sp.refinement_options.mode != refinement::Mode::Disabled) {
+    const refinement::ModelView model(sp.v_ij, sp.v_ext, sp.v_fc,
+                                      sp.final_domains, sp.mu, constants::eta,
+                                      constants::RECALC_STABILITY_ERR);
+    std::uint64_t geometry_seed = sp.random_seed;
+    if (!sp.deterministic_seed) {
+      boost::random_device entropy;
+      geometry_seed = (static_cast<std::uint64_t>(entropy()) << 32) | entropy();
+    }
+    refinement_geometry_.reset(
+        new refinement::Geometry(model, sp.refinement_options, geometry_seed));
+  }
   charge_results.assign(sp.num_instances, ThreadChargeResults());
   energy_results.assign(sp.num_instances, ThreadEnergyResults());
   //cpu_times.resize(sp.num_instances);
@@ -414,11 +645,25 @@ FPType SimAnneal::hopEnergyDelta(ublas::vector<int> n_in, const int &from_ind,
 
 // SimAnnealThread Implementation
 
-SimAnnealThread::SimAnnealThread(const int t_thread_id, const std::uint64_t seed)
-  : thread_id(t_thread_id), gener(seed), dis01(0,1)
-{
+SimAnnealThread::SimAnnealThread(const int id, const std::uint64_t seed)
+    : thread_id(id), dis01(0, 1) {
+  if (sparams->n_dbs <= 0 || id < 0 || id >= sparams->num_instances)
+    throw std::invalid_argument(
+        "Worker requires a live model and valid restart ID");
+  use_pcg = sparams->random_backend == RandomBackend::PCG32;
+  if (use_pcg)
+    new (&engines.pcg) PcgEngine(seed);
+  else
+    new (&engines.mt) RandEng(seed);
   muzm = sparams->mu;
   mupz = sparams->mu - constants::eta;
+}
+
+SimAnnealThread::~SimAnnealThread() {
+  if (use_pcg)
+    engines.pcg.~PcgEngine();
+  else
+    engines.mt.~RandEng();
 }
 
 void SimAnnealThread::run()
@@ -451,11 +696,18 @@ void SimAnnealThread::anneal()
   // Vars
   ublas::vector<int> dn(sparams->n_dbs);  // change of occupation for population update
   ublas::vector<FPType> population_v_delta(sparams->n_dbs);
+  const bool population_openblas =
+      sparams->population_backend == PopulationBackend::OpenBLAS ||
+      sparams->population_backend == PopulationBackend::OpenBLASSymmetric;
 #ifdef SIMANNEAL_HAVE_ACCELERATE
-  const bool population_accelerate = sparams->population_backend != PopulationBackend::Portable;
-  // Convert integer charge deltas once per changed population, reusing storage.
-  std::vector<FPType> population_backend_input(population_accelerate ? sparams->n_dbs : 0);
+  const bool population_accelerate =
+      sparams->population_backend == PopulationBackend::Auto ||
+      sparams->population_backend == PopulationBackend::Accelerate;
+#else
+  const bool population_accelerate = false;
 #endif
+  std::vector<FPType> population_backend_input(
+      population_accelerate || population_openblas ? sparams->n_dbs : 0);
   std::vector<unsigned> population_changed;
   population_changed.reserve(sparams->n_dbs);
   // Geometry initialization records this once for all independent restarts.
@@ -496,6 +748,24 @@ void SimAnnealThread::anneal()
     return *occ_it;
   };
 
+  if (sparams->transient_domain_mask) {
+    for (int i = 0; i < sparams->n_dbs; ++i) {
+      const auto mask = sparams->final_domains[i];
+      if (simanneal_domains::singleton(mask))
+        n[i] = simanneal_domains::singletonCharge(mask);
+    }
+    for (int i = 0; i < sparams->n_dbs; ++i) {
+      if (n[i] == -1)
+        dbm_occ[dbm_occ_count++] = i;
+      else if (n[i] == 1)
+        dbp_occ[dbp_occ_count++] = i;
+      else {
+        if (local_hops)
+          neutral_slot[i] = db0_occ_count;
+        db0_occ[db0_occ_count++] = i;
+      }
+    }
+  }
   E_sys = systemEnergy();
   v_local = - (sparams->v_ext + sparams->v_fc) - ublas::prod(sparams->v_ij, n);
 
@@ -511,32 +781,53 @@ void SimAnnealThread::anneal()
     if (pop_changed) {
       n += dn;
       if (radius_hops) population_changed.clear();
-#ifdef SIMANNEAL_HAVE_ACCELERATE
-      // Match the qualified dense backend: no unused sparse-index gathering.
-      // Nonfinite geometries retain the portable dense behavior, including 0*NaN.
-      if (population_accelerate && population_finite_matrix && !dn.empty()) {
-        const std::size_t count = dn.size();
-        for (std::size_t j = 0; j < count; ++j) {
+      bool dense_updated = false;
+      int population_nonzero = 0;
+      if (population_openblas)
+        for (unsigned j = 0; j < dn.size(); ++j)
+          population_nonzero += dn[j] != 0;
+      const bool openblas_dense =
+          population_openblas && population_nonzero * 4 >= sparams->n_dbs;
+      if ((population_accelerate || openblas_dense) &&
+          population_finite_matrix && !dn.empty()) {
+        const int count = static_cast<int>(dn.size());
+        for (int j = 0; j < count; ++j) {
           population_backend_input[j] = dn[j];
-          if (radius_hops && dn[j] != 0) population_changed.push_back(static_cast<unsigned>(j));
+          if (radius_hops && dn[j] != 0)
+            population_changed.push_back(static_cast<unsigned>(j));
         }
-        FPType *population_output = &population_v_delta.data()[0];
-        cblas_dgemv(CblasRowMajor, CblasNoTrans, static_cast<int>(count),
-            static_cast<int>(count), 1.0, &sparams->v_ij.data()[0], static_cast<int>(count),
-            population_backend_input.data(), 1, 0.0, population_output, 1);
-        FPType population_linear_energy = 0;
-        FPType population_quadratic_energy = 0;
-        FPType *population_local = &v_local.data()[0];
-        for (std::size_t i = 0; i < count; ++i) {
-          population_linear_energy += population_local[i]*dn[i];
-          population_quadratic_energy += dn[i]*population_output[i];
+        FPType *output = &population_v_delta.data()[0];
+        if (population_openblas) {
+          dense_updated =
+              sparams->population_backend ==
+                      PopulationBackend::OpenBLASSymmetric
+                  ? simanneal_blas::symv(&sparams->v_ij.data()[0],
+                                         population_backend_input.data(),
+                                         output, count)
+                  : simanneal_blas::gemv(&sparams->v_ij.data()[0],
+                                         population_backend_input.data(),
+                                         output, count);
         }
-        E_sys += -1 * population_linear_energy + 0.5 * population_quadratic_energy;
-        for (std::size_t i = 0; i < count; ++i)
-          population_local[i] -= population_output[i];
-      } else
+#ifdef SIMANNEAL_HAVE_ACCELERATE
+        else {
+          cblas_dgemv(CblasRowMajor, CblasNoTrans, count, count, 1.0,
+                      &sparams->v_ij.data()[0], count,
+                      population_backend_input.data(), 1, 0.0, output, 1);
+          dense_updated = true;
+        }
 #endif
-      {
+        if (dense_updated) {
+          FPType linear = 0, quadratic = 0;
+          for (int i = 0; i < count; ++i) {
+            linear += v_local[i] * dn[i];
+            quadratic += dn[i] * output[i];
+          }
+          E_sys += -linear + 0.5 * quadratic;
+          for (int i = 0; i < count; ++i)
+            v_local[i] -= output[i];
+        }
+      }
+      if (!dense_updated) {
         // Portable arithmetic and ascending-j sparse accumulation are unchanged.
         population_changed.clear();
         for (unsigned j = 0; j < dn.size(); ++j)
@@ -591,11 +882,12 @@ void SimAnnealThread::anneal()
       from_ind = rand_charged_db_ind(from_occ);
       to_ind = -1;
       if (local_hops && (sparams->hop_global_probability == 0 ||
-            (sparams->hop_global_probability < 1 &&
-             dis01(gener) >= sparams->hop_global_probability))) {
-        to_ind = radius_hops
-            ? sparams->hop_neighborhood.selectRadius(from_ind, n, dis01(gener), radius_cache)
-            : sparams->hop_neighborhood.select(from_ind, n, dis01(gener));
+                         (sparams->hop_global_probability < 1 &&
+                          uniformDraw() >= sparams->hop_global_probability))) {
+        to_ind = radius_hops ? sparams->hop_neighborhood.selectRadius(
+                                   from_ind, n, uniformDraw(), radius_cache)
+                             : sparams->hop_neighborhood.select(from_ind, n,
+                                                                uniformDraw());
         if (to_ind == -2) {
           ++hop_attempts;
           continue;
@@ -611,6 +903,15 @@ void SimAnnealThread::anneal()
         throw;
       }
       hop_E_del = hopEnergyDelta(from_ind, to_ind);
+      const int hop_direction = n[from_ind] == -1 ? 1 : -1;
+      if (sparams->transient_domain_mask &&
+          (!(sparams->final_domains[from_ind] &
+             (1 << (n[from_ind] + hop_direction + 1))) ||
+           !(sparams->final_domains[to_ind] &
+             (1 << (n[to_ind] - hop_direction + 1))))) {
+        ++hop_attempts;
+        continue;
+      }
       if (acceptHop(hop_E_del)) {
         performHop(from_ind, to_ind, E_sys, hop_E_del);
         if (radius_hops && radius_cache.initialized) {
@@ -662,6 +963,20 @@ void SimAnnealThread::anneal()
   // Preserve an exportable final state even if no likely valid state was found.
   if (!suggested_gs.initialized)
     suggested_gs = ChargeConfigResult(n, populationValid(), E_sys);
+  if (sparams->repair_enabled) {
+    FPType energy;
+    if (SimAnneal::validatedEnergy(suggested_gs.config, energy))
+      suggested_gs.system_energy = energy;
+    else {
+      const auto repaired =
+          SimAnneal::repairConfiguration(suggested_gs.config, true);
+      if (repaired.valid)
+        suggested_gs =
+            ChargeConfigResult(repaired.config, true, repaired.energy);
+      suggested_gs.repair_attempted = true;
+      suggested_gs.repair_budget_exhausted = repaired.budget_exhausted;
+    }
+  }
   SimAnneal::storeResults(this, thread_id);
 }
 
@@ -669,7 +984,6 @@ void SimAnnealThread::genPopDelta(ublas::vector<int> &dn, bool &changed)
 {
   // DB- and DB+ sites can be flipped to DB0, DB0 sites can be flipped to either
   // DB- or DB+ depending on which one is enegetically closer.
-  FPType prob;
   FPType x;
   int change_dir;
   changed = false;
@@ -693,9 +1007,15 @@ void SimAnnealThread::genPopDelta(ublas::vector<int> &dn, bool &changed)
         change_dir = 1;
       }
     }
-    prob = 1. / (1 + exp(x / kT));
-
-    if (evalProb(prob)) {
+    if (sparams->transient_domain_mask &&
+        !(sparams->final_domains[i] & (1 << (n[i] + change_dir + 1)))) {
+      dn[i] = 0;
+      continue;
+    }
+    const FPType draw = uniformDraw();
+    const bool accept = simanneal_rng::populationAcceptance(
+        draw, x, kT, sparams->probability_shortcuts);
+    if (accept) {
       dn[i] = change_dir;
       changed = true;
     } else {
@@ -796,26 +1116,37 @@ void SimAnnealThread::timeStep()
     v_freeze += sparams->v_freeze_step;
 }
 
-bool SimAnnealThread::acceptHop(const FPType &v_diff)
-{
-  if (v_diff < 0)
+bool SimAnnealThread::acceptHop(const FPType &delta) {
+  if (delta < 0)
     return true;
-
-  // some acceptance function, acceptance probability falls off exponentially
-  FPType prob = exp(-v_diff/kT);
-
-  return evalProb(prob);
+  const FPType draw = uniformDraw();
+  return simanneal_rng::hopAcceptance(draw, delta, kT,
+                                      sparams->probability_shortcuts);
 }
 
 bool SimAnnealThread::evalProb(const FPType &prob)
 {
-  return prob >= dis01(gener);
+  return prob >= uniformDraw();
 }
 
-int SimAnnealThread::randInt(const int &min, const int &max)
-{
-  RandIntDist dis(min,max);
-  return dis(gener);
+FPType SimAnnealThread::uniformDraw() {
+  return use_pcg ? simanneal_rng::UniformGrid32()(engines.pcg)
+                 : dis01(engines.mt);
+}
+
+int SimAnnealThread::randInt(const int &min, const int &max) {
+  if (max < min)
+    throw std::invalid_argument("Invalid inclusive random range");
+  if (!use_pcg)
+    return RandIntDist(min, max)(engines.mt);
+  const std::uint64_t width =
+      static_cast<std::uint64_t>(static_cast<std::int64_t>(max) - min) + 1;
+  const std::uint32_t draw =
+      width == (UINT64_C(1) << 32)
+          ? engines.pcg()
+          : simanneal_rng::bounded(engines.pcg,
+                                   static_cast<std::uint32_t>(width));
+  return static_cast<int>(static_cast<std::int64_t>(min) + draw);
 }
 
 FPType SimAnnealThread::systemEnergy() const
