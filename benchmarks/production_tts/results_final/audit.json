@@ -1,0 +1,9 @@
+{
+  "unique_states": 1468,
+  "checked_rows": 3593,
+  "rejects": 0,
+  "failures": [],
+  "maximum_energy_error": 3.197442310920451e-14,
+  "scope": "Independent implementation check of the solver model, including legacy rounded constants; not validation of physical constants.",
+  "rows_sha256": "fb7bf80899dd71602cdcb1db7742467870b3a4cc755829afaa3263bcdbd9bea5"
+}
