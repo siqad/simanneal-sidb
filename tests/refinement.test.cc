@@ -397,3 +397,18 @@ TEST_CASE(
     }
   }
 }
+
+TEST_CASE("Refinement rejects geometry built with a different byte cap") {
+  Fixture f(3);
+  auto m = f.model();
+  Options built;
+  built.mode = Mode::K6;
+  Geometry g(m, built, 7);
+  auto initial = candidate(m, f.aligned(1));
+  Options changed = built;
+  SECTION("Zero cap") { changed.geometry_byte_cap = 0; }
+  SECTION("Lower nonzero cap") { changed.geometry_byte_cap /= 2; }
+  REQUIRE_THROWS_AS(run(m, g, {initial}, changed, 1, callbacks(m)),
+                    std::invalid_argument);
+  REQUIRE_NOTHROW(run(m, g, {initial}, built, 1, callbacks(m)));
+}

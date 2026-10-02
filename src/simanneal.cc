@@ -182,7 +182,11 @@ void SimAnneal::invokeSimAnneal()
       1, sim_params.population_backend == PopulationBackend::OpenBLAS ||
              sim_params.population_backend == PopulationBackend::OpenBLASSymmetric);
   stats_ = SearchStats();
-  stats_.population_blas_threads = simanneal_blas::threadCount();
+  stats_.population_blas_threads =
+      (sim_params.population_backend == PopulationBackend::OpenBLAS ||
+       sim_params.population_backend == PopulationBackend::OpenBLASSymmetric)
+          ? simanneal_blas::threadCount()
+          : 0;
   if (refinement_geometry_) {
     stats_.refinement_center_offset = refinement_geometry_->centerOffset();
     stats_.refinement.geometry_count = refinement_geometry_->geometryCount();

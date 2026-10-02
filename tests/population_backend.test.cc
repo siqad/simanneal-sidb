@@ -19,6 +19,23 @@ phys::SimParams backend_fixture(phys::PopulationBackend backend) {
 }
 
 #ifdef SIMANNEAL_HAVE_OPENBLAS
+TEST_CASE("Portable population metadata ignores the OpenBLAS caller thread count") {
+    const int original=simanneal_blas::threadCount();
+    {
+        const simanneal_blas::ScopedThreadCount caller_threads(2);
+        auto sp=backend_fixture(phys::PopulationBackend::Portable);
+        sp.deterministic_seed=true;
+        sp.random_seed=731;
+        phys::SimAnneal master(sp);
+        REQUIRE(simanneal_blas::threadCount()==2);
+        master.invokeSimAnneal();
+        REQUIRE(master.searchStats().executed_restarts==1);
+        REQUIRE(master.searchStats().population_blas_threads==0);
+        REQUIRE(simanneal_blas::threadCount()==2);
+    }
+    REQUIRE(simanneal_blas::threadCount()==original);
+}
+
 TEST_CASE("OpenBLAS construction preserves caller threads and invocation restores them") {
     const int original=simanneal_blas::threadCount();
     {

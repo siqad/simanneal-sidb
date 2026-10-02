@@ -383,13 +383,14 @@ struct Geometry::Impl {
   const std::vector<unsigned char> *domains;
   FPType mu, eta, epsilon;
   Mode mode;
+  std::size_t geometry_byte_cap;
   int offset = 0;
   bool shared_fallback = false;
   std::unique_ptr<Engine> engine;
   Impl(const ModelView &m, const Options &o, std::uint64_t seed)
       : a(&m.coupling), external(&m.external), fixed(&m.fixed),
         domains(&m.domains), mu(m.mu), eta(m.eta), epsilon(m.epsilon),
-        mode(o.mode) {
+        mode(o.mode), geometry_byte_cap(o.geometry_byte_cap) {
     checkOptions(o);
     if (o.mode == Mode::Disabled || !validModel(m))
       return;
@@ -405,7 +406,8 @@ struct Geometry::Impl {
   bool matches(const ModelView &m, const Options &o) const {
     return a == &m.coupling && external == &m.external && fixed == &m.fixed &&
            domains == &m.domains && mu == m.mu && eta == m.eta &&
-           epsilon == m.epsilon && mode == o.mode;
+           epsilon == m.epsilon && mode == o.mode &&
+           geometry_byte_cap == o.geometry_byte_cap;
   }
 };
 Geometry::Geometry(const ModelView &m, const Options &o, std::uint64_t seed)
@@ -440,7 +442,7 @@ Result run(const ModelView &m, const Geometry &g,
   checkOptions(o);
   if (!g.impl_->matches(m, o))
     throw std::invalid_argument(
-        "Refinement geometry belongs to another model/mode");
+        "Refinement geometry belongs to another model/mode/budget");
   if (!cb.validate)
     throw std::invalid_argument("Refinement requires a full validator");
   if (workers < 1)

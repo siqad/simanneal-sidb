@@ -41,3 +41,7 @@ Audit checks, failure counts, campaign deadlines, and output validation remain a
 Native C++/CLI, SWIG/Python, and ASAN/UBSAN tests passed. Sanitizer leak detection remains disabled because third-party connector leaks are outside this qualification. Four Linux CI configurations cover Ubuntu 22.04/24.04 and OpenBLAS OFF/ON. Tests also cover portable seeded offsets and single-cache metadata.
 
 [measurement.json](results_final/measurement.json) and [audit.json](results_final/audit.json) record source and raw-row identity. Raw evidence, binaries, source snapshots, and dependency provenance are saved in a new ignored archive. Earlier archives are unchanged. See [attribution](../../docs/ATTRIBUTION.md) for borrowed methods and licenses.
+
+## Subsequent API and metadata guards
+
+The final merge also rejects reuse of refinement geometry with a changed byte cap. Solver jobs construct and execute geometry with the same cap, so this does not alter the measured search. In OpenBLAS-enabled builds, unused BLAS backends now report zero active BLAS threads. The archived replay predates this metadata correction and reports the process setting even for portable arms. Backend identity remains explicit in each row. The timings above belong to the recorded binary; these two guards received regression tests without another timing campaign.
