@@ -1,0 +1,19 @@
+{
+  "jobs": 64,
+  "workers": 16,
+  "seed": 3280000003,
+  "case_stride": 1000000,
+  "arms": [
+    "legacy",
+    "fixed_portable",
+    "fixed_blas",
+    "shared_blas",
+    "legacy_tuned"
+  ],
+  "binary_sha256": "07d30f5e01cccfeae81179f318165532871fc3a3162cf884753de0f103c6cadb",
+  "cases_sha256": "f8f9c89217ea6318e084be10805db55dadd1ff1845face57a20413a04c321024",
+  "timeout_seconds": 120,
+  "campaign_seconds": 1800,
+  "comparison": "Matched restart intervals and four original schedules; legacy_tuned uses prescribed longer cycles and hop factor 5 on large layouts. Fresh seeds. Large targets are not certified ground states.",
+  "timing": "Prepared-input complete production compute job; coordinate/SimParams allocation, solver construction, search, validated export and solver-owned cleanup included; file parsing, process start, retained output and stdout excluded."
+}

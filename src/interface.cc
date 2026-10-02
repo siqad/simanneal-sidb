@@ -12,6 +12,9 @@
 #include <vector>
 #include <unordered_map>
 #include <iterator>
+#include <iomanip>
+#include <sstream>
+#include <limits>
 
 // boost
 #include <boost/numeric/ublas/matrix.hpp>
@@ -29,14 +32,12 @@ SimAnnealInterface::SimAnnealInterface(std::string t_in_path,
   : in_path(t_in_path), out_path(t_out_path), ext_pots_path(t_ext_pots_path),
     ext_pots_step(t_ext_pots_step)
 {
-  sqconn = new SiQADConnector(std::string("SimAnneal"), in_path, out_path, verbose);
-  loadSimParams();
+  sqconn.reset(new SiQADConnector(std::string("SimAnneal"), in_path, out_path, verbose));
 }
 
 SimAnnealInterface::~SimAnnealInterface()
 {
-  delete master_annealer;
-  delete sqconn;
+  // Members retain the active model through export and release it on failure.
 }
 
 ublas::vector<FPType> SimAnnealInterface::loadExternalPotentials(const int &n_dbs)
@@ -47,11 +48,13 @@ ublas::vector<FPType> SimAnnealInterface::loadExternalPotentials(const int &n_db
 
   const bpt::ptree &pot_steps_arr = pt.get_child("pots");
   // iterate pots array until the desired step has been reached
-  if (static_cast<unsigned long>(ext_pots_step) >= pot_steps_arr.size())
+  if (ext_pots_step < 0 || static_cast<unsigned long>(ext_pots_step) >= pot_steps_arr.size())
     throw std::range_error("External potential step out of bounds.");
   bpt::ptree::const_iterator pots_arr_it = std::next(pot_steps_arr.begin(), 
       ext_pots_step);
 
+  if ((*pots_arr_it).second.size() != static_cast<std::size_t>(n_dbs))
+    throw std::invalid_argument("External potential count must equal the number of sites");
   ublas::vector<FPType> v_ext;
   v_ext.resize(n_dbs);
   int db_i = 0;
@@ -174,8 +177,53 @@ SimParams SimAnnealInterface::loadSimParams()
   const auto population_backend = sqconn->getParameter("population_backend");
   if (population_backend == "portable") sp.population_backend = PopulationBackend::Portable;
   else if (population_backend == "accelerate") sp.population_backend = PopulationBackend::Accelerate;
+  else if (population_backend == "openblas") sp.population_backend = PopulationBackend::OpenBLAS;
+  else if (population_backend == "openblas_symmetric") sp.population_backend = PopulationBackend::OpenBLASSymmetric;
   else if (!population_backend.empty() && population_backend != "auto")
     throw std::invalid_argument("Unknown population_backend: " + population_backend);
+  const auto profile = sqconn->getParameter("search_profile");
+  if (profile == "optimized") sp.search_profile = SearchProfile::Optimized;
+  else if (!profile.empty() && profile != "legacy")
+    throw std::invalid_argument("Unknown search_profile: " + profile);
+  const auto rng = sqconn->getParameter("random_backend");
+  if (rng == "mt") sp.random_backend = RandomBackend::MT;
+  else if (rng == "pcg32") sp.random_backend = RandomBackend::PCG32;
+  else if (!rng.empty() && rng != "auto")
+    throw std::invalid_argument("Unknown random_backend: " + rng);
+  auto feature = [&](const std::string &name, FeatureSetting &value) {
+    const auto text = sqconn->getParameter(name);
+    if (text.empty() || text == "profile") return;
+    if (text == "true" || text == "1") value = FeatureSetting::Enabled;
+    else if (text == "false" || text == "0") value = FeatureSetting::Disabled;
+    else throw std::invalid_argument(name + " must be profile, true, or false");
+  };
+  feature("repair", sp.repair);
+  feature("singleton_shortcut", sp.singleton_shortcut);
+  auto boolean = [&](const std::string &name, bool &value) {
+    const auto text = sqconn->getParameter(name);
+    if (text.empty()) return;
+    if (text == "true" || text == "1") value = true;
+    else if (text == "false" || text == "0") value = false;
+    else throw std::invalid_argument(name + " must be true or false");
+  };
+  boolean("probability_shortcuts", sp.probability_shortcuts);
+  boolean("transient_domain_mask", sp.transient_domain_mask);
+  const auto refinement = sqconn->getParameter("refinement");
+  if (refinement == "k6") sp.refinement_options.mode = refinement::Mode::K6;
+  else if (refinement == "k10") sp.refinement_options.mode = refinement::Mode::K10;
+  else if (refinement == "shared") sp.refinement_options.mode = refinement::Mode::SharedK10;
+  else if (!refinement.empty() && refinement != "none")
+    throw std::invalid_argument("Unknown refinement: " + refinement);
+  auto integer = [&](const std::string &name, int &value) {
+    const auto text = sqconn->getParameter(name);
+    if (text.empty()) return;
+    std::size_t used = 0;
+    value = std::stoi(text, &used);
+    if (used != text.size()) throw std::invalid_argument(name + " must be an integer");
+  };
+  integer("refinement_candidates", sp.refinement_options.candidates);
+  integer("refinement_rounds", sp.refinement_options.rounds);
+  integer("refinement_trials", sp.refinement_options.trials);
   const auto history = sqconn->getParameter("record_history");
   sp.record_history = history == "true" || history == "1";
   const auto seed = sqconn->getParameter("random_seed");
@@ -233,6 +281,7 @@ SimParams SimAnnealInterface::loadSimParams()
 
 void SimAnnealInterface::writeSimResults(bool only_suggested_gs, bool qubo_energy)
 {
+  if (!master_annealer) throw std::logic_error("Run simulation before exporting results");
   // create the vector of strings for the db locations
   std::vector<std::pair<std::string, std::string>> dbl_data(SimAnneal::sim_params.db_locs.size());
   for (unsigned int i = 0; i < SimAnneal::sim_params.db_locs.size(); i++) { //need the index
@@ -306,7 +355,9 @@ void SimAnnealInterface::writeSimResults(bool only_suggested_gs, bool qubo_energ
     std::vector<std::string> db_dist;
     const ExportElecConfigResult &result = result_it->second;
     db_dist.push_back(result_it->first);                      // config
-    db_dist.push_back(std::to_string(result.system_energy));  // energy
+    std::ostringstream energy;
+    energy << std::setprecision(std::numeric_limits<FPType>::max_digits10) << result.system_energy;
+    db_dist.push_back(energy.str());                         // lossless FP64 energy
     db_dist.push_back(std::to_string(result.occ_count));      // occurance freq
     db_dist.push_back(std::to_string(result.is_metastable));  // metastability
     db_dist.push_back("3");                                   // 3-state
@@ -314,23 +365,65 @@ void SimAnnealInterface::writeSimResults(bool only_suggested_gs, bool qubo_energ
   }
   sqconn->setExport("db_charge", db_dist_data);
 
-  // export misc thread timing data
-  /*
-  unsigned int t_count = master_annealer->CPUTimeingResults().size();
-  std::vector<std::pair<std::string, std::string>> misc_data(t_count);
-  for (unsigned int i=0; i<t_count; i++) {
-    misc_data[i] = std::make_pair("time_s_cpu"+std::to_string(i), 
-                                  std::to_string(master_annealer->CPUTimeingResults().at(i)));
+  const auto &effective = master_annealer->effectiveParams();
+  const auto &stats = master_annealer->searchStats();
+  std::string backend = "portable";
+  switch (effective.population_backend) {
+    case PopulationBackend::Portable: break;
+    case PopulationBackend::Accelerate: backend="accelerate"; break;
+    case PopulationBackend::OpenBLAS: backend="openblas"; break;
+    case PopulationBackend::OpenBLASSymmetric: backend="openblas_symmetric"; break;
+    case PopulationBackend::Auto:
+#ifdef SIMANNEAL_HAVE_ACCELERATE
+      backend="accelerate";
+#endif
+      break;
   }
-  sqconn->setExport("misc", misc_data);
-  */
+  const auto mode = effective.refinement_options.mode;
+  const std::string refinement_mode = mode==refinement::Mode::Disabled ? "none" :
+      mode==refinement::Mode::K6 ? "k6" : mode==refinement::Mode::K10 ? "k10" : "shared";
+  const auto boolean = [](bool value) {return value ? "true" : "false";};
+  std::vector<std::pair<std::string,std::string>> metadata{
+    {"search_profile", effective.search_profile==SearchProfile::Legacy ? "legacy" : "optimized"},
+    {"random_backend", effective.random_backend==RandomBackend::PCG32 ? "pcg32" : "mt"},
+    {"population_backend", backend},
+    {"probability_shortcuts", boolean(effective.probability_shortcuts)},
+    {"repair", boolean(effective.repair_enabled)},
+    {"transient_domain_mask", boolean(effective.transient_domain_mask)},
+    {"singleton_shortcut", boolean(effective.singleton_enabled)},
+    {"singleton_used", boolean(stats.singleton_used)},
+    {"requested_restarts", std::to_string(effective.num_instances)},
+    {"executed_restarts", std::to_string(stats.executed_restarts)},
+    {"active_workers", std::to_string(effective.num_workers)},
+    {"repair_attempts", std::to_string(stats.repair_attempts)},
+    {"repair_budget_exhaustions", std::to_string(stats.repair_budget_exhaustions)},
+    {"refinement", refinement_mode},
+    {"refinement_candidates", std::to_string(effective.refinement_options.candidates)},
+    {"refinement_rounds", std::to_string(effective.refinement_options.rounds)},
+    {"refinement_trials", std::to_string(effective.refinement_options.trials)},
+    {"refinement_center_offset", std::to_string(stats.refinement_center_offset)},
+    {"refinement_geometry_count", std::to_string(stats.refinement.geometry_count)},
+    {"refinement_shared_single_cache_fallback", boolean(stats.refinement.shared_single_cache_fallback)},
+    {"refinement_selected", std::to_string(stats.refinement.selected)},
+    {"refinement_improvements", std::to_string(stats.refinement.improvements)},
+    {"refinement_budget_exhausted", boolean(stats.refinement.budget_exhausted)},
+    {"refinement_geometry_skipped", boolean(stats.refinement.geometry_skipped)},
+    {"refinement_geometry_bytes", std::to_string(stats.refinement.geometry_bytes)}
+  };
+  std::size_t refinement_results = 0;
+  for (const auto &result : master_annealer->suggestedResults())
+    refinement_results += result.refinement_result;
+  metadata.emplace_back("refinement_result_count", std::to_string(refinement_results));
+  metadata.emplace_back("occurrence_semantics", "exported records; restart results plus optional refinement result and diagnostic history");
+  sqconn->setExport("misc", metadata);
 
   sqconn->writeResultsXml();
 }
 
 int SimAnnealInterface::runSimulation(SimParams sparams)
 {
-  master_annealer = new SimAnneal(sparams);
+  master_annealer.reset();
+  master_annealer.reset(new SimAnneal(sparams));
   master_annealer->invokeSimAnneal();
   return 0;
 }

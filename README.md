@@ -51,3 +51,7 @@ which will deposit `__init__.py`, `simanneal.py`, and `_simanneal.so` in `_skbui
 ### Using Python Wrapper
 
 Read `swig/py_demo_script.py` for usage in Python.
+
+### Optimized search profiles
+
+The default legacy profile remains available. Optional validated repair, conservative charge bounds, and bounded cluster refinement can improve time to solution. See [search settings and limits](docs/optimized_search.md), [method attribution](docs/ATTRIBUTION.md), and the [production TTS benchmark](benchmarks/production_tts/README.md). The optimized profile does not certify a global ground state.

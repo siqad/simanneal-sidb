@@ -1,0 +1,26 @@
+{
+  "implementation_commit": "3c939c9",
+  "platform": "AMD Ryzen 7 5800X3D, 8 cores / 16 logical CPUs, Ubuntu, GCC 11.4",
+  "compiler_flags": "-O3 -DNDEBUG -fno-fast-math -ffp-contract=off -march=native -std=gnu++11",
+  "backend": "Ubuntu OpenBLAS 0.3.20 pthread LP64; one BLAS thread; 16 annealing workers",
+  "jobs": 4160,
+  "jobs_per_cell": 64,
+  "layouts": 13,
+  "large_site_range": [
+    103,
+    448
+  ],
+  "exact_control_sites": [
+    26,
+    29,
+    30
+  ],
+  "binary_sha256": "07d30f5e01cccfeae81179f318165532871fc3a3162cf884753de0f103c6cadb",
+  "build_source_manifest_sha256": "1da3377cb48f3e60be988a5c46ce0befc2690a77500da231648997292898f8dc",
+  "rows_sha256": "9b30433d3de6d5603f7efd7934dc055ab0fc4e1359065d24dba1b816c167c738",
+  "time_utc": [
+    "2026-10-02 21:51:36",
+    "2026-10-02 21:58:26"
+  ],
+  "scope": "Integrated production legacy comparator; not untouched master. Full solver timing excludes process start/file parsing. Analysis and audit scripts hardened after timing; compiled source unchanged."
+}

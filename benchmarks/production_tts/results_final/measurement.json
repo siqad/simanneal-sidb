@@ -1,0 +1,11 @@
+{
+  "implementation_commit": "13e99769bfc9bbf03c0a5d7a467e42dc495a5196",
+  "hardware": "AMD Ryzen 7 5800X3D, 8 cores / 16 logical CPUs",
+  "backend": "Ubuntu OpenBLAS 0.3.20 pthread LP64, one BLAS thread, 16 annealing workers",
+  "compiler": "GCC 11.4 Release, strict FP, native host architecture",
+  "jobs": 4160,
+  "jobs_per_cell": 64,
+  "binary_sha256": "56576ac6120980e4e68ff6d1e61918de560c8f9f78107da3ea66cf881f3e664f",
+  "rows_sha256": "fb7bf80899dd71602cdcb1db7742467870b3a4cc755829afaa3263bcdbd9bea5",
+  "scope": "Same-seed replay after caller thread restoration; not independent statistical replication. Frozen earlier evidence preserved. Integrated legacy comparator, not untouched master."
+}

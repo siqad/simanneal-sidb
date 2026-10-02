@@ -11,17 +11,20 @@
 
 #include "global.h"
 #include "hop_selector.h"
-#include <vector>
-#include <deque>
-#include <tuple>
-#include <memory>
+#include "libs/siqadconn/src/siqadconn.h"
+#include "physical_repair.h"
+#include "refinement.h"
+#include "search_rng.h"
 #include <cmath>
-#include <mutex>
-#include <thread>
+#include <deque>
 #include <limits>
+#include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
-#include "libs/siqadconn/src/siqadconn.h"
+#include <thread>
+#include <tuple>
+#include <vector>
 
 //#include <boost/thread.hpp>
 #include <boost/random.hpp>
@@ -55,7 +58,25 @@ namespace phys {
 
   // enums
   enum TemperatureSchedule{LinearSchedule, ExponentialSchedule};
-  enum class PopulationBackend {Auto, Portable, Accelerate};
+  enum class PopulationBackend {
+    Auto,
+    Portable,
+    Accelerate,
+    OpenBLAS,
+    OpenBLASSymmetric
+  };
+  enum class SearchProfile { Legacy, Optimized };
+  enum class RandomBackend { Auto, MT, PCG32 };
+  enum class FeatureSetting { ProfileDefault, Disabled, Enabled };
+
+  struct SearchStats {
+    std::uint64_t executed_restarts = 0, repair_attempts = 0,
+                  repair_budget_exhaustions = 0;
+    bool singleton_used = false;
+    int refinement_center_offset = 0;
+    int population_blas_threads = 0;
+    refinement::Stats refinement;
+  };
 
   // Forward declaration
   class SimAnnealThread;
@@ -94,6 +115,16 @@ namespace phys {
     int num_instances=-1;         // Independent restarts (legacy name)
     int num_workers=0;            // Active workers; 0 selects hardware concurrency
     PopulationBackend population_backend=PopulationBackend::Auto; // Build-selected dense backend
+    SearchProfile search_profile = SearchProfile::Legacy;
+    RandomBackend random_backend = RandomBackend::Auto;
+    FeatureSetting repair = FeatureSetting::ProfileDefault;
+    FeatureSetting singleton_shortcut = FeatureSetting::ProfileDefault;
+    bool probability_shortcuts = true;
+    bool transient_domain_mask = false;
+    refinement::Options refinement_options;
+    // Resolved by solver initialization; callers must use effectiveParams().
+    bool repair_enabled = false, singleton_enabled = false;
+    std::vector<unsigned char> final_domains;
     bool record_history=false;    // Optional bounded per-cycle diagnostic history
     bool deterministic_seed=false;
     std::uint64_t random_seed=0; // Base seed must fit uint32_t for legacy MT32 streams
@@ -155,7 +186,7 @@ namespace phys {
     FPType mu=-0.25;             // Global Fermi level (eV)
     FPType eps_r=5.6;        // Relative premittivity on the surface
     FPType debye_length=5.0;     // Debye Length (nm)
-    int n_dbs;                   // Number of DBs in the simulation
+    int n_dbs = 0;               // Number of DBs in the simulation
     phys::LatticeVector lat_vec;
     std::vector<std::pair<FPType,FPType>> db_locs;  // Location of DBs
     ublas::matrix<FPType> db_r;  // Matrix of distances between all DBs
@@ -187,6 +218,8 @@ namespace phys {
     bool isResult() const {return config.size() > 0;}
 
     bool initialized = false;
+    bool refinement_result = false;
+    bool repair_attempted = false, repair_budget_exhausted = false;
     ublas::vector<int> config;
     bool pop_likely_stable;
     FPType system_energy;
@@ -213,6 +246,15 @@ namespace phys {
 
     //! Constructor taking the simulation parameters.
     SimAnneal(SimParams &sparams);
+    ~SimAnneal();
+    SimAnneal(const SimAnneal &) = delete;
+    SimAnneal &operator=(const SimAnneal &) = delete;
+    SimAnneal(SimAnneal &&) = delete;
+    SimAnneal &operator=(SimAnneal &&) = delete;
+    const SimParams &effectiveParams() const { return sim_params; }
+    const SearchStats &searchStats() const { return stats_; }
+    static RepairResult repairConfiguration(const ublas::vector<int> &,
+                                            bool known_initial_invalid = false);
 
     //! Invoke the desired number of annealers (threads) with the sim_params
     //! stored in the class.
@@ -225,6 +267,7 @@ namespace phys {
 
     //! Return whether the given configuration is metastable.
     static bool isMetastable(const ublas::vector<int> &n_in);
+    static bool validatedEnergy(const ublas::vector<int> &, FPType &);
 
     //! Return the charge configuration in string form.
     static std::string configToStr(const ublas::vector<int> &n_in)
@@ -275,6 +318,15 @@ namespace phys {
     //! Initialize simulation (precomputation, setup common write-out variables,
     //! etc.
     void initialize();
+    static bool evaluateConfiguration(const ublas::vector<int> &, FPType *);
+    static std::recursive_mutex active_model_mutex;
+    static bool model_active_;
+    static std::unique_ptr<const simanneal_pair_bound::Geometry>
+        repair_geometry_;
+    std::recursive_mutex invocation_mutex_;
+    bool invocation_active_ = false;
+    SearchStats stats_;
+    std::unique_ptr<refinement::Geometry> refinement_geometry_;
 
     //! Calculate the Euclidean distance between the i th and j th DBs in the 
     //! db_locs array.
@@ -318,7 +370,7 @@ namespace phys {
     SimAnnealThread(const int t_thread_id, const std::uint64_t seed);
 
     // destructor
-    ~SimAnnealThread() {};
+    ~SimAnnealThread();
 
     // run simulation
     void run();
@@ -379,7 +431,15 @@ namespace phys {
     // VARIABLES
 
     // boost random number generator
-    RandEng gener;
+    typedef simanneal_rng::Pcg32 PcgEngine;
+    union RandomStorage {
+      RandEng mt;
+      PcgEngine pcg;
+      RandomStorage() {}
+      ~RandomStorage() {}
+    } engines;
+    bool use_pcg = false;
+    FPType uniformDraw();
     RandRealDist dis01;
 
     // keep track of stats

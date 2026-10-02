@@ -63,7 +63,7 @@ TEST_CASE( "OR_mod 00 test" ) {
         { 0, 2, 1},
         { 0, 4, 1}
     }, sim_params.lat_vec);
-    auto annealer = phys::SimAnneal(sim_params);
+    phys::SimAnneal annealer(sim_params);
     annealer.invokeSimAnneal();
     auto results = annealer.suggestedConfigResults(true);
     
@@ -153,15 +153,21 @@ TEST_CASE("An all-global local policy preserves the original random trajectory")
     sp.setDBLocs(std::vector<phys::EuclCoord>{{0,0},{7.68,0},{15.36,0},{0,15.36},{7.68,15.36},{15.36,15.36}});
     sp.v_ext.clear(); sp.v_fc.clear();
     sp.num_instances=1; sp.anneal_cycles=100; sp.result_queue_factor=1; sp.record_history=true;
-    phys::SimAnneal original(sp);
-    phys::SimAnnealThread a(0,998);
-    a.run();
-    const auto original_history=original.chargeResults()[0];
+    phys::ThreadChargeResults original_history;
+    {
+        phys::SimAnneal original(sp);
+        phys::SimAnnealThread a(0,998);
+        a.run();
+        original_history=original.chargeResults()[0];
+    }
     sp.hop_selection=phys::LocalDistanceHop; sp.hop_global_probability=1;
-    phys::SimAnneal local(sp);
-    phys::SimAnnealThread b(0,998);
-    b.run();
-    const auto &local_history=local.chargeResults()[0];
+    phys::ThreadChargeResults local_history;
+    {
+        phys::SimAnneal local(sp);
+        phys::SimAnnealThread b(0,998);
+        b.run();
+        local_history=local.chargeResults()[0];
+    }
     REQUIRE(original_history.size()==100);
     REQUIRE(original_history.size()==local_history.size());
     for (std::size_t i=0;i<original_history.size();++i) {

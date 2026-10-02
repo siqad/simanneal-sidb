@@ -4,6 +4,7 @@
 // @desc:       Python wrapper for SimAnneal
 
 %module simanneal
+%include <stdint.i>
 %include <std_streambuf.i>
 %include <std_sstream.i>
 %include <std_iostream.i>
@@ -13,6 +14,17 @@
 %include <std_string.i>
 %include <std_map.i>
 %include <exception.i>
+
+// Translate validation/lifecycle failures instead of terminating Python.
+%exception {
+    try { $action }
+    catch (const std::exception &error) {
+        SWIG_exception(SWIG_RuntimeError, error.what());
+    }
+    catch (...) {
+        SWIG_exception(SWIG_UnknownError, "Unknown C++ exception");
+    }
+}
 %include <std_unordered_set.i>
 
 namespace boost {
@@ -36,6 +48,21 @@ extern int saglobal::log_level;
 
 %include "logger.h"
 %include "global.h"
+namespace phys {
+    enum HopSelection { UniformHop, LocalUniformHop, LocalDistanceHop, LocalRadiusHop };
+}
+%ignore phys::SimParams::hop_neighborhood;
+%ignore phys::SimParams::final_domains;
+%ignore phys::SimParams::repair_enabled;
+%ignore phys::SimParams::singleton_enabled;
+%ignore phys::SimAnneal::repairConfiguration;
+%ignore phys::refinement::Geometry;
+%ignore phys::refinement::ModelView;
+%ignore phys::refinement::Callbacks;
+%ignore phys::refinement::Candidate;
+%ignore phys::refinement::Result;
+%ignore phys::refinement::run;
+%include "refinement.h"
 %include "simanneal.h"
 
 namespace std {
@@ -55,7 +82,7 @@ namespace std {
     %template(StringMap) map< string, string >;
 
     // Iterable container for suggested ground state results returned by SimAnneal
-    %template(ConfigVector) vector< pair< vector<int>, float > >;
+    %template(ConfigVector) vector< pair< vector<int>, double > >;
 }
 
 %{
@@ -81,6 +108,7 @@ namespace std {
     ) {
         std::vector<phys::EuclCoord3d> eucl_coord_objs;
         for (auto c : eucl_coords) {
+            if (c.size() != 3) throw std::invalid_argument("Fixed charge coordinates need x, y, z");
             eucl_coord_objs.push_back(phys::EuclCoord3d(c[0], c[1], c[2]));
         }
         $self->setFixedCharges(eucl_coord_objs, charges, eps_rs, lambdas);
@@ -121,8 +149,8 @@ namespace std {
     // Convert vector of ChargeConfigResult to a vector of pair that has been 
     // specifically defined above as ConfigVector such that SWIG knows how to 
     // generate a suitable container for the results.
-    std::vector<std::pair<std::vector<int>, float>> phys::SimAnneal::pySuggestedResults(bool tidy) {
-        std::vector<std::pair<std::vector<int>, float>> out_results;
+    std::vector<std::pair<std::vector<int>, double>> phys::SimAnneal::pySuggestedResults(bool tidy) {
+        std::vector<std::pair<std::vector<int>, double>> out_results;
         for (auto result : self->suggestedConfigResults(tidy)) {
             std::vector<int> conf;
             for (int chg : result.config)
