@@ -1,0 +1,11 @@
+{
+  "implementation_commit": "e5e82890e0c8d19a99325763015943c4dd114fa5",
+  "hardware": "AMD Ryzen 7 5800X3D, 8 cores / 16 logical CPUs",
+  "backend": "Ubuntu OpenBLAS 0.3.20 pthread LP64, one BLAS thread,16 annealing workers",
+  "compiler": "GCC 11.4 Release, strict FP, native host architecture",
+  "jobs": 4160,
+  "jobs_per_cell": 64,
+  "binary_sha256": "12cd0add3fc13f59efcd66c40a38278de5ad4ed3270773e8b4fa5d1ffb6863cb",
+  "rows_sha256": "5b518ee8a5b823a2e3ab2c23f25bbc2b4e3b8b40fd1df27df5c3cb809efc84bb",
+  "scope": "Fresh post-review cohort. Shared offsets changed; frozen earlier evidence preserved. Integrated legacy comparator, not untouched master."
+}

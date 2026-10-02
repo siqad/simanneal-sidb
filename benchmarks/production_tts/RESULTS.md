@@ -1,53 +1,41 @@
-# Production qualification: 2026-10-02
+# Production qualification after review fixes
 
-The combined policy reduced summed estimated TTS997 by **59.0%** against optimized portable fixed refinement on ten large layouts. The geometric-mean reduction was **29.5%**, with improvements on eight layouts. This comparison isolates the additional OpenBLAS/shared-strategy benefit after the optimized profile and fixed refinement are already enabled.
+The fresh cohort measured **61.9% lower summed estimated TTS997** for the combined policy against optimized portable fixed refinement on the ten large initial targets. The geometric-mean reduction was **30.5%**, with improvements on **7/10 finite pairs**. These compare complete solver jobs, not isolated kernel timings.
 
-The complete stack reduced summed estimated TTS997 by **91.1%** against the integrated legacy profile on three exact controls. Large-layout legacy runs had too few hits to support a corpus-wide percentage. There is no measured universal speedup against untouched master.
+## Fresh measured comparisons
 
-## Measured comparisons
+Each cell contains 64 jobs. Lower values are better. The sum combines per-layout TTS estimates, not elapsed campaign time.
 
-Each cell has 64 complete jobs. Lower values are better. The sum is the sum of each layout's TTS estimate, not the elapsed benchmark time.
+| Comparison | Summed TTS997 or finite coverage | Reduction |
+|---|---:|---:|
+| Optimized portable fixed → combined, ten large initial targets | 16.0199 s → 6.0979 s | 61.9% |
+| Optimized portable fixed → fixed OpenBLAS, ten large initial targets | 16.0199 s → 15.0635 s | 6.0% |
+| Integrated legacy → combined, three exact controls | 2/3 finite pairs | No full-corpus estimate |
 
-| Comparison | Targets and coverage | Before → after, summed TTS997 | Reduction |
-|---|---|---:|---:|
-| Optimized portable fixed → combined | Initial witnesses, all 10 large layouts | 15.651 s → 6.417 s | 59.0% |
-| Optimized portable fixed → fixed OpenBLAS | Initial witnesses, all 10 large layouts | 15.651 s → 14.488 s | 7.4% |
-| Fixed OpenBLAS → combined shared/fixed policy | Initial witnesses, all 10 large layouts | 14.488 s → 6.417 s | 55.7% |
-| Integrated legacy → combined | Exact ground states, all 3 controls | 368.719 ms → 32.809 ms | 91.1% |
-| Longer legacy schedule → combined | Initial witnesses, only 4 of 10 large layouts have finite estimates in both arms | 100.530 s → 1.225 s | 98.8%, descriptive subset only |
+The 26-site HA control had 0/64 legacy hits and 14/64 combined-policy hits. The earlier 91.1% exact-control result remains historical and is not repeated as a fresh full-corpus estimate.
 
-These percentages overlap and must not be added. The combined policy uses shared refinement on the nine K10 layouts and fixed refinement on K6 layouts. This policy was selected before this cohort. K6 runs in the nominal shared arm use the same fixed policy, so their differences reflect timing noise.
+The optimized portable-to-OpenBLAS comparison regressed by 4.7% on the three small controls: summed TTS rose from 27.928 ms to 29.243 ms. Three large initial-target estimates also regressed: parity generator by 0.9%, c17 by 0.5%, and xor5Maj by 7.1%. Keep portable and fixed refinement selectable.
 
-The largest contribution to the initial-target summed reduction comes from the parity-check layout: hits increased from 3/64 with portable fixed refinement to 10/64 with shared OpenBLAS. Its estimated TTS fell from 10.366 s to 2.936 s. Sparse hits make these estimates uncertain. The FA and c17 initial-target estimates regressed by approximately 0.8% and 5.7%, respectively. Both already hit their targets in every job; extra refinement added cost.
+The longer legacy schedule produced finite initial-target comparisons on 5/10 large layouts. Its descriptive common-finite reduction was 99.0%. Zero-hit cells prevent a full-corpus claim. Midpoint targets have 8/10 finite pairs, and strongest targets have 3/10. Component percentages overlap and must not be added.
 
-For midpoint targets, only 8/10 large layouts had finite estimates in both optimized arms. For the strongest targets, only 4/10 did. No full-corpus reduction is claimed for those thresholds. The longer legacy schedule had initial-target hits on only 4/10 large layouts. The ordinary legacy schedule had hits on only 1/10.
+Large layouts contain 103–448 sites. Their frozen witnesses are not ground-state certificates. Exact controls contain 26, 29, and 30 sites. Sparse hits create substantial uncertainty; [analysis.json](results_review/analysis.json) retains all counts, zero-hit cells, and Wilson success-probability intervals. Those are not TTS confidence intervals.
 
-The exact controls contain 26, 29, and 30 sites. Optimized K6 had 12/64, 64/64, and 64/64 exact hits, respectively. Legacy had 2/64, 3/64, and 3/64. The 26-site control still has substantial sampling uncertainty.
+## Review changes and configuration
 
-## Configuration and timing
+Shared refinement now chooses a portable, unbiased nonzero offset strictly between fixed centers. Layouts with fewer than 64 sites intentionally use a single-cache fallback. Metadata reports actual nonempty geometry count and fallback status. This changes seeded shared trajectories, so this report uses a fresh complete cohort. The [pre-review results](PRE_REVIEW_RESULTS.md) and their original files remain available.
 
-The host was an AMD Ryzen 7 5800X3D with 16 annealing workers. GCC 11.4 used Release optimization, strict floating-point operations, and native host instructions. OpenBLAS was the supported Ubuntu 0.3.20 pthread LP64 library, with one BLAS thread. The campaign completed in 410 seconds. Host observations before and after showed no competing CPU or GPU workload.
+The five arms, physical model, frozen targets, candidate budgets, and schedules remain unchanged. The preselected combined policy uses shared K10 on nine large layouts and fixed K6 on the remaining large layout and three exact controls. Optimized arms explicitly enable the transient domain mask. Legacy remains the production default; refinement and transient masking remain opt-in.
 
-The corpus has ten large layouts with 103–448 sites and three exact controls. The five arms produced 4,160 jobs. Matched seed intervals were separate from qualification and prior research. All original schedules, restart counts, physics, and thresholds are in `cases.json`. The longer legacy schedule uses at least 512 cycles and hop factor 5 on large layouts.
+The host was a Ryzen 7 5800X3D with 16 annealing workers. The supported Ubuntu OpenBLAS 0.3.20 library used one BLAS thread. GCC 11.4 used Release optimization, strict floating-point operations, and native host instructions. The fresh campaign contains 4,160 jobs. Qualification used a separate seed range. [plan.json](results_review/plan.json) records the binary, fixture hash, and seed plan.
 
-Optimized arms enable PCG32, bounded repair, the singleton shortcut, finite-grid probability shortcuts, and the transient domain mask. They refine up to eight candidates with one or four rounds, as frozen per layout. K6 and K10 retain their explicit settings. The production default remains legacy; the transient mask and refinement are not enabled by default.
+Timing includes parameter and model allocation, geometry construction, annealing, repair, refinement, full result checks, and owned cleanup. It excludes process startup, request parsing, and stdout. The formula in [README.md](README.md) has a one-job floor and leaves zero-hit TTS undefined. Both legacy comparators use the integrated corrected validator and lifecycle, not untouched master.
 
-The timer includes parameter/model allocation, geometry construction, annealing, repair, refinement, full result validation, and owned cleanup. It excludes process startup, request parsing, and stdout. TTS997 uses observed complete-job success and the formula in [README.md](README.md), with a one-job floor and undefined zero-hit cells.
+## Audit and tests
 
-Both legacy comparators use this PR's corrected validator and lifecycle. Neither is an untouched-master binary. The large thresholds are frozen validated witnesses, not ground-state certificates. Reused layouts and schedules make this an integration qualification, not an unseen-layout generalization study.
+The independent implementation audit checked 1,468 unique states from 3,593 claimed-valid rows and rejected none. Maximum energy disagreement was 3.2e-14 eV. It reconstructs the solver's model, including the legacy rounded constants. It does not validate the physical accuracy of those constants.
 
-## Validation and reproducibility
+Audit checks, failure counts, campaign deadlines, and output validation remain active under `python -O`. Regression tests cover corrupted and duplicate energies, invalid charge states, process failures, missing rows, wrong IDs, exhausted campaign budgets, and process-group timeouts. The original cohort also passes the strengthened audit under `-O`.
 
-The post-timing independent audit checked 1,485 unique configurations among 3,592 valid outputs. It rejected none. Maximum energy disagreement was 3.91e-14 eV. Duplicate outputs also had their reported energies checked. A separate arithmetic check reproduced every cell's mean, hit count, TTS, phase sum, and matched seeds.
+Native C++/CLI, SWIG/Python, and ASAN/UBSAN tests passed. Sanitizer leak detection remains disabled because third-party connector leaks are outside this qualification. Four Linux CI configurations cover Ubuntu 22.04/24.04 and OpenBLAS OFF/ON. Tests also cover portable seeded offsets and single-cache metadata.
 
-[analysis.json](results/analysis.json) contains every cell, target, Wilson 95% success-probability interval, and explicit zero-hit exclusions. These intervals are not TTS confidence intervals. [measurement.json](results/measurement.json), [plan.json](results/plan.json), and [audit.json](results/audit.json) identify the source, binary, fixtures, and raw-row hashes. Raw inputs, outputs, binaries, logs, and host observations are retained in the local evidence archive.
-
-Local macOS Release, portable ASAN/UBSAN, native CLI, and SWIG/Python tests passed. Leak detection was disabled for sanitizer tests because third-party connector leaks are outside this qualification. Ubuntu 22.04 and 24.04 CI passed with OpenBLAS both enabled and disabled, including a Python-wrapper job.
-
-A separate seven-site native CLI control included process startup and XML output. It observed 60/64 legacy hits versus 64/64 optimized K6 hits, with estimated TTS997 of 15.29 ms versus 7.22 ms. This small control does not establish large-layout CLI performance. An earlier overlapping-build pilot was excluded.
-
-## PR scope
-
-Keep optimized search, fixed/shared refinement, transient masking, and numerical backends selectable. Shared refinement is useful but does not win on every target. Preserve the legacy default while this reduced qualification remains the evidence base. CUDA, broader policy tuning, and a SiQAD submodule update are separate work.
-
-See [attribution](../../docs/ATTRIBUTION.md) for QuickExact, ClusterComplete, fiction, PCG, Lemire, and OpenBLAS credit.
+[measurement.json](results_review/measurement.json) and [audit.json](results_review/audit.json) record source and raw-row identity. Raw evidence, binaries, source snapshots, and dependency provenance are saved in a new ignored archive. Earlier archives are unchanged. See [attribution](../../docs/ATTRIBUTION.md) for borrowed methods and licenses.
