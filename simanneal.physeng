@@ -106,6 +106,32 @@ interpreter, bin_path, command
             <label>Hop attempt factor</label>
             <tip></tip>
         </hop_attempt_factor>
+        <hop_selection>
+            <T>string</T><val>uniform</val><label>Hop target selection</label>
+            <tip>Experimental optimizer proposal bias; not a dynamical tunnelling model.</tip>
+            <value_selection type="ComboBox">
+                <uniform>Uniform (original)</uniform>
+                <local_uniform>Local uniform</local_uniform>
+                <local_distance>Local distance weighted</local_distance>
+                <local_radius>Local radius uniform (strict cutoff)</local_radius>
+            </value_selection>
+        </hop_selection>
+        <hop_neighbors>
+            <T>int</T><val>16</val><label>Local hop neighbors</label>
+            <tip>Maximum candidate neighborhood per site. Must be positive.</tip>
+        </hop_neighbors>
+        <hop_length_nm>
+            <T>float</T><val>2</val><dp>2</dp><label>Hop decay length (nm)</label>
+            <tip>Optimizer distance-decay length; independent of screening distance. Must be positive.</tip>
+        </hop_length_nm>
+        <hop_radius_nm>
+            <T>float</T><val>4</val><dp>2</dp><label>Local hop radius (nm)</label>
+            <tip>Inclusive geometric radius for local_radius proposals. Must be positive.</tip>
+        </hop_radius_nm>
+        <hop_global_probability>
+            <T>float</T><val>0.2</val><dp>2</dp><label>Global hop probability</label>
+            <tip>Uniform global proposal fraction, from 0 to 1. Empty local neighborhoods fall back globally except for strict local_radius proposals.</tip>
+        </hop_global_probability>
         <T_init>
             <T>float</T>
             <val>500</val>

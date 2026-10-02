@@ -101,7 +101,7 @@ SimAnneal::SimAnneal(SimParams &sparams)
 void SimAnneal::invokeSimAnneal()
 {
   Logger log(saglobal::log_level);
-  log.debug() << "Setting up SimAnnealThreads..." << std::endl;
+  if (saglobal::log_level >= Logger::DBG) log.debug() << "Setting up SimAnnealThreads..." << std::endl;
 
   // spawn all the threads
   for (int i=0; i<sim_params.num_instances; i++) {
@@ -113,14 +113,14 @@ void SimAnneal::invokeSimAnneal()
     anneal_threads.push_back(std::move(th));
   }
 
-  log.debug() << "Wait for simulations to complete." << std::endl;
+  if (saglobal::log_level >= Logger::DBG) log.debug() << "Wait for simulations to complete." << std::endl;
 
   // wait for threads to complete
   for (auto &th : anneal_threads) {
     th.join();
   }
 
-  log.debug() << "All simulations complete." << std::endl;
+  if (saglobal::log_level >= Logger::DBG) log.debug() << "All simulations complete." << std::endl;
 }
 
 FPType SimAnneal::systemEnergy(const ublas::vector<int> &n_in, bool qubo)
@@ -152,7 +152,7 @@ bool SimAnneal::isMetastable(const ublas::vector<int> &n_in)
   const FPType &zero_equiv = constants::RECALC_STABILITY_ERR;
 
   ublas::vector<FPType> v_local(n_in.size());
-  log.debug() << "V_i and Charge State Config " << n_in << ":" << std::endl;
+  if (saglobal::log_level >= Logger::DBG) log.debug() << "V_i and Charge State Config " << n_in << ":" << std::endl;
   for (unsigned int i=0; i<n_in.size(); i++) {
     // calculate v_i
     v_local[i] = - (sim_params.v_ext[i] + sim_params.v_fc[i]);
@@ -160,7 +160,7 @@ bool SimAnneal::isMetastable(const ublas::vector<int> &n_in)
       if (i == j) continue;
       v_local[i] -= sim_params.v_ij(i,j) * n_in[j];
     }
-    log.debug() << "\tDB[" << i << "]: charge state=" << n_in[i]
+    if (saglobal::log_level >= Logger::DBG) log.debug() << "\tDB[" << i << "]: charge state=" << n_in[i]
       << ", v_local[i]=" << v_local[i] << " eV, and v_local[i]+muzm=" << v_local[i] + muzm << "eV" << std::endl;
 
     // return false if invalid
@@ -168,12 +168,12 @@ bool SimAnneal::isMetastable(const ublas::vector<int> &n_in)
           || (n_in[i] == 1  && v_local[i] + mupz > - zero_equiv)  // DB+ valid condition
           || (n_in[i] == 0  && v_local[i] + muzm > - zero_equiv   // DB0 valid condition
                             && v_local[i] + mupz < zero_equiv))) {
-      log.debug() << "config " << n_in << " has an invalid population, failed at index " << i << std::endl;
-      log.debug() << "v_local[i]=" << v_local[i] << ", muzm=" << muzm << ", mupz=" << mupz << std::endl;
+      if (saglobal::log_level >= Logger::DBG) log.debug() << "config " << n_in << " has an invalid population, failed at index " << i << std::endl;
+      if (saglobal::log_level >= Logger::DBG) log.debug() << "v_local[i]=" << v_local[i] << ", muzm=" << muzm << ", mupz=" << mupz << std::endl;
       return false;
     }
   }
-  log.debug() << "config " << n_in << " has a valid population." << std::endl;
+  if (saglobal::log_level >= Logger::DBG) log.debug() << "config " << n_in << " has a valid population." << std::endl;
 
   auto hopDel = [v_local, n_in](const int &i, const int &j) -> FPType {
     int dn_i = (n_in[i]==-1) ? 1 : -1;
@@ -190,14 +190,14 @@ bool SimAnneal::isMetastable(const ublas::vector<int> &n_in)
       // attempt hops from more negative charge states to more positive ones
       FPType E_del = hopDel(i, j);
       if ((n_in[j] > n_in[i]) && (E_del < -zero_equiv)) {
-        log.debug() << "config " << n_in << " not stable since hopping from site "
+        if (saglobal::log_level >= Logger::DBG) log.debug() << "config " << n_in << " not stable since hopping from site "
           << i << " to " << j << " would result in an energy change of "
           << E_del << std::endl;
         return false;
       }
     }
   }
-  log.debug() << "config " << n_in << " has a stable configuration." << std::endl;
+  if (saglobal::log_level >= Logger::DBG) log.debug() << "config " << n_in << " has a stable configuration." << std::endl;
   return true;
 }
 
@@ -260,7 +260,7 @@ void SimAnneal::initialize()
   Logger log(saglobal::log_level);
   SimParams &sp = sim_params;
 
-  log.debug() << "Performing pre-calculations..." << std::endl;
+  if (saglobal::log_level >= Logger::DBG) log.debug() << "Performing pre-calculations..." << std::endl;
 
   // set default values
   if (sp.v_freeze_init < 0)
@@ -273,13 +273,13 @@ void SimAnneal::initialize()
   sp.v_freeze_cycles = sp.v_freeze_end_point * sp.anneal_cycles;
   sp.v_freeze_step = sp.v_freeze_threshold / sp.v_freeze_cycles;
 
-  log.debug() << "Anneal cycles: " << sp.anneal_cycles << ", alpha: " 
+  if (saglobal::log_level >= Logger::DBG) log.debug() << "Anneal cycles: " << sp.anneal_cycles << ", alpha: " 
     << sp.alpha << ", v_freeze_cycles: " << sp.v_freeze_cycles << std::endl;
 
   sp.result_queue_size = sp.anneal_cycles * sp.result_queue_factor;
   sp.result_queue_size = std::min(sp.result_queue_size, sp.anneal_cycles);
   sp.result_queue_size = std::max(sp.result_queue_size, 1);
-  log.debug() << "Result queue size: " << sp.result_queue_size << std::endl;
+  if (saglobal::log_level >= Logger::DBG) log.debug() << "Result queue size: " << sp.result_queue_size << std::endl;
 
 
   if (sp.preanneal_cycles > sp.anneal_cycles) {
@@ -302,12 +302,26 @@ void SimAnneal::initialize()
       sp.db_r(j,i) = sp.db_r(i,j);
       sp.v_ij(j,i) = sp.v_ij(i,j);
 
-      log.debug() << "db_r[" << i << "][" << j << "]=" << sp.db_r(i,j) 
+      if (saglobal::log_level >= Logger::DBG) log.debug() << "db_r[" << i << "][" << j << "]=" << sp.db_r(i,j) 
         << ", v_ij[" << i << "][" << j << "]=" << sp.v_ij(i,j) << std::endl;
     }
   }
 
-  log.debug() << "Pre-calculations complete" << std::endl << std::endl;
+  if (saglobal::log_level >= Logger::DBG) log.debug() << "Pre-calculations complete" << std::endl << std::endl;
+
+  if (sp.hop_selection != UniformHop) {
+    if (!std::isfinite(sp.hop_global_probability) || sp.hop_global_probability < 0
+        || sp.hop_global_probability > 1)
+      throw std::invalid_argument("hop_global_probability must be in [0,1]");
+    if (sp.hop_selection == LocalRadiusHop) {
+      sp.hop_neighborhood.buildRadius(sp.db_r, sp.n_dbs, sp.hop_radius_nm);
+    } else {
+      sp.hop_neighborhood.build(sp.db_r, sp.n_dbs, sp.hop_neighbors,
+          sp.hop_length_nm, sp.hop_selection == LocalDistanceHop);
+    }
+  } else {
+    sp.hop_neighborhood = HopNeighborhood();
+  }
 
   // determine number of threads to run
   if (sp.num_instances == -1) {
@@ -388,9 +402,20 @@ void SimAnnealThread::anneal()
 
   // Vars
   ublas::vector<int> dn(sparams->n_dbs);  // change of occupation for population update
+  ublas::vector<FPType> population_v_delta(sparams->n_dbs);
+  std::vector<unsigned> population_changed;
+  population_changed.reserve(sparams->n_dbs);
+  // Nonfinite potentials retain dense behavior (notably 0*NaN for duplicate sites).
+  bool population_finite_matrix = true;
+  for (const FPType value : sparams->v_ij.data())
+    if (!std::isfinite(value)) population_finite_matrix = false;
   OccListType dbm_occ(sparams->n_dbs);                    // indices of DB- sites in n
   OccListType db0_occ(sparams->n_dbs);                    // indices of DB0 sites in n
   OccListType dbp_occ(sparams->n_dbs);                    // indices of DB+ sites in n
+  const bool local_hops = sparams->hop_selection != UniformHop;
+  const bool radius_hops = sparams->hop_selection == LocalRadiusHop;
+  RadiusEligibleCache radius_cache;
+  std::vector<int> neutral_slot(local_hops ? sparams->n_dbs : 0, -1);
   OccListType::iterator from_occ, to_occ;
   int dbm_occ_count=0, db0_occ_count=0, dbp_occ_count=0;
   int hop_attempts, max_hop_attempts;
@@ -434,24 +459,45 @@ void SimAnnealThread::anneal()
     genPopDelta(dn, pop_changed);
     if (pop_changed) {
       n += dn;
+      // Compute the identical ordered dense product once into reusable storage.
+      population_changed.clear();
+      for (unsigned j = 0; j < dn.size(); ++j)
+        if (dn[j] != 0) population_changed.push_back(j);
+      // Sparse path keeps the dense product's ascending-j accumulation order;
+      // no reassociation or small-potential cutoff. Dense fallback for high density.
+      if (population_finite_matrix && population_changed.size()*4 < dn.size()) {
+        for (unsigned i = 0; i < dn.size(); ++i) {
+          FPType sum = 0;
+          for (const unsigned j : population_changed)
+            sum += sparams->v_ij(i,j)*dn[j];
+          population_v_delta[i] = sum;
+        }
+      } else {
+        population_v_delta.assign(ublas::prod(sparams->v_ij, dn));
+      }
       E_sys += -1 * ublas::inner_prod(v_local, dn)
-        + 0.5 * ublas::inner_prod(dn, ublas::prod(sparams->v_ij, dn));
-      v_local -= ublas::prod(sparams->v_ij, dn);
+        + 0.5 * ublas::inner_prod(dn, population_v_delta);
+      v_local.minus_assign(population_v_delta);
 
       // Occupation lists update
       int dbm_ind=0, db0_ind=0, dbp_ind=0;
       for (int db_ind=0; db_ind<sparams->n_dbs; db_ind++) {
+        if (local_hops) neutral_slot[db_ind] = -1;
         if (n[db_ind]==-1) {
           dbm_occ[dbm_ind++] = db_ind;
         } else if (n[db_ind]==0) {
+          if (local_hops) neutral_slot[db_ind] = db0_ind;
           db0_occ[db0_ind++] = db_ind;
         } else {
           dbp_occ[dbp_ind++] = db_ind;
         }
-        dbm_occ_count = dbm_ind;
-        db0_occ_count = db0_ind;
-        dbp_occ_count = dbp_ind;
       }
+      if (radius_hops && radius_cache.initialized)
+        for (const unsigned site : population_changed)
+          sparams->hop_neighborhood.setNeutral(site, n[site] == 0, radius_cache);
+      dbm_occ_count = dbm_ind;
+      db0_occ_count = db0_ind;
+      dbp_occ_count = dbp_ind;
     }
 
     // Hopping - randomly hop electrons from higher occupancy sites to lower
@@ -466,7 +512,23 @@ void SimAnnealThread::anneal()
 
     while (hop_attempts < max_hop_attempts) {
       from_ind = rand_charged_db_ind(from_occ);
-      to_ind = rand_neutral_db_ind(to_occ);
+      to_ind = -1;
+      if (local_hops && (sparams->hop_global_probability == 0 ||
+            (sparams->hop_global_probability < 1 &&
+             dis01(gener) >= sparams->hop_global_probability))) {
+        to_ind = radius_hops
+            ? sparams->hop_neighborhood.selectRadius(from_ind, n, dis01(gener), radius_cache)
+            : sparams->hop_neighborhood.select(from_ind, n, dis01(gener));
+        if (to_ind == -2) { // strict radius has no eligible neutral target
+          ++hop_attempts;
+          continue;
+        }
+        if (to_ind >= 0) {
+          assert(neutral_slot[to_ind] >= 0);
+          to_occ = db0_occ.begin() + neutral_slot[to_ind];
+        }
+      }
+      if (to_ind < 0) to_ind = rand_neutral_db_ind(to_occ);
       if (from_ind == -1 || to_ind == -1) {
         std::cerr << "Invalid hop index, this shouldn't happen." << std::endl;
         throw;
@@ -476,7 +538,15 @@ void SimAnnealThread::anneal()
         performHop(from_ind, to_ind, E_sys, hop_E_del);
         // update occupation indices list
         if (n[from_ind] - n[to_ind] < 2) {
+          if (radius_hops && radius_cache.initialized) {
+            sparams->hop_neighborhood.setNeutral(from_ind, n[from_ind] == 0, radius_cache);
+            sparams->hop_neighborhood.setNeutral(to_ind, n[to_ind] == 0, radius_cache);
+          }
           // hopping from DB- or DB+ to DB0
+          if (local_hops) {
+            neutral_slot[from_ind] = static_cast<int>(to_occ - db0_occ.begin());
+            neutral_slot[to_ind] = -1;
+          }
           int orig_from_ind = *from_occ;
           *from_occ = *to_occ;
           *to_occ = orig_from_ind;
@@ -485,13 +555,15 @@ void SimAnnealThread::anneal()
       hop_attempts++;
     }
 
+    // No state changes between these two uses of the population predicate.
+    const bool cycle_population_valid = populationValid();
     // push back the new arrangement
-    db_charges.push_back(ChargeConfigResult(n, 
-          populationValid(), E_sys));
+    db_charges.push_back(ChargeConfigResult(n,
+          cycle_population_valid, E_sys));
     config_energies.push_back(E_sys);
 
     // keep track of suggested ground state
-    if (populationValid()) {
+    if (cycle_population_valid) {
       if (E_sys < suggested_gs.system_energy || suggested_gs.config.empty()) {
         suggested_gs.initialized = true;
         suggested_gs.config = n;
@@ -506,7 +578,7 @@ void SimAnnealThread::anneal()
     timeStep();
   }
 
-  log.debug() << "Final db_charges = " << n
+  if (saglobal::log_level >= Logger::DBG) log.debug() << "Final db_charges = " << n
     << ", delta-based system energy = " << E_sys
     << ", recalculated system energy=" << systemEnergy() << std::endl;
 
@@ -562,9 +634,14 @@ void SimAnnealThread::performHop(const int &from_ind, const int &to_ind,
   n[to_ind] += dn_j;
 
   E_sys += E_del;
-  ublas::matrix_column<ublas::matrix<FPType>> v_i (sparams->v_ij, from_ind);
-  ublas::matrix_column<ublas::matrix<FPType>> v_j (sparams->v_ij, to_ind);
-  v_local -= v_i*dn_i + v_j*dn_j;
+  // initialize() assigns each symmetric pair from the identical FP value.
+  // Raw contiguous rows isolate matrix accessor overhead from the prior prototype.
+  const std::size_t count = n.size();
+  const FPType *row_i = &sparams->v_ij.data()[from_ind * count];
+  const FPType *row_j = &sparams->v_ij.data()[to_ind * count];
+  FPType *local = &v_local.data()[0];
+  for (std::size_t k = 0; k < count; ++k)
+    local[k] -= row_i[k]*dn_i + row_j[k]*dn_j;
 }
 
 void SimAnnealThread::timeStep()
@@ -609,7 +686,7 @@ void SimAnnealThread::timeStep()
         pop_schedule_phase = PopulationUpdateMode;
         t_freeze = 0;
         if (phys_valid_count < phys_invalid_count) {
-          log.debug() << "Thread " << thread_id << ": t=" << t 
+          if (saglobal::log_level >= Logger::DBG) log.debug() << "Thread " << thread_id << ": t=" << t 
             << ", charge config is " << n 
             << " which is physically invalid, resetting v_freeze." << std::endl;
 
