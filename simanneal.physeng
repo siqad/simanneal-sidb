@@ -85,7 +85,7 @@ interpreter, bin_path, command
             <tip>Concurrent workers, capped by restart count. 0 uses hardware concurrency.</tip>
         </num_workers>
         <search_profile>
-            <T>string</T><val>legacy</val><label>Search profile</label>
+            <T>string</T><val>optimized</val><label>Search profile</label>
             <tip>legacy preserves the original search. optimized enables PCG sampling, bounded repair, and the validated singleton shortcut.</tip>
         </search_profile>
         <random_backend>

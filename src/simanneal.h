@@ -115,7 +115,7 @@ namespace phys {
     int num_instances=-1;         // Independent restarts (legacy name)
     int num_workers=0;            // Active workers; 0 selects hardware concurrency
     PopulationBackend population_backend=PopulationBackend::Auto; // Build-selected dense backend
-    SearchProfile search_profile = SearchProfile::Legacy;
+    SearchProfile search_profile = SearchProfile::Optimized;
     RandomBackend random_backend = RandomBackend::Auto;
     FeatureSetting repair = FeatureSetting::ProfileDefault;
     FeatureSetting singleton_shortcut = FeatureSetting::ProfileDefault;

@@ -11,7 +11,7 @@ for mode in [sa.Mode_Disabled, sa.Mode_K6, sa.Mode_K10, sa.Mode_SharedK10]:
     sp.set_db_locs([[0.,0.], [7.68,0.], [0.,7.68], [7.68,7.68], [15.36,0.], [15.36,7.68]])
     sp.set_v_ext([0.] * 6)
     sp.set_fixed_charges([], [], [], [])
-    sp.search_profile = sa.SearchProfile_Optimized
+    assert sp.search_profile == sa.SearchProfile_Optimized
     sp.refinement_options.mode = mode
     sp.anneal_cycles = 64
     sp.num_instances = 8

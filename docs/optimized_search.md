@@ -1,6 +1,6 @@
 # Validated repair and bounded local refinement
 
-SimAnneal remains a heuristic. A physically valid result is not a certificate of global optimality. The legacy profile remains the default.
+SimAnneal remains a heuristic. A physically valid result is not a certificate of global optimality. The optimized profile is the default. It enables PCG32 sampling, bounded repair, and the validated singleton shortcut. Select `search_profile=legacy` to restore legacy profile defaults. Refinement and transient domain masking remain opt-in.
 
 ## Search settings
 
@@ -8,7 +8,7 @@ Set these parameters in the input XML `<sim_params>` section. SiQAD exposes the 
 
 | Parameter | Default | Effect |
 |---|---|---|
-| `search_profile` | `legacy` | `optimized` enables PCG32 sampling, bounded repair, and the singleton shortcut. |
+| `search_profile` | `optimized` | `optimized` enables PCG32 sampling, bounded repair, and the singleton shortcut. |
 | `random_backend` | `auto` | Resolve from the profile, or select `mt` or `pcg32` explicitly. |
 | `repair` | `profile` | Override the profile with `true` or `false`. |
 | `singleton_shortcut` | `profile` | Validate the sole conservatively admissible configuration before scheduling restarts. |
@@ -20,7 +20,7 @@ Set these parameters in the input XML `<sim_params>` section. SiQAD exposes the 
 | `refinement_trials` | `1` | Bound the number of lower-energy cluster proposals repaired per round. |
 | `population_backend` | `auto` | Existing portable/Accelerate selection, or explicit `openblas`/`openblas_symmetric`. |
 
-For an initial optimized experiment, use `search_profile=optimized` and `refinement=k6`. Compare K10 and shared refinement at the same target and complete-job timing boundary. Tune schedule lengths separately if needed. No profile is selected automatically from a filename or site count.
+For an initial refinement experiment, use `refinement=k6`. Compare K10 and shared refinement at the same target and complete-job timing boundary. Tune schedule lengths separately if needed. No profile is selected automatically from a filename or site count.
 
 The shared strategy refines identical annealing candidates independently with fixed and shifted cluster geometries. The shift uses a portable, unbiased seed mapping and places shifted centers between fixed centers. Layouts with fewer than 64 sites intentionally use a single-cache fallback. Metadata reports the actual nonempty geometry count and the fallback flag. It retains the best valid result. Some layouts gain success probability; others only incur extra work. Keep the fixed strategy available.
 

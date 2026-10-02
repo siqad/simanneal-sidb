@@ -83,7 +83,19 @@ with tempfile.TemporaryDirectory() as directory:
                 assert valid, (options, q)
         return xml
 
+    # Omitting the profile and selecting legacy must resolve independently.
     original = run({})
+    assert original.findtext('misc/search_profile') == 'optimized'
+    assert original.findtext('misc/random_backend') == 'pcg32'
+    assert original.findtext('misc/repair') == 'true'
+    assert original.findtext('misc/singleton_shortcut') == 'true'
+    assert original.findtext('misc/refinement') == 'none'
+    assert original.findtext('misc/transient_domain_mask') == 'false'
+    legacy = run(dict(search_profile='legacy'))
+    assert legacy.findtext('misc/search_profile') == 'legacy'
+    assert legacy.findtext('misc/random_backend') == 'mt'
+    assert legacy.findtext('misc/repair') == 'false'
+    assert legacy.findtext('misc/singleton_shortcut') == 'false'
     assert sum(int(x.get('count')) for x in original.findall('.//dist')) == 8
     for refinement in ['none', 'k6', 'k10', 'shared']:
         result = run(dict(search_profile='optimized', refinement=refinement, refinement_rounds=2))
@@ -92,7 +104,7 @@ with tempfile.TemporaryDirectory() as directory:
         assert int(result.findtext('misc/refinement_geometry_count')) >= 0
         assert result.findtext('misc/refinement_shared_single_cache_fallback') == ('true' if refinement == 'shared' else 'false')
         assert any(x.get('physically_valid') == '1' for x in result.findall('.//dist'))
-    singleton = run(dict(search_profile='optimized'), singleton=True)
+    singleton = run({}, singleton=True)
     assert singleton.findtext('misc/executed_restarts') == '0'
     assert singleton.findtext('misc/singleton_used') == 'true'
     for key, value in [('search_profile','typo'), ('random_backend','typo'),
