@@ -10,7 +10,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('output', type=Path)
 args = parser.parse_args()
 cases = {c['name']:c for c in json.loads(Path(__file__).with_name('cases.json').read_text())}
-models, seen = {}, set()
+models, seen = {}, {}
 maximum_error = 0.0
 for line in (args.output/'rows.jsonl').read_text().splitlines():
     row = json.loads(line)
@@ -20,8 +20,10 @@ for line in (args.output/'rows.jsonl').read_text().splitlines():
     q = np.asarray(row['config'], dtype=np.float64)
     key = (name, tuple(q))
     if key in seen:
+        error = abs(seen[key] - float(row['energy']))
+        maximum_error = max(maximum_error, error)
+        assert error <= 1e-10, (name, seen[key], row['energy'])
         continue
-    seen.add(key)
     c = cases[name]
     if name not in models:
         xy = np.array(c['points']) * 1e-10
@@ -40,6 +42,7 @@ for line in (args.output/'rows.jsonl').read_text().splitlines():
     delta = -v[:,None]+v[None,:]-A
     assert np.all(delta[q[:,None]<q[None,:]] >= -eps-1e-12), (name,'hop')
     energy = float(b@q + .5*q@A@q)
+    seen[key] = energy
     error = abs(energy-float(row['energy']))
     maximum_error = max(maximum_error,error)
     assert error <= 1e-10, (name,energy,row['energy'])

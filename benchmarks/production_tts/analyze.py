@@ -24,6 +24,7 @@ for row in summary:
 comparisons = []
 for name, before, after in [
     ("portable_to_fixed_blas", "fixed_portable", "fixed_blas"),
+    ("portable_to_combined", "fixed_portable", "combined"),
     ("fixed_to_shared_blas", "fixed_blas", "shared_blas"),
     ("legacy_to_combined", "legacy", "combined"),
     ("legacy_tuned_to_combined", "legacy_tuned", "combined"),

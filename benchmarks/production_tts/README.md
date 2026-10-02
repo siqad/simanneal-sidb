@@ -4,6 +4,8 @@ This runner calls the production `SimAnneal` constructor, search, result validat
 
 The reduced corpus contains 13 previously studied layouts. Three controls have prior exact references. Ten larger layouts have frozen, physically validated witnesses and preset energy thresholds. Those thresholds are not ground-state certificates. `cases.json` retains the geometry, physical fields, provenance, targets, and schedules.
 
+See [the production qualification](RESULTS.md) for measured gains, regressions, and evidence limits.
+
 ## Build and run
 
 Build with supported OpenBLAS development headers and library:
