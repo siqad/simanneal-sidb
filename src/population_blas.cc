@@ -1,5 +1,6 @@
 // Copyright 2026 SiQAD contributors. Licensed under Apache-2.0.
 #include "population_blas.h"
+#include <stdexcept>
 #ifdef SIMANNEAL_HAVE_OPENBLAS
 #include <cblas.h>
 #endif
@@ -12,9 +13,22 @@ bool openblasAvailable() {
     return false;
 #endif
 }
-void configureSingleThread() {
+ScopedThreadCount::ScopedThreadCount(int threads, bool enabled) {
+    if (!enabled) return;
+    if (threads<1) throw std::invalid_argument("BLAS thread count must be positive");
 #ifdef SIMANNEAL_HAVE_OPENBLAS
-    openblas_set_num_threads(1);
+    previous_=openblas_get_num_threads();
+    if (previous_<1) throw std::runtime_error("OpenBLAS returned an invalid thread count");
+    if (previous_ == threads) {
+        previous_ = 0;
+        return;
+    }
+    openblas_set_num_threads(threads);
+#endif
+}
+ScopedThreadCount::~ScopedThreadCount() noexcept {
+#ifdef SIMANNEAL_HAVE_OPENBLAS
+    if (previous_>0) openblas_set_num_threads(previous_);
 #endif
 }
 int threadCount() {

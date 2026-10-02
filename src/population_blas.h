@@ -6,9 +6,18 @@
 // symv consumes the upper triangle; callers must guarantee symmetry.
 namespace simanneal_blas {
 bool openblasAvailable();
-// OpenBLAS thread control is library-global. Call before launching workers,
-// under the solver's single-active-model lock. Other library users are affected.
-void configureSingleThread();
+// OpenBLAS thread control is process-global. The caller serializes scopes under
+// the single-active-model contract. Unrelated concurrent BLAS users cannot be
+// isolated: they see this temporary setting too.
+class ScopedThreadCount {
+public:
+    explicit ScopedThreadCount(int threads=1, bool enabled=true);
+    ~ScopedThreadCount() noexcept;
+    ScopedThreadCount(const ScopedThreadCount&)=delete;
+    ScopedThreadCount& operator=(const ScopedThreadCount&)=delete;
+private:
+    int previous_=0;
+};
 int threadCount();
 // False means unavailable or invalid dimensions/pointers; y remains unchanged.
 // Input x and output y must not alias. Nonfinite-matrix fallback belongs to caller.

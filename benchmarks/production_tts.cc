@@ -149,7 +149,6 @@ Observation execute(const Tree &request) {
         static_cast<int>(effective.refinement_options.mode);
     observation.candidates = effective.refinement_options.candidates;
     observation.rounds = effective.refinement_options.rounds;
-    observation.blas_threads = simanneal_blas::threadCount();
     initialized = Clock::now();
     solver.invokeSimAnneal();
     invoked = Clock::now();
@@ -166,6 +165,7 @@ Observation execute(const Tree &request) {
       }
     }
     observation.stats = solver.searchStats();
+    observation.blas_threads = observation.stats.population_blas_threads;
     exported = Clock::now();
   }
   const auto finished = Clock::now();

@@ -1,6 +1,7 @@
 #include "tests/catch2_wrapper.hpp"
 #include "src/population_blas.h"
 #include <cmath>
+#include <stdexcept>
 #include <thread>
 #include <vector>
 
@@ -22,7 +23,7 @@ std::vector<double> portable_matvec(const std::vector<double>& a,
 TEST_CASE("OpenBLAS wrapper reports availability without changing unavailable outputs") {
 #ifdef SIMANNEAL_HAVE_OPENBLAS
     REQUIRE(simanneal_blas::openblasAvailable());
-    simanneal_blas::configureSingleThread();
+    const simanneal_blas::ScopedThreadCount threads;
     REQUIRE(simanneal_blas::threadCount()==1);
 #else
     REQUIRE_FALSE(simanneal_blas::openblasAvailable());
@@ -38,8 +39,35 @@ TEST_CASE("OpenBLAS wrapper reports availability without changing unavailable ou
 }
 
 #ifdef SIMANNEAL_HAVE_OPENBLAS
+TEST_CASE("OpenBLAS scoped thread control restores on return and exception") {
+    const int original=simanneal_blas::threadCount();
+    {
+        const simanneal_blas::ScopedThreadCount caller_threads(2);
+        REQUIRE(simanneal_blas::threadCount()==2);
+        const auto early_return=[] {
+            const simanneal_blas::ScopedThreadCount search_threads;
+            REQUIRE(simanneal_blas::threadCount()==1);
+            return;
+        };
+        early_return();
+        REQUIRE(simanneal_blas::threadCount()==2);
+        REQUIRE_THROWS_AS([] {
+            const simanneal_blas::ScopedThreadCount search_threads;
+            REQUIRE(simanneal_blas::threadCount()==1);
+            throw std::runtime_error("scope exit");
+        }(),std::runtime_error);
+        REQUIRE(simanneal_blas::threadCount()==2);
+        {
+            const simanneal_blas::ScopedThreadCount disabled(1,false);
+            REQUIRE(simanneal_blas::threadCount()==2);
+        }
+        REQUIRE(simanneal_blas::threadCount()==2);
+    }
+    REQUIRE(simanneal_blas::threadCount()==original);
+}
+
 TEST_CASE("OpenBLAS row-major DGEMV matches nonsymmetric portable products") {
-    simanneal_blas::configureSingleThread();
+    const simanneal_blas::ScopedThreadCount threads;
     for (unsigned n : {1u,7u,65u}) {
         std::vector<double> a(n*n),x(n),y(n);
         for (unsigned i=0;i<n;++i) {
@@ -56,7 +84,7 @@ TEST_CASE("OpenBLAS row-major DGEMV matches nonsymmetric portable products") {
 }
 
 TEST_CASE("OpenBLAS DSYMV reads upper triangle and supports independent workers") {
-    simanneal_blas::configureSingleThread();
+    const simanneal_blas::ScopedThreadCount threads;
     const unsigned n=65;
     std::vector<double> symmetric(n*n),upper(n*n),x(n),initial(n,.125);
     for (unsigned i=0;i<n;++i) {

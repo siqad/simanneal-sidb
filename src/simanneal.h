@@ -74,6 +74,7 @@ namespace phys {
                   repair_budget_exhaustions = 0;
     bool singleton_used = false;
     int refinement_center_offset = 0;
+    int population_blas_threads = 0;
     refinement::Stats refinement;
   };
 

@@ -23,7 +23,7 @@ The five policies are legacy, optimized portable fixed refinement, fixed refinem
 
 Optimized policies explicitly enable transient domain masks to match the earlier experimental composition. This is an explicit benchmark choice, not the production default. K6 controls use the same fixed policy in both nominal BLAS arms. Differences between those arms measure timing noise, not a shared-geometry benefit.
 
-Each policy receives matched base seeds and restart counts. RNG changes mean trajectories need not match. Every new run should reserve a seed range that does not overlap earlier studies. The default range starts at 3,280,000,003, with separate case and job offsets. A qualification run must use a different explicit seed.
+Each policy receives matched base seeds and restart counts. RNG changes mean trajectories need not match. Every new run should reserve a seed range that does not overlap earlier studies. The default range starts at 3,280,000,003, with separate case and job offsets. A qualification run must use a different explicit seed. For a deliberate same-seed replay, pass `--replay-of` with the prior rows SHA256. The plan then marks the run as a replay rather than an independent seed cohort.
 
 ## Timing and statistics
 

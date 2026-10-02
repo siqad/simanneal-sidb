@@ -178,7 +178,11 @@ void SimAnneal::invokeSimAnneal()
     bool &active;
     ~InvocationReset() { active = false; }
   } reset{invocation_active_};
+  const simanneal_blas::ScopedThreadCount blas_threads(
+      1, sim_params.population_backend == PopulationBackend::OpenBLAS ||
+             sim_params.population_backend == PopulationBackend::OpenBLASSymmetric);
   stats_ = SearchStats();
+  stats_.population_blas_threads = simanneal_blas::threadCount();
   if (refinement_geometry_) {
     stats_.refinement_center_offset = refinement_geometry_->centerOffset();
     stats_.refinement.geometry_count = refinement_geometry_->geometryCount();
@@ -484,7 +488,6 @@ void SimAnneal::initialize()
       sp.population_backend == PopulationBackend::OpenBLASSymmetric) {
     if (!simanneal_blas::openblasAvailable())
       throw std::invalid_argument("OpenBLAS is unavailable in this build");
-    simanneal_blas::configureSingleThread();
   }
   if (sp.deterministic_seed && sp.random_seed > std::numeric_limits<std::uint32_t>::max())
     throw std::invalid_argument("random_seed must be in [0,4294967295]");

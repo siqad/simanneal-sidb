@@ -50,7 +50,7 @@ ctest --test-dir build --output-on-failure
 
 Install a supported OpenBLAS development package first. For a custom installation, set `SIMANNEAL_OPENBLAS_ROOT`, or supply `SIMANNEAL_OPENBLAS_INCLUDE_DIR` and `SIMANNEAL_OPENBLAS_LIBRARY` explicitly. CMake checks CBLAS operations and thread-control symbols. Do not use private NumPy wheel symbols.
 
-OpenBLAS uses one numerical thread per annealing worker. Its thread-setting API is library-global and also affects unrelated OpenBLAS users in the process. Changing the numerical backend can change floating-point reduction order and search trajectories. The symmetric backend requires the solver's symmetric interaction matrix. Apple builds cannot enable Accelerate and OpenBLAS together because they export identical CBLAS symbols. For OpenBLAS on Apple, set `SIMANNEAL_ENABLE_ACCELERATE=OFF`; CMake rejects a build with both enabled.
+OpenBLAS uses one numerical thread per annealing worker during a search. SimAnneal restores the previous OpenBLAS thread count when the search returns or throws. Construction does not change that setting. Thread control remains library-global while the search runs; applications must coordinate unrelated concurrent OpenBLAS use. Changing the numerical backend can change floating-point reduction order and search trajectories. The symmetric backend requires the solver's symmetric interaction matrix. Apple builds cannot enable Accelerate and OpenBLAS together because they export identical CBLAS symbols. For OpenBLAS on Apple, set `SIMANNEAL_ENABLE_ACCELERATE=OFF`; CMake rejects a build with both enabled.
 
 Fast-math is disabled. `SIMANNEAL_NATIVE_ARCH=ON` enables host-specific instructions with supported compilers. Such binaries are not portable distribution artifacts.
 

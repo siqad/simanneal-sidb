@@ -1,5 +1,6 @@
 #include "tests/catch2_wrapper.hpp"
 #include "src/simanneal.h"
+#include "src/population_blas.h"
 #include <limits>
 
 namespace {
@@ -16,6 +17,56 @@ phys::SimParams backend_fixture(phys::PopulationBackend backend) {
     sp.population_backend=backend;
     return sp;
 }
+
+#ifdef SIMANNEAL_HAVE_OPENBLAS
+TEST_CASE("OpenBLAS construction preserves caller threads and invocation restores them") {
+    const int original=simanneal_blas::threadCount();
+    {
+        const simanneal_blas::ScopedThreadCount caller_threads(2);
+        for (auto backend : {phys::PopulationBackend::OpenBLAS,
+                             phys::PopulationBackend::OpenBLASSymmetric}) {
+            auto sp=backend_fixture(backend);
+            sp.deterministic_seed=true;
+            sp.random_seed=731;
+            phys::SimAnneal master(sp);
+            REQUIRE(simanneal_blas::threadCount()==2);
+            master.invokeSimAnneal();
+            REQUIRE(simanneal_blas::threadCount()==2);
+            REQUIRE(master.searchStats().executed_restarts==1);
+            REQUIRE(master.searchStats().population_blas_threads==1);
+            // Deterministic pre-worker allocation failure exercises unwind.
+            phys::SimAnneal::sim_params.num_instances=-1;
+            REQUIRE_THROWS(master.invokeSimAnneal());
+            REQUIRE(simanneal_blas::threadCount()==2);
+            phys::SimAnneal::sim_params.num_instances=1;
+            master.invokeSimAnneal();
+            REQUIRE(simanneal_blas::threadCount()==2);
+        }
+    }
+    REQUIRE(simanneal_blas::threadCount()==original);
+}
+
+TEST_CASE("OpenBLAS singleton early return restores caller thread count") {
+    const int original=simanneal_blas::threadCount();
+    {
+        const simanneal_blas::ScopedThreadCount caller_threads(2);
+        phys::SimParams sp;
+        sp.setDBLocs(std::vector<phys::EuclCoord>{phys::EuclCoord(0,0)});
+        sp.v_ext[0]=1;
+        sp.singleton_shortcut=phys::FeatureSetting::Enabled;
+        sp.population_backend=phys::PopulationBackend::OpenBLAS;
+        sp.num_instances=1; sp.num_workers=1; sp.anneal_cycles=8;
+        phys::SimAnneal master(sp);
+        REQUIRE(simanneal_blas::threadCount()==2);
+        master.invokeSimAnneal();
+        REQUIRE(master.searchStats().singleton_used);
+        REQUIRE(master.searchStats().population_blas_threads==1);
+        REQUIRE(master.searchStats().executed_restarts==0);
+        REQUIRE(simanneal_blas::threadCount()==2);
+    }
+    REQUIRE(simanneal_blas::threadCount()==original);
+}
+#endif
 phys::ThreadChargeResults backend_history(phys::SimParams sp, std::uint64_t seed) {
     phys::SimAnneal master(sp);
     phys::SimAnnealThread worker(0,seed);

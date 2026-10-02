@@ -19,11 +19,14 @@ parser.add_argument('--jobs', type=int, default=64)
 parser.add_argument('--workers', type=int, default=16)
 parser.add_argument('--seed', type=int, default=3280000003)
 parser.add_argument('--qualification', action='store_true')
+parser.add_argument('--replay-of', help='SHA256 of prior rows when deliberately replaying the same seeds')
 args = parser.parse_args()
 if not 1 <= args.jobs <= 128 or args.workers <= 0:
     parser.error('jobs must be 1..128 and workers must be positive')
 if args.qualification and args.jobs != 1:
     parser.error('qualification requires --jobs 1 to preserve disjoint seed intervals')
+if args.replay_of and (len(args.replay_of) != 64 or any(c not in '0123456789abcdef' for c in args.replay_of)):
+    parser.error('--replay-of must be a lowercase SHA256 digest')
 binary = args.binary.resolve()
 args.output.mkdir(parents=True, exist_ok=False)
 cases = json.loads(Path(__file__).with_name('cases.json').read_text())
@@ -36,7 +39,8 @@ plan = dict(jobs=args.jobs, workers=args.workers, seed=args.seed, case_stride=ca
             binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(),
             cases_sha256=hashlib.sha256(Path(__file__).with_name('cases.json').read_bytes()).hexdigest(),
             timeout_seconds=120, campaign_seconds=1800,
-            comparison='Matched restart intervals and four original schedules; legacy_tuned uses prescribed longer cycles and hop factor 5 on large layouts. Fresh seeds. Large targets are not certified ground states.',
+            replay_of_rows_sha256=args.replay_of, independent_seed_cohort=not bool(args.replay_of),
+            comparison='Matched restart intervals and four original schedules; legacy_tuned uses prescribed longer cycles and hop factor 5 on large layouts. ' + ('Same-seed replay of the recorded prior cohort. ' if args.replay_of else 'Fresh seeds. ') + 'Large targets are not certified ground states.',
             timing='Prepared-input complete production compute job; coordinate/SimParams allocation, solver construction, search, validated export and solver-owned cleanup included; file parsing, process start, retained output and stdout excluded.')
 (args.output/'plan.json').write_text(json.dumps(plan, indent=2))
 for block in range((args.jobs+7)//8):
