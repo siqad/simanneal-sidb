@@ -305,7 +305,7 @@ struct Engine {
   virtual ~Engine() {}
   virtual Result refine(const ModelView &, const Candidate &, const Options &,
                         const Callbacks &) const = 0;
-  std::size_t bytes = 0, clusters = 0, patterns = 0;
+  std::size_t bytes = 0, clusters = 0, patterns = 0, geometry_count = 0;
   bool budget = false;
 };
 template <int K> struct TypedEngine : Engine {
@@ -318,6 +318,7 @@ template <int K> struct TypedEngine : Engine {
       bytes += g.bytes;
       clusters += g.clusters.size();
       patterns += g.patterns;
+      geometry_count += !g.clusters.empty();
       budget |= g.budget;
     }
   }
@@ -351,6 +352,24 @@ std::uint64_t chargeHash(const Charges &q) {
   }
   return h;
 }
+// mt19937_64 has a specified stream; library integer distributions do not.
+// Rejection of the low incomplete residue range makes modulo reduction
+// unbiased.
+int sharedOffset(std::uint64_t seed, int n) {
+  const int step = n / std::min(32, n);
+  if (step < 2)
+    return 0;
+  const std::uint64_t bound = static_cast<std::uint64_t>(step - 1);
+  const std::uint64_t threshold = (UINT64_C(0) - bound) % bound;
+  std::mt19937_64 rng(seed ^ UINT64_C(0xd1b54a32d192ed03));
+  std::uint64_t value;
+  do {
+    value = rng();
+  } while (value < threshold);
+  // Every fixed-center gap is at least step. A shift strictly inside that gap
+  // produces a disjoint center set, without wrapping onto the fixed centers.
+  return 1 + static_cast<int>(value % bound);
+}
 bool sameKey(const std::vector<int> &key, const Charges &q) {
   if (key.size() != q.size())
     return false;
@@ -365,6 +384,7 @@ struct Geometry::Impl {
   FPType mu, eta, epsilon;
   Mode mode;
   int offset = 0;
+  bool shared_fallback = false;
   std::unique_ptr<Engine> engine;
   Impl(const ModelView &m, const Options &o, std::uint64_t seed)
       : a(&m.coupling), external(&m.external), fixed(&m.fixed),
@@ -374,9 +394,8 @@ struct Geometry::Impl {
     if (o.mode == Mode::Disabled || !validModel(m))
       return;
     if (o.mode == Mode::SharedK10) {
-      std::mt19937_64 rng(seed ^ UINT64_C(0xd1b54a32d192ed03));
-      offset = std::uniform_int_distribution<int>(
-          0, static_cast<int>(a->size1()) - 1)(rng);
+      offset = sharedOffset(seed, static_cast<int>(a->size1()));
+      shared_fallback = offset == 0;
     }
     if (o.mode == Mode::K6)
       engine.reset(new TypedEngine<6>(m, o, 0));
@@ -402,6 +421,12 @@ std::size_t Geometry::patternCount() const {
   return impl_->engine ? impl_->engine->patterns : 0;
 }
 int Geometry::centerOffset() const { return impl_->offset; }
+std::size_t Geometry::geometryCount() const {
+  return impl_->engine ? impl_->engine->geometry_count : 0;
+}
+bool Geometry::sharedSingleCacheFallback() const {
+  return impl_->shared_fallback;
+}
 bool Geometry::budgetExhausted() const {
   return impl_->engine && impl_->engine->budget;
 }
@@ -422,6 +447,8 @@ Result run(const ModelView &m, const Geometry &g,
     throw std::invalid_argument("Refinement workers must be positive");
   Result result;
   result.stats.geometry_bytes = g.logicalBytes();
+  result.stats.geometry_count = g.geometryCount();
+  result.stats.shared_single_cache_fallback = g.sharedSingleCacheFallback();
   result.stats.budget_exhausted = g.budgetExhausted();
   result.stats.geometry_skipped = g.skipped();
   if (original.empty())

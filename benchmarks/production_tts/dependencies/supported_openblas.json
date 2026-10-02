@@ -1,7 +1,7 @@
 {
-  "host": "gaming-pc-u",
+  "host": "Ryzen 7 5800X3D qualification host",
   "installation": "user-local Debian package extraction; no system installation",
-  "root": "/home/samuelshng/simanneal-supported-openblas-20261002/root",
+  "root": "$SIMANNEAL_OPENBLAS_ROOT",
   "package_source": "Ubuntu jammy/jammy-updates apt metadata",
   "packages": {
     "libopenblas-pthread-dev_0.3.20+ds-1_amd64.deb": "47d50a58626f9e2fe2936dd5d1035ccd6d409bf7e2583e3e91c07cf9cd76019e",

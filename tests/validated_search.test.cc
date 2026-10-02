@@ -358,3 +358,25 @@ TEST_CASE("Model ownership can be released on another thread") {
   phys::SimAnneal replacement(sp);
   REQUIRE(replacement.effectiveParams().n_dbs == sp.n_dbs);
 }
+
+TEST_CASE("Production search exports actual shared cache fallback metadata") {
+  auto params = search_fixture();
+  std::vector<phys::EuclCoord> points;
+  // Isolated pairs keep the full row bound below eta-mu, proving positive
+  // charges inadmissible and fitting the K10 binary-pattern cap.
+  for (int pair = 0; pair < 5; ++pair) {
+    points.emplace_back(pair * 120.0, 0);
+    points.emplace_back(pair * 120.0 + 3.84, 0);
+  }
+  params.setDBLocs(points);
+  params.v_ext.clear();
+  params.v_fc.clear();
+  params.search_profile = phys::SearchProfile::Optimized;
+  params.singleton_shortcut = phys::FeatureSetting::Disabled;
+  params.refinement_options.mode = phys::refinement::Mode::SharedK10;
+  phys::SimAnneal solver(params);
+  solver.invokeSimAnneal();
+  REQUIRE(solver.searchStats().refinement_center_offset == 0);
+  REQUIRE(solver.searchStats().refinement.geometry_count == 1);
+  REQUIRE(solver.searchStats().refinement.shared_single_cache_fallback);
+}

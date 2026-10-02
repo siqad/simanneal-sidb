@@ -89,6 +89,8 @@ with tempfile.TemporaryDirectory() as directory:
         result = run(dict(search_profile='optimized', refinement=refinement, refinement_rounds=2))
         assert result.findtext('misc/search_profile') == 'optimized'
         assert result.findtext('misc/random_backend') == 'pcg32'
+        assert int(result.findtext('misc/refinement_geometry_count')) >= 0
+        assert result.findtext('misc/refinement_shared_single_cache_fallback') == ('true' if refinement == 'shared' else 'false')
         assert any(x.get('physically_valid') == '1' for x in result.findall('.//dist'))
     singleton = run(dict(search_profile='optimized'), singleton=True)
     assert singleton.findtext('misc/executed_restarts') == '0'

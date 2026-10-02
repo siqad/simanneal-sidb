@@ -51,7 +51,8 @@ struct Candidate {
 struct Stats {
   std::uint64_t distinct = 0, selected = 0, patterns = 0, lower = 0;
   std::uint64_t trials = 0, improvements = 0;
-  std::size_t geometry_bytes = 0, dedup_bytes = 0;
+  std::size_t geometry_bytes = 0, dedup_bytes = 0, geometry_count = 0;
+  bool shared_single_cache_fallback = false;
   bool budget_exhausted = false, geometry_skipped = false;
 };
 struct Result {
@@ -80,6 +81,10 @@ public:
   std::size_t clusterCount() const;
   std::size_t patternCount() const;
   int centerOffset() const;
+  // Number of nonempty cached geometries, after pattern/cap skips.
+  std::size_t geometryCount() const;
+  // Intentional SharedK10 fallback when floor(N/min(32,N)) < 2.
+  bool sharedSingleCacheFallback() const;
   bool budgetExhausted() const;
   bool skipped() const;
 

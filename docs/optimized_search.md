@@ -22,7 +22,7 @@ Set these parameters in the input XML `<sim_params>` section. SiQAD exposes the 
 
 For an initial optimized experiment, use `search_profile=optimized` and `refinement=k6`. Compare K10 and shared refinement at the same target and complete-job timing boundary. Tune schedule lengths separately if needed. No profile is selected automatically from a filename or site count.
 
-The shared strategy refines identical annealing candidates independently with two cluster geometries. It retains the best valid result. Some layouts gain success probability; others only incur extra work. Keep the fixed strategy available.
+The shared strategy refines identical annealing candidates independently with fixed and shifted cluster geometries. The shift uses a portable, unbiased seed mapping and places shifted centers between fixed centers. Layouts with fewer than 64 sites intentionally use a single-cache fallback. Metadata reports the actual nonempty geometry count and the fallback flag. It retains the best valid result. Some layouts gain success probability; others only incur extra work. Keep the fixed strategy available.
 
 The domain bounds include external potentials and fixed charges. Final-state exclusions do not prove that removing transient states preserves useful annealing paths. The transient mask remains a separate option.
 

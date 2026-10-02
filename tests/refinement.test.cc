@@ -334,3 +334,66 @@ TEST_CASE(
     REQUIRE(result.stats.selected == 1);
   }
 }
+
+TEST_CASE("Small SharedK10 models intentionally retain one fixed geometry") {
+  for (int pairs : {5, 31}) {
+    Fixture f(pairs);
+    auto model = f.model();
+    Options fixed;
+    fixed.mode = Mode::K10;
+    Options shared = fixed;
+    shared.mode = Mode::SharedK10;
+    Geometry one(model, fixed, 91);
+    Geometry fallback(model, shared, 91);
+    REQUIRE(fallback.centerOffset() == 0);
+    REQUIRE(fallback.geometryCount() == 1);
+    REQUIRE(fallback.sharedSingleCacheFallback());
+    REQUIRE(fallback.logicalBytes() == one.logicalBytes());
+    REQUIRE(fallback.clusterCount() == one.clusterCount());
+    REQUIRE(fallback.patternCount() == one.patternCount());
+    REQUIRE_FALSE(one.sharedSingleCacheFallback());
+  }
+}
+
+TEST_CASE(
+    "SharedK10 offset mapping is portable and avoids duplicate center sets") {
+  struct Reference {
+    int n;
+    std::uint64_t seed;
+    int offset;
+  };
+  const Reference references[] = {
+      {64, 0, 1},    {103, 3330000003, 2}, {404, 0, 1}, {404, 1, 3},
+      {404, 91, 9},  {404, 3330000003, 3}, {448, 0, 2}, {448, 1, 11},
+      {448, 91, 12}, {448, 3330000003, 1}};
+  for (const auto &reference : references) {
+    // Odd N is represented directly; this case only exercises immutable caches.
+    Fixture f((reference.n + 1) / 2);
+    if (static_cast<int>(f.a.size1()) != reference.n) {
+      f.a.resize(reference.n, reference.n, true);
+      f.external.resize(reference.n, true);
+      f.fixed.resize(reference.n, true);
+      f.domains.resize(reference.n);
+    }
+    auto model = f.model();
+    Options shared;
+    shared.mode = Mode::SharedK10;
+    Geometry geometry(model, shared, reference.seed);
+    REQUIRE(geometry.centerOffset() == reference.offset);
+    REQUIRE(geometry.geometryCount() == 2);
+    REQUIRE_FALSE(geometry.sharedSingleCacheFallback());
+    const int count = std::min(32, reference.n);
+    const int step = reference.n / count;
+    REQUIRE(geometry.centerOffset() >= 1);
+    REQUIRE(geometry.centerOffset() < step);
+    std::vector<int> fixed_centers;
+    for (int c = 0; c < count; ++c)
+      fixed_centers.push_back(c * reference.n / count);
+    for (int center : fixed_centers) {
+      const int shifted = center + geometry.centerOffset();
+      REQUIRE(shifted < reference.n);
+      REQUIRE(std::find(fixed_centers.begin(), fixed_centers.end(), shifted) ==
+              fixed_centers.end());
+    }
+  }
+}

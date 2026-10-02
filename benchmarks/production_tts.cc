@@ -221,6 +221,12 @@ void write(const Tree &request, const Observation &row) {
             << row.stats.refinement.improvements
             << ",\"refinement_budget_exhausted\":"
             << row.stats.refinement.budget_exhausted
+            << ",\"refinement_geometry_count\":"
+            << row.stats.refinement.geometry_count
+            << ",\"refinement_shared_single_cache_fallback\":"
+            << row.stats.refinement.shared_single_cache_fallback
+            << ",\"refinement_center_offset\":"
+            << row.stats.refinement_center_offset
             << ",\"refinement_geometry_bytes\":"
             << row.stats.refinement.geometry_bytes
             << ",\"refinement_dedup_bytes\":"

@@ -37,7 +37,7 @@ TTS997 = mean complete-job time * max(1, log(0.003) / log(1 - p))
 
 A target hit requires a fully valid output with energy no greater than the frozen threshold plus `1e-8` eV. Zero-hit TTS remains undefined. All-hit TTS has a one-job floor. The runner never adds pseudocounts or drops zero-hit cases from an aggregate without reporting the exclusion.
 
-Each subprocess has a 120-second process-group timeout. The campaign has a 1,800-second cap. Raw requests, outputs, stderr, process timing, binary hash, and fixture hash remain in the output directory. The independent audit reconstructs FP64 fields and energy, then checks every population constraint and ordered electron hop.
+Each subprocess has a 120-second process-group timeout. The campaign has a 1,800-second cap. Raw requests, outputs, stderr, process timing, binary hash, and fixture hash remain in the output directory. The independent implementation audit reconstructs FP64 fields and energy, then checks every population constraint and ordered electron hop. It retains the solver's legacy rounded constants. It checks agreement with the implemented model, not the physical constants' accuracy. Explicit checks remain active under `python -O`; rejected rows produce a nonzero exit status and recorded failures.
 
 Rare hits have substantial uncertainty. The corpus and schedules reuse prior research, so this is integration qualification rather than an unseen-layout generalization study. Do not add percentages from independent experiments.
 

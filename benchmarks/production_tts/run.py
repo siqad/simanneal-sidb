@@ -20,7 +20,10 @@ parser.add_argument('--workers', type=int, default=16)
 parser.add_argument('--seed', type=int, default=3280000003)
 parser.add_argument('--qualification', action='store_true')
 args = parser.parse_args()
-assert 1 <= args.jobs <= 128 and args.workers > 0
+if not 1 <= args.jobs <= 128 or args.workers <= 0:
+    parser.error('jobs must be 1..128 and workers must be positive')
+if args.qualification and args.jobs != 1:
+    parser.error('qualification requires --jobs 1 to preserve disjoint seed intervals')
 binary = args.binary.resolve()
 args.output.mkdir(parents=True, exist_ok=False)
 cases = json.loads(Path(__file__).with_name('cases.json').read_text())
@@ -52,30 +55,36 @@ for block in range((args.jobs+7)//8):
                     q.update(cycles=max(512,q['cycles']), hop_factor=5)
                 if args.qualification:
                     q.update(restarts=16, cycles=32, refinement_rounds=1)
-                assert q['seed']+q['restarts'] < 2**32
+                if q['seed'] < 0 or q['seed']+q['restarts'] >= 2**32:
+                    raise ValueError('Restart seeds must fit uint32_t')
                 requests.append(q)
             stem = f'b{block}_{i}_{arm}'
             request_path = args.output/(stem+'_requests.json')
             request_path.write_text(json.dumps({'requests':requests}))
-            assert time.monotonic()-started < 1800, 'Campaign cap exceeded'
+            remaining = 1800 - (time.monotonic()-started)
+            if remaining <= 0:
+                raise RuntimeError('Campaign cap exceeded')
             begin = time.perf_counter()
             process = subprocess.Popen([str(binary), str(request_path)], stdout=subprocess.PIPE,
                                        stderr=subprocess.PIPE, text=True, env=env, start_new_session=True)
             try:
-                stdout, stderr = process.communicate(timeout=120)
+                stdout, stderr = process.communicate(timeout=min(120, remaining))
             except subprocess.TimeoutExpired:
                 os.killpg(process.pid, signal.SIGKILL)
                 stdout, stderr = process.communicate()
                 (args.output/(stem+'_timeout.txt')).write_text(stdout+'\n'+stderr)
-                raise RuntimeError('Process group exceeded 120 seconds')
+                raise RuntimeError('Process group exceeded its process or campaign time limit')
             (args.output/(stem+'_raw.txt')).write_text(stdout)
             (args.output/(stem+'_meta.json')).write_text(json.dumps(dict(returncode=process.returncode,
                 process_wall_ms=(time.perf_counter()-begin)*1000, stderr=stderr)))
-            assert process.returncode == 0, stderr
+            if process.returncode != 0:
+                raise RuntimeError(f'{stem}: solver exited {process.returncode}: {stderr}')
             output = [json.loads(x) for x in stdout.splitlines() if x.startswith('{')]
-            assert len(output) == len(requests), (stem,stdout[-300:])
+            if len(output) != len(requests):
+                raise RuntimeError(f'{stem}: expected {len(requests)} rows, got {len(output)}')
             for result, request in zip(output, requests):
-                assert result['id'] == request['id']
+                if result.get('id') != request['id']:
+                    raise RuntimeError(f'{stem}: output ID does not match request')
                 result.update(case=case['name'], arm=arm, seed=request['seed'], block=block)
                 rows.append(result)
             (args.output/'rows.jsonl').write_text(''.join(json.dumps(x)+'\n' for x in rows))

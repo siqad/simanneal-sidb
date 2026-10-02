@@ -179,8 +179,12 @@ void SimAnneal::invokeSimAnneal()
     ~InvocationReset() { active = false; }
   } reset{invocation_active_};
   stats_ = SearchStats();
-  if (refinement_geometry_)
+  if (refinement_geometry_) {
     stats_.refinement_center_offset = refinement_geometry_->centerOffset();
+    stats_.refinement.geometry_count = refinement_geometry_->geometryCount();
+    stats_.refinement.shared_single_cache_fallback =
+        refinement_geometry_->sharedSingleCacheFallback();
+  }
   if (sim_params.singleton_enabled) {
     bool all = true;
     ublas::vector<int> configuration(sim_params.n_dbs);

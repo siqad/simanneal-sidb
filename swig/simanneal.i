@@ -21,6 +21,9 @@
     catch (const std::exception &error) {
         SWIG_exception(SWIG_RuntimeError, error.what());
     }
+    catch (...) {
+        SWIG_exception(SWIG_UnknownError, "Unknown C++ exception");
+    }
 }
 %include <std_unordered_set.i>
 

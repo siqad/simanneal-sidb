@@ -402,6 +402,8 @@ void SimAnnealInterface::writeSimResults(bool only_suggested_gs, bool qubo_energ
     {"refinement_rounds", std::to_string(effective.refinement_options.rounds)},
     {"refinement_trials", std::to_string(effective.refinement_options.trials)},
     {"refinement_center_offset", std::to_string(stats.refinement_center_offset)},
+    {"refinement_geometry_count", std::to_string(stats.refinement.geometry_count)},
+    {"refinement_shared_single_cache_fallback", boolean(stats.refinement.shared_single_cache_fallback)},
     {"refinement_selected", std::to_string(stats.refinement.selected)},
     {"refinement_improvements", std::to_string(stats.refinement.improvements)},
     {"refinement_budget_exhausted", boolean(stats.refinement.budget_exhausted)},
