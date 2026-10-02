@@ -18,6 +18,21 @@ endif()
 find_package(Boost COMPONENTS random REQUIRED)
 find_package(Threads REQUIRED)
 
+# The portable implementation is always available. Apple builds may opt out.
+option(SIMANNEAL_ENABLE_ACCELERATE "Enable the Apple Accelerate population backend" ${APPLE})
+if(APPLE AND SIMANNEAL_ENABLE_ACCELERATE)
+    find_library(SIMANNEAL_ACCELERATE_FRAMEWORK Accelerate)
+    if(NOT SIMANNEAL_ACCELERATE_FRAMEWORK)
+        message(FATAL_ERROR "SIMANNEAL_ENABLE_ACCELERATE requires the Accelerate framework")
+    endif()
+endif()
+function(simanneal_configure_population_backend target)
+    if(APPLE AND SIMANNEAL_ENABLE_ACCELERATE)
+        target_compile_definitions(${target} PUBLIC SIMANNEAL_HAVE_ACCELERATE=1)
+        target_link_libraries(${target} ${SIMANNEAL_ACCELERATE_FRAMEWORK})
+    endif()
+endfunction()
+
 #add_definitions( -DAPP_VERSION=\"0.1.0\" -DAPPLICATION_NAME=\"SiQAD\" -DORGANIZATION_NAME=\"WalusLab\" )
 
 include_directories(
@@ -42,6 +57,7 @@ if(SKBUILD)
     file(COPY swig/__init__.py DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/swig")
 
     swig_add_library(simanneal LANGUAGE python SOURCES swig/simanneal.i src/simanneal.cc src/global.cc)
+    simanneal_configure_population_backend(${SWIG_MODULE_simanneal_REAL_NAME})
 
     if (WIN32 OR APPLE)
         swig_link_libraries(simanneal ${Boost_LIBRARIES} ${PYTHON_LIBRARY})
@@ -78,6 +94,7 @@ else()
 
     set(SIMANNEAL_TESTS
         tests/simanneal.test.cc
+        tests/population_backend.test.cc
 
         # HEADERS
         libs/catch2/catch.hpp
@@ -85,6 +102,7 @@ else()
 
     add_library(simanneal_lib STATIC ${SIMANNEAL_SOURCES})
     target_link_libraries(simanneal_lib siqadconn ${Boost_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})
+    simanneal_configure_population_backend(simanneal_lib)
 
     add_executable(simanneal src/main.cc)
     target_link_libraries(simanneal simanneal_lib)
