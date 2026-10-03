@@ -183,7 +183,8 @@ SimParams SimAnnealInterface::loadSimParams()
     throw std::invalid_argument("Unknown population_backend: " + population_backend);
   const auto profile = sqconn->getParameter("search_profile");
   if (profile == "optimized") sp.search_profile = SearchProfile::Optimized;
-  else if (!profile.empty() && profile != "legacy")
+  else if (profile == "legacy") sp.search_profile = SearchProfile::Legacy;
+  else if (!profile.empty())
     throw std::invalid_argument("Unknown search_profile: " + profile);
   const auto rng = sqconn->getParameter("random_backend");
   if (rng == "mt") sp.random_backend = RandomBackend::MT;

@@ -54,4 +54,4 @@ Read `swig/py_demo_script.py` for usage in Python.
 
 ### Optimized search profiles
 
-The default legacy profile remains available. Optional validated repair, conservative charge bounds, and bounded cluster refinement can improve time to solution. See [search settings and limits](docs/optimized_search.md), [method attribution](docs/ATTRIBUTION.md), and the [production TTS benchmark](benchmarks/production_tts/README.md). The optimized profile does not certify a global ground state.
+The default optimized profile enables PCG32 sampling, bounded validated repair, and the singleton shortcut. Select `search_profile=legacy` for legacy profile defaults. Bounded cluster refinement and transient domain masking remain opt-in. See [search settings and limits](docs/optimized_search.md), [method attribution](docs/ATTRIBUTION.md), and the [production TTS benchmark](benchmarks/production_tts/README.md). The optimized profile does not certify a global ground state.

@@ -120,7 +120,7 @@ TEST_CASE("Model lifetime excludes overlapping models and releases failed "
   REQUIRE_THROWS_AS(phys::SimAnneal(bad), std::invalid_argument);
   {
     phys::SimAnneal model(sp);
-    REQUIRE(model.effectiveParams().random_backend == phys::RandomBackend::MT);
+    REQUIRE(model.effectiveParams().random_backend == phys::RandomBackend::PCG32);
   }
 }
 
@@ -223,18 +223,24 @@ TEST_CASE("Profile defaults and explicit feature overrides resolve in solver") {
   auto sp = search_fixture();
   {
     phys::SimAnneal model(sp);
+    const auto &effective = model.effectiveParams();
+    REQUIRE(effective.search_profile == phys::SearchProfile::Optimized);
+    REQUIRE(effective.repair_enabled);
+    REQUIRE(effective.singleton_enabled);
+    REQUIRE(effective.random_backend == phys::RandomBackend::PCG32);
+    REQUIRE(effective.probability_shortcuts);
+    REQUIRE_FALSE(effective.transient_domain_mask);
+    REQUIRE_FALSE(effective.record_history);
+    REQUIRE(effective.refinement_options.mode == phys::refinement::Mode::Disabled);
+  }
+  sp.search_profile = phys::SearchProfile::Legacy;
+  {
+    phys::SimAnneal model(sp);
     REQUIRE_FALSE(model.effectiveParams().repair_enabled);
     REQUIRE_FALSE(model.effectiveParams().singleton_enabled);
     REQUIRE(model.effectiveParams().random_backend == phys::RandomBackend::MT);
   }
   sp.search_profile = phys::SearchProfile::Optimized;
-  {
-    phys::SimAnneal model(sp);
-    REQUIRE(model.effectiveParams().repair_enabled);
-    REQUIRE(model.effectiveParams().singleton_enabled);
-    REQUIRE(model.effectiveParams().random_backend ==
-            phys::RandomBackend::PCG32);
-  }
   sp.repair = phys::FeatureSetting::Disabled;
   sp.singleton_shortcut = phys::FeatureSetting::Disabled;
   sp.random_backend = phys::RandomBackend::MT;
