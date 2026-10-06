@@ -91,12 +91,17 @@ with tempfile.TemporaryDirectory() as directory:
     assert original.findtext('misc/singleton_shortcut') == 'true'
     assert original.findtext('misc/refinement') == 'none'
     assert original.findtext('misc/transient_domain_mask') == 'false'
+    assert original.findtext('misc/population_probability_cache') == 'false'
     legacy = run(dict(search_profile='legacy'))
     assert legacy.findtext('misc/search_profile') == 'legacy'
     assert legacy.findtext('misc/random_backend') == 'mt'
     assert legacy.findtext('misc/repair') == 'false'
     assert legacy.findtext('misc/singleton_shortcut') == 'false'
     assert sum(int(x.get('count')) for x in original.findall('.//dist')) == 8
+    for profile in ['legacy', 'optimized']:
+        for value, expected in [('true', 'true'), ('false', 'false'), ('1', 'true'), ('0', 'false')]:
+            cached = run(dict(search_profile=profile, population_probability_cache=value))
+            assert cached.findtext('misc/population_probability_cache') == expected
     for refinement in ['none', 'k6', 'k10', 'shared']:
         result = run(dict(search_profile='optimized', refinement=refinement, refinement_rounds=2))
         assert result.findtext('misc/search_profile') == 'optimized'
@@ -108,7 +113,7 @@ with tempfile.TemporaryDirectory() as directory:
     assert singleton.findtext('misc/executed_restarts') == '0'
     assert singleton.findtext('misc/singleton_used') == 'true'
     for key, value in [('search_profile','typo'), ('random_backend','typo'),
-                       ('repair','perhaps'), ('transient_domain_mask','perhaps'),
+                       ('repair','perhaps'), ('population_probability_cache','perhaps'), ('transient_domain_mask','perhaps'),
                        ('refinement','typo'), ('refinement_rounds','2junk'),
                        ('refinement_candidates','0'), ('anneal_cycles','0'),
                        ('population_backend','typo'), ('random_seed','-1')]:

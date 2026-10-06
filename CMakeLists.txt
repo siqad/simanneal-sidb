@@ -161,6 +161,8 @@ else()
         tests/population_blas.test.cc
         tests/refinement.test.cc
         tests/validated_search.test.cc
+        tests/result_export.test.cc
+        tests/population_probability.test.cc
 
         # HEADERS
         libs/catch2/catch.hpp

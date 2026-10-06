@@ -120,6 +120,7 @@ namespace phys {
     FeatureSetting repair = FeatureSetting::ProfileDefault;
     FeatureSetting singleton_shortcut = FeatureSetting::ProfileDefault;
     bool probability_shortcuts = true;
+    bool population_probability_cache = false;
     bool transient_domain_mask = false;
     refinement::Options refinement_options;
     // Resolved by solver initialization; callers must use effectiveParams().
@@ -326,6 +327,8 @@ namespace phys {
     std::recursive_mutex invocation_mutex_;
     bool invocation_active_ = false;
     SearchStats stats_;
+    friend struct SimAnnealExportTestAccess;
+    std::size_t export_workers_ = 1, export_async_launches_ = 0;
     std::unique_ptr<refinement::Geometry> refinement_geometry_;
 
     //! Calculate the Euclidean distance between the i th and j th DBs in the 
@@ -399,6 +402,8 @@ namespace phys {
 
     // Generate the delta in population.
     void genPopDelta(ublas::vector<int> &dn, bool &changed);
+    template <bool Cached>
+    void genPopDeltaImpl(ublas::vector<int> &dn, bool &changed);
 
     // Start annealing.
     void anneal();
