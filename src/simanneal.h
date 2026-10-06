@@ -320,6 +320,10 @@ namespace phys {
     //! etc.
     void initialize();
     static bool evaluateConfiguration(const ublas::vector<int> &, FPType *);
+    static bool evaluateSearchConfiguration(const ublas::vector<int> &, FPType *, bool);
+    static bool validatedSearchEnergy(const ublas::vector<int> &, FPType &, bool);
+    static bool currentSearchModelProof();
+    friend class SimAnnealThread;
     static std::recursive_mutex active_model_mutex;
     static bool model_active_;
     static std::unique_ptr<const simanneal_pair_bound::Geometry>
@@ -399,6 +403,11 @@ namespace phys {
     ThreadEnergyResults config_energies;  // energy history corresponding to db_charges
 
   private:
+
+    friend class SimAnneal;
+    // Only SimAnneal invocation can construct a worker carrying a proof.
+    SimAnnealThread(const int, const std::uint64_t, bool);
+    bool search_finite_model_ = false;
 
     // Generate the delta in population.
     void genPopDelta(ublas::vector<int> &dn, bool &changed);

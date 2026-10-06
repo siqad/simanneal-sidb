@@ -177,3 +177,115 @@ TEST_CASE("An all-global local policy preserves the original random trajectory")
     sp.hop_global_probability=-0.1;
     REQUIRE_THROWS_AS(phys::SimAnneal(sp),std::invalid_argument);
 }
+
+TEST_CASE("Population validity reuse preserves baseline histories after changes",
+          "[history][validity-cache]") {
+    // These digests cover every charge and population-validity flag from the
+    // uncached a1a3ff5 baseline. They exclude floating-point energy bits.
+    const std::uint64_t expected[] = {
+        UINT64_C(10700360247583351287), UINT64_C(13890666197318041969),
+        UINT64_C(1710319441480308780), UINT64_C(7990926584911492685)};
+    for (int variant=0; variant<4; ++variant) {
+        phys::SimParams sp;
+        sp.setDBLocs(std::vector<phys::EuclCoord>{{0,0},{3.84,0},{7.68,0},
+            {0,7.68},{3.84,7.68},{7.68,7.68}});
+        sp.v_ext.clear(); sp.v_fc.clear();
+        sp.num_instances=1; sp.num_workers=1; sp.anneal_cycles=256;
+        sp.result_queue_factor=1; sp.record_history=true;
+        sp.population_backend=phys::PopulationBackend::Portable;
+        sp.random_backend=phys::RandomBackend::MT;
+        sp.mu=variant%2 ? -.05 : -.32;
+        sp.hop_attempt_factor=variant<2 ? 0 : 5;
+        sp.strategic_v_freeze_reset=true;
+        sp.phys_validity_check_cycles=3;
+        phys::SimAnneal model(sp);
+        phys::SimAnnealThread worker(0,12345);
+        worker.run();
+        const auto &history=model.chargeResults()[0];
+        REQUIRE(history.size()==256);
+        std::uint64_t hash=UINT64_C(14695981039346656037);
+        unsigned changed=0, unchanged=0;
+        for (unsigned i=0; i<history.size(); ++i) {
+            const auto &result=history[i];
+            for (int charge : result.config) {
+                hash ^= static_cast<unsigned char>(charge+1);
+                hash *= UINT64_C(1099511628211);
+            }
+            hash ^= result.pop_likely_stable;
+            hash *= UINT64_C(1099511628211);
+            REQUIRE(result.system_energy ==
+                Approx(phys::SimAnneal::systemEnergy(result.config)).margin(1e-10));
+            REQUIRE(model.energyResults()[0][i]==result.system_energy);
+            if (i) {
+                bool same=true;
+                for (unsigned j=0; j<result.config.size(); ++j)
+                    same &= result.config[j]==history[i-1].config[j];
+                if (same) ++unchanged;
+                else ++changed;
+            }
+        }
+        // Each arm exercises reuse and invalidation. The last two enable hops.
+        REQUIRE(changed>0);
+        REQUIRE(unchanged>0);
+        REQUIRE(hash==expected[variant]);
+    }
+}
+
+TEST_CASE("Radius MT histories refresh validity and repeat independently",
+          "[history][validity-cache]") {
+    phys::SimParams sp;
+    sp.setDBLocs(std::vector<phys::EuclCoord>{{0,0},{3.84,0},{7.68,0},
+        {0,7.68},{3.84,7.68},{7.68,7.68}});
+    sp.v_ext.clear(); sp.v_fc.clear(); sp.mu=-.05;
+    sp.num_instances=1; sp.num_workers=1; sp.anneal_cycles=256;
+    sp.result_queue_factor=1; sp.record_history=true;
+    sp.random_backend=phys::RandomBackend::MT;
+    sp.population_backend=phys::PopulationBackend::Portable;
+    sp.hop_selection=phys::LocalRadiusHop; sp.hop_radius_nm=4.;
+    sp.hop_global_probability=0.; sp.strategic_v_freeze_reset=true;
+    sp.phys_validity_check_cycles=3;
+    phys::ThreadChargeResults first;
+    for (int run=0; run<2; ++run) {
+        phys::SimAnneal model(sp);
+        phys::SimAnnealThread worker(0,12345);
+        worker.run();
+        const auto &history=model.chargeResults()[0];
+        const auto &physical=model.effectiveParams();
+        REQUIRE(history.size()==256);
+        unsigned changes=0, unchanged=0;
+        for (unsigned cycle=0; cycle<history.size(); ++cycle) {
+            const auto &entry=history[cycle];
+            bool valid=true;
+            for (unsigned i=0; i<entry.config.size(); ++i) {
+                double potential=-(physical.v_ext[i]+physical.v_fc[i]);
+                for (unsigned j=0; j<entry.config.size(); ++j)
+                    potential-=physical.v_ij(i,j)*entry.config[j];
+                const double lower=potential+physical.mu;
+                const double upper=potential+(physical.mu-constants::eta);
+                const double eps=constants::POP_STABILITY_ERR;
+                const int charge=entry.config[i];
+                valid &= (charge==-1 && lower<eps) ||
+                    (charge==1 && upper>-eps) ||
+                    (charge==0 && lower>-eps && upper<eps);
+            }
+            REQUIRE(entry.pop_likely_stable==valid);
+            REQUIRE(entry.system_energy==
+                Approx(phys::SimAnneal::systemEnergy(entry.config)).margin(1e-10));
+            if (cycle) {
+                const bool same=phys::SimAnneal::configToStr(entry.config)==
+                    phys::SimAnneal::configToStr(history[cycle-1].config);
+                if (same) ++unchanged;
+                else ++changes;
+            }
+            if (run) {
+                REQUIRE(phys::SimAnneal::configToStr(entry.config)==
+                    phys::SimAnneal::configToStr(first[cycle].config));
+                REQUIRE(entry.pop_likely_stable==first[cycle].pop_likely_stable);
+                REQUIRE(entry.system_energy==first[cycle].system_energy);
+            }
+        }
+        REQUIRE(changes>0);
+        REQUIRE(unchanged>0);
+        if (!run) first=history;
+    }
+}

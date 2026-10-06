@@ -179,6 +179,11 @@ void SimAnneal::invokeSimAnneal()
     bool &active;
     ~InvocationReset() { active = false; }
   } reset{invocation_active_};
+  // Proof belongs solely to this invocation. Workers join before destruction.
+  struct SearchProofScope {
+    bool finite;
+    ~SearchProofScope() { finite = false; }
+  } search_scope{currentSearchModelProof()};
   const simanneal_blas::ScopedThreadCount blas_threads(
       1, sim_params.population_backend == PopulationBackend::OpenBLAS ||
              sim_params.population_backend == PopulationBackend::OpenBLASSymmetric);
@@ -203,7 +208,7 @@ void SimAnneal::invokeSimAnneal()
           simanneal_domains::singletonCharge(sim_params.final_domains[i]);
     }
     FPType energy;
-    if (all && validatedEnergy(configuration, energy)) {
+    if (all && validatedSearchEnergy(configuration, energy, search_scope.finite)) {
       charge_results.clear();
       energy_results.clear();
       suggested_gs_results.assign(
@@ -235,7 +240,7 @@ void SimAnneal::invokeSimAnneal()
       while (!failed.load()) {
         const int id = next_restart.fetch_add(1);
         if (id >= sim_params.num_instances) break;
-        SimAnnealThread annealer(id, seeds[id]);
+        SimAnnealThread annealer(id, seeds[id], search_scope.finite);
         annealer.run();
       }
     } catch (...) {
@@ -274,8 +279,9 @@ void SimAnneal::invokeSimAnneal()
     // Refinement owns one normalization pass. Public endpoint flags/energies
     // are never used as a physical proof or as the normalized ranking.
     refinement::Callbacks callbacks;
-    callbacks.validate = [](const ublas::vector<int> &q, FPType &e) {
-      return SimAnneal::validatedEnergy(q, e);
+    const bool finite = search_scope.finite;
+    callbacks.validate = [finite](const ublas::vector<int> &q, FPType &e) {
+      return SimAnneal::validatedSearchEnergy(q, e, finite);
     };
     callbacks.repair = [](const ublas::vector<int> &q) {
       const auto r = SimAnneal::repairConfiguration(q);
@@ -291,7 +297,7 @@ void SimAnneal::invokeSimAnneal()
     stats_.refinement = result.stats;
     if (result.improved && result.candidate.valid) {
       FPType energy;
-      if (validatedEnergy(result.candidate.config, energy)) {
+      if (validatedSearchEnergy(result.candidate.config, energy, search_scope.finite)) {
         suggested_gs_results.emplace_back(result.candidate.config, true,
                                           energy);
         suggested_gs_results.back().refinement_result = true;
@@ -330,14 +336,17 @@ bool SimAnneal::evaluateConfiguration(const ublas::vector<int> &charge,
       sp.v_ij.size1() != size || sp.v_ij.size2() != size)
     return false;
   const FPType eps = constants::RECALC_STABILITY_ERR;
-  ublas::vector<FPType> potential(size);
+  thread_local ublas::vector<FPType> potential;
+  if (potential.size() != size) potential.resize(size, false);
   for (std::size_t i = 0; i < size; ++i) {
     if (charge[i] < -1 || charge[i] > 1 || sp.v_ij(i, i) != 0)
       return false;
     potential[i] = -(sp.v_ext[i] + sp.v_fc[i]);
-    for (std::size_t j = 0; j < size; ++j)
-      if (i != j)
-        potential[i] -= sp.v_ij(i, j) * charge[j];
+    const FPType *row = &sp.v_ij.data()[i * size];
+    for (std::size_t j = 0; j < i; ++j)
+      potential[i] -= row[j] * charge[j];
+    for (std::size_t j = i + 1; j < size; ++j)
+      potential[i] -= row[j] * charge[j];
     if (!std::isfinite(potential[i]))
       return false;
     const FPType value = potential[i] + sp.mu;
@@ -349,11 +358,108 @@ bool SimAnneal::evaluateConfiguration(const ublas::vector<int> &charge,
   }
   // Final acceptance never trusts cached proposal geometry. Rebuild every
   // allowed ordered hop against the current full physical model.
-  for (std::size_t i = 0; i < size; ++i)
+  std::vector<std::size_t> above_negative, above_neutral;
+  above_negative.reserve(size); above_neutral.reserve(size);
+  for (std::size_t j = 0; j < size; ++j) {
+    if (charge[j] > -1) above_negative.push_back(j);
+    if (charge[j] > 0) above_neutral.push_back(j);
+  }
+  for (std::size_t i = 0; i < size; ++i) {
+    if (charge[i] == 1) continue;
+    const auto &targets = charge[i] == -1 ? above_negative : above_neutral;
+    for (std::size_t j : targets)
+      if (-potential[i] + potential[j] - sp.v_ij(i,j) < -eps) return false;
+  }
+  if (energy) {
+    FPType sum = 0;
+    for (std::size_t i = 0; i < size; ++i)
+      sum += charge[i] * (sp.v_ext[i] + sp.v_fc[i] - potential[i]);
+    sum *= 0.5;
+    // The fused expression can overflow an intermediate for extreme finite
+    // fields even when the original Hamiltonian remains representable.
+    if (!std::isfinite(sum))
+      sum = systemEnergy(charge);
+    if (!std::isfinite(sum))
+      return false;
+    *energy = sum;
+  }
+  return true;
+}
+
+bool SimAnneal::currentSearchModelProof() {
+  const auto &sp = sim_params;
+  if (sp.n_dbs <= 0) return false;
+  const std::size_t size = static_cast<std::size_t>(sp.n_dbs);
+  if (sp.v_ext.size() != size || sp.v_fc.size() != size ||
+      sp.v_ij.size1() != size || sp.v_ij.size2() != size ||
+      !std::isfinite(sp.mu)) return false;
+  for (std::size_t i = 0; i < size; ++i) {
+    if (!std::isfinite(sp.v_ext[i]) || !std::isfinite(sp.v_fc[i]) ||
+        sp.v_ij(i,i) != 0) return false;
+    const FPType *row = &sp.v_ij.data()[i * size];
     for (std::size_t j = 0; j < size; ++j)
-      if (charge[i] < charge[j] &&
-          -potential[i] + potential[j] - sp.v_ij(i, j) < -eps)
-        return false;
+      if (!std::isfinite(row[j])) return false;
+  }
+  return true;
+}
+bool SimAnneal::validatedSearchEnergy(const ublas::vector<int> &q,
+                                      FPType &energy, bool finite_model) {
+  return evaluateSearchConfiguration(q, &energy, finite_model);
+}
+bool SimAnneal::evaluateSearchConfiguration(const ublas::vector<int> &charge,
+                                      FPType *energy, bool finite_model) {
+  if (!finite_model) return evaluateConfiguration(charge, energy);
+  const auto &sp = sim_params;
+  const std::size_t size = charge.size();
+  if (size == 0 || size != static_cast<std::size_t>(sp.n_dbs) ||
+      sp.v_ext.size() != size || sp.v_fc.size() != size ||
+      sp.v_ij.size1() != size || sp.v_ij.size2() != size)
+    return false;
+  const FPType eps = constants::RECALC_STABILITY_ERR;
+  thread_local ublas::vector<FPType> potential;
+  if (potential.size() != size) potential.resize(size, false);
+  thread_local std::vector<std::size_t> charged;
+  charged.clear(); charged.reserve(size);
+  for (std::size_t i = 0; i < size; ++i) {
+    if (charge[i] < -1 || charge[i] > 1 || sp.v_ij(i, i) != 0)
+      return false;
+    potential[i] = -(sp.v_ext[i] + sp.v_fc[i]);
+    const FPType *row = &sp.v_ij.data()[i * size];
+    if (i == 0) {
+      // Build the ascending charged list while computing the first row.
+      if (charge[0] != 0) charged.push_back(0);
+      for (std::size_t j = 1; j < size; ++j)
+        if (charge[j] != 0) {
+          charged.push_back(j);
+          potential[i] -= row[j] * charge[j];
+        }
+    } else {
+      for (std::size_t j : charged)
+        if (j != i) potential[i] -= row[j] * charge[j];
+    }
+    if (!std::isfinite(potential[i]))
+      return false;
+    const FPType value = potential[i] + sp.mu;
+    const FPType upper_value = potential[i] + (sp.mu - constants::eta);
+    if (!((charge[i] == -1 && value < eps) ||
+          (charge[i] == 1 && upper_value > -eps) ||
+          (charge[i] == 0 && value > -eps && upper_value < eps)))
+      return false;
+  }
+  // Final acceptance never trusts cached proposal geometry. Rebuild every
+  // allowed ordered hop against the current full physical model.
+  std::vector<std::size_t> above_negative, above_neutral;
+  above_negative.reserve(size); above_neutral.reserve(size);
+  for (std::size_t j = 0; j < size; ++j) {
+    if (charge[j] > -1) above_negative.push_back(j);
+    if (charge[j] > 0) above_neutral.push_back(j);
+  }
+  for (std::size_t i = 0; i < size; ++i) {
+    if (charge[i] == 1) continue;
+    const auto &targets = charge[i] == -1 ? above_negative : above_neutral;
+    for (std::size_t j : targets)
+      if (-potential[i] + potential[j] - sp.v_ij(i,j) < -eps) return false;
+  }
   if (energy) {
     FPType sum = 0;
     for (std::size_t i = 0; i < size; ++i)
@@ -693,7 +799,10 @@ FPType SimAnneal::hopEnergyDelta(ublas::vector<int> n_in, const int &from_ind,
 // SimAnnealThread Implementation
 
 SimAnnealThread::SimAnnealThread(const int id, const std::uint64_t seed)
-    : thread_id(id), dis01(0, 1) {
+    : SimAnnealThread(id, seed, false) {}
+SimAnnealThread::SimAnnealThread(const int id, const std::uint64_t seed,
+                               bool finite_model)
+    : thread_id(id), search_finite_model_(finite_model), dis01(0, 1) {
   if (sparams->n_dbs <= 0 || id < 0 || id >= sparams->num_instances)
     throw std::invalid_argument(
         "Worker requires a live model and valid restart ID");
@@ -818,6 +927,7 @@ void SimAnnealThread::anneal()
 
   Logger log(saglobal::log_level);
 
+  bool validity_cached = false, cached_validity = false;
   // Run simulated annealing for predetermined time steps
   while(t < sparams->anneal_cycles) {
     //log.debug() << "Cycle " << t << ", kT=" << kT << ", v_freeze=" << v_freeze << std::endl;
@@ -826,6 +936,7 @@ void SimAnnealThread::anneal()
     //log.debug() << "Before popgen: n=" << n << std::endl;
     genPopDelta(dn, pop_changed);
     if (pop_changed) {
+      validity_cached = false;
       n += dn;
       if (radius_hops) population_changed.clear();
       bool dense_updated = false;
@@ -960,6 +1071,7 @@ void SimAnnealThread::anneal()
         continue;
       }
       if (acceptHop(hop_E_del)) {
+        validity_cached = false;
         performHop(from_ind, to_ind, E_sys, hop_E_del);
         if (radius_hops && radius_cache.initialized) {
           sparams->hop_neighborhood.setNeutral(from_ind, n[from_ind] == 0, radius_cache);
@@ -981,7 +1093,8 @@ void SimAnnealThread::anneal()
     }
 
     // push back the new arrangement
-    const bool pop_valid = populationValid();
+    if (!validity_cached) { cached_validity = populationValid(); validity_cached = true; }
+    const bool pop_valid = cached_validity;
     if (sparams->record_history) {
       db_charges.push_back(ChargeConfigResult(n, pop_valid, E_sys));
       config_energies.push_back(E_sys);
@@ -1012,7 +1125,7 @@ void SimAnnealThread::anneal()
     suggested_gs = ChargeConfigResult(n, populationValid(), E_sys);
   if (sparams->repair_enabled) {
     FPType energy;
-    if (SimAnneal::validatedEnergy(suggested_gs.config, energy))
+    if (SimAnneal::validatedSearchEnergy(suggested_gs.config, energy, search_finite_model_))
       suggested_gs.system_energy = energy;
     else {
       const auto repaired =
