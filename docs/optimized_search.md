@@ -49,6 +49,16 @@ Smaller layouts retain the original sampler even when the option is enabled.
 Subnormal, zero, negative, or nonfinite temperatures retain division. This option changes floating-point rounding and can change trajectories in either profile.
 The default remains disabled. Python exposes the same `SimParams.population_probability_cache` field, and XML metadata reports the effective value.
 
+## Validation kernels
+
+The validation kernels apply automatically in both search profiles. No XML or Python flag is required.
+Population validity is reused only while charges remain unchanged. Validators reuse thread-local scratch storage and read contiguous matrix rows.
+Hop validation visits only eligible charge classes, while retaining site order and the existing acceptance thresholds.
+
+A private search validator skips neutral charge products only after proving that the model has finite fields and a zero diagonal.
+Each invocation checks this proof again. Public validation and tidy export retain the dense validator.
+Keep the model unchanged during an invocation. Changes between invocations receive a fresh proof and use the dense fallback when required.
+
 ## Numerical backends
 
 Portable arithmetic and Apple Accelerate remain available. To compile the optional OpenBLAS backend:
@@ -65,8 +75,14 @@ OpenBLAS uses one numerical thread per annealing worker during a search. SimAnne
 
 Fast-math is disabled. `SIMANNEAL_NATIVE_ARCH=ON` enables host-specific instructions with supported compilers. Such binaries are not portable distribution artifacts.
 
+Optional link-time optimization (LTO) lets the compiler optimize across source files. It is disabled by default because support depends on the toolchain.
+Enable it with `-DSIMANNEAL_ENABLE_LTO=ON`. CMake rejects unsupported requests. GNU builds require CMake 3.13 or later and bound LTO parallelism to four partitions.
+LTO retains strict floating-point flags. It does not enable host-specific instructions.
+
 ## Measurement and credit
 
 Use the [production benchmark](../benchmarks/production_tts/README.md) for complete-job TTS estimates. Do not add component percentages from separate experiments. Preserve zero-hit cells and distinguish exact targets from validated witnesses.
+
+See the [Nibi validation-kernel results](../benchmarks/production_tts/KERNEL_RESULTS.md) for the recent combined measurements and export timing boundary.
 
 See [method attribution](ATTRIBUTION.md) for QuickExact, ClusterComplete, fiction, PCG, and Lemire credit.

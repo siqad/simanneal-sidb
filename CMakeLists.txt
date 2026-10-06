@@ -10,6 +10,26 @@ endif()
 # for release builds, add flag "-DCMAKE_BUILD_TYPE=Release" (without quotes) when running cmake.
 
 project(simanneal CXX)
+
+# Optional whole-program optimization. Runtime kernels retain strict FP flags.
+option(SIMANNEAL_ENABLE_LTO "Enable supported link-time optimization" OFF)
+if(SIMANNEAL_ENABLE_LTO)
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT SIMANNEAL_LTO_SUPPORTED
+                        OUTPUT SIMANNEAL_LTO_ERROR LANGUAGES CXX)
+    if(NOT SIMANNEAL_LTO_SUPPORTED)
+        message(FATAL_ERROR "Link-time optimization requested but unsupported: ${SIMANNEAL_LTO_ERROR}")
+    endif()
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        if(CMAKE_VERSION VERSION_LESS "3.13")
+            message(FATAL_ERROR "GNU link-time optimization requires CMake >= 3.13 for bounded link parallelism")
+        endif()
+        # Match qualification; bound GCC's LTO partitions independently of -j.
+        add_compile_options(-flto=4)
+        add_link_options(-flto=4)
+    endif()
+endif()
 # TODO add way to push version number into source code
 
 if (WIN32)

@@ -5,6 +5,10 @@
 namespace phys {
 // This friend has no production definition or public solver accessor.
 struct SimAnnealExportTestAccess {
+  static bool proof() { return SimAnneal::currentSearchModelProof(); }
+  static bool search(const ublas::vector<int> &q, FPType &energy) {
+    return SimAnneal::validatedSearchEnergy(q, energy, proof());
+  }
   static SuggestedResults &results() { return SimAnneal::suggested_gs_results; }
   static std::size_t workers(const SimAnneal &solver) { return solver.export_workers_; }
   static std::size_t launches(const SimAnneal &solver) { return solver.export_async_launches_; }
@@ -190,4 +194,104 @@ TEST_CASE("Empty tidy export and malformed dimensions produce no result", "[expo
   raw.emplace_back();
   REQUIRE(solver.suggestedConfigResults(true).empty());
   REQUIRE(solver.suggestedConfigResults(false).size() == 2);
+}
+
+
+#include <limits>
+TEST_CASE("Scoped search validator matches public dense energy and falls back", "[scope]") {
+  phys::SimParams params;
+  params.setDBLocs(std::vector<phys::EuclCoord>{{0,0},{3.84,0},{7.68,0}});
+  params.num_instances=2;params.num_workers=2;params.anneal_cycles=4;
+  params.deterministic_seed=true;params.random_seed=731;
+  params.population_backend=phys::PopulationBackend::Portable;
+  phys::SimAnneal solver(params);
+  auto &model=phys::SimAnneal::sim_params;
+  model.mu=0.;model.v_fc.clear();
+  for(int variant=0;variant<8;++variant) {
+    model.v_ij.resize(3,3,false);model.v_ext.resize(3,false);model.v_fc.resize(3,false);model.v_fc.clear();
+    for(int i=0;i<3;++i)for(int j=0;j<3;++j)model.v_ij(i,j)=i==j?0.:((i*5+j*11+variant*3)%13-6)*.01;
+    for(int code=0;code<27;++code) {
+      phys::ublas::vector<int> q(3);int digits=code;
+      for(int i=0;i<3;++i){q[i]=digits%3-1;digits/=3;}
+      for(int i=0;i<3;++i) {
+        double target=q[i]<0?-.1:q[i]>0?constants::eta+.1:constants::eta*.5;
+        if(variant==1)target=std::copysign(0.,double(i%2?1:-1));
+        double interaction=0.;for(int j=0;j<3;++j)interaction+=model.v_ij(i,j)*q[j];
+        model.v_ext[i]=-target-interaction;
+      }
+      if(variant==2)model.v_ij(0,1)=std::numeric_limits<double>::quiet_NaN();
+      if(variant==3)model.v_ij(1,2)=std::numeric_limits<double>::infinity();
+      if(variant==4)model.v_ij(2,1)=-std::numeric_limits<double>::infinity();
+      if(variant==5)model.v_ij(0,0)=.1;
+      if(variant==6)model.v_ext[0]=std::numeric_limits<double>::quiet_NaN();
+      if(variant==7)model.v_fc[1]=std::numeric_limits<double>::infinity();
+      FPType dense=321.,sparse=321.;
+      const bool valid=phys::SimAnneal::validatedEnergy(q,dense);
+      REQUIRE(phys::SimAnnealExportTestAccess::search(q,sparse)==valid);
+      if(valid)REQUIRE(energy_bits_equal(dense,sparse));
+      REQUIRE(phys::SimAnneal::isMetastable(q)==valid);
+    }
+  }
+  phys::ublas::vector<int> q(3);q.clear();model.v_ij.resize(2,3,false);
+  REQUIRE_FALSE(phys::SimAnnealExportTestAccess::proof());
+  FPType energy=0.;REQUIRE_FALSE(phys::SimAnnealExportTestAccess::search(q,energy));
+  REQUIRE_FALSE(phys::SimAnneal::validatedEnergy(q,energy));
+}
+TEST_CASE("Invocation proof refreshes after mutation and disappears on return", "[scope]") {
+  phys::SimParams params;
+  params.setDBLocs(std::vector<phys::EuclCoord>{{0,0},{3.84,0},{7.68,0}});
+  params.num_instances=4;params.num_workers=2;params.anneal_cycles=8;
+  params.deterministic_seed=true;params.random_seed=731;params.mu=0.;
+  params.population_backend=phys::PopulationBackend::Portable;
+  phys::SimAnneal solver(params);auto &model=phys::SimAnneal::sim_params;
+  model.v_ij.clear();model.v_ext.clear();model.v_fc.clear();
+  solver.invokeSimAnneal();const auto before=solver.suggestedConfigResults(true);
+  model.v_ij(0,1)=std::numeric_limits<double>::quiet_NaN();
+  REQUIRE_FALSE(phys::SimAnnealExportTestAccess::proof());
+  phys::ublas::vector<int> neutral(3);neutral.clear();FPType energy=0.;
+  REQUIRE_FALSE(phys::SimAnneal::validatedEnergy(neutral,energy));
+  REQUIRE_FALSE(phys::SimAnneal::isMetastable(neutral));
+  solver.invokeSimAnneal();REQUIRE(solver.suggestedConfigResults(true).empty());
+  model.v_ij.clear();REQUIRE(phys::SimAnnealExportTestAccess::proof());
+  solver.invokeSimAnneal();require_same_results(before,solver.suggestedConfigResults(true));
+}
+
+#include <climits>
+#include <limits>
+TEST_CASE("Private scoped validation rejects malformed charges without changing energy", "[scope-invalid]") {
+  phys::SimParams params;
+  params.setDBLocs(std::vector<phys::EuclCoord>{{0,0},{3.84,0},{7.68,0}});
+  params.num_instances=1;params.num_workers=1;params.anneal_cycles=4;
+  params.population_backend=phys::PopulationBackend::Portable;
+  phys::SimAnneal solver(params);
+  auto &model=phys::SimAnneal::sim_params;
+  model.mu=0.;model.v_ext.clear();model.v_fc.clear();
+  for (bool huge : {false,true}) {
+    for (int i=0;i<3;++i) for (int j=0;j<3;++j)
+      model.v_ij(i,j)=i==j?0.:huge?std::numeric_limits<double>::max():0.;
+    REQUIRE(phys::SimAnnealExportTestAccess::proof());
+    phys::ublas::vector<int> neutral(3);neutral.clear();
+    FPType dense_good=123.75,sparse_good=123.75;
+    REQUIRE(phys::SimAnneal::validatedEnergy(neutral,dense_good));
+    REQUIRE(phys::SimAnnealExportTestAccess::search(neutral,sparse_good));
+    REQUIRE(energy_bits_equal(dense_good,sparse_good));
+    for (int position : {0,1,2}) for (int bad : {-2,2,INT_MIN,INT_MAX}) {
+      phys::ublas::vector<int> q(3);q.clear();q[position]=bad;
+      FPType dense=123.75,sparse=123.75;
+      REQUIRE_FALSE(phys::SimAnneal::validatedEnergy(q,dense));
+      REQUIRE_FALSE(phys::SimAnnealExportTestAccess::search(q,sparse));
+      REQUIRE_FALSE(phys::SimAnneal::isMetastable(q));
+      REQUIRE(energy_bits_equal(dense,123.75));
+      REQUIRE(energy_bits_equal(sparse,123.75));
+    }
+    for (unsigned size : {0u,1u,2u,4u}) {
+      phys::ublas::vector<int> q(size);q.clear();
+      FPType dense=-0.,sparse=-0.;
+      REQUIRE_FALSE(phys::SimAnneal::validatedEnergy(q,dense));
+      REQUIRE_FALSE(phys::SimAnnealExportTestAccess::search(q,sparse));
+      REQUIRE_FALSE(phys::SimAnneal::isMetastable(q));
+      REQUIRE(energy_bits_equal(dense,-0.));
+      REQUIRE(energy_bits_equal(sparse,-0.));
+    }
+  }
 }
