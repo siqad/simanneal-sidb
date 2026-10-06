@@ -105,6 +105,11 @@ interpreter, bin_path, command
             <tip>Avoid exponential evaluation when finite random-grid bounds determine the same decision. Random draws remain unchanged.</tip>
             <value_selection type="CheckBox"></value_selection>
         </probability_shortcuts>
+        <population_probability_cache>
+            <T>bool</T><val>0</val><label>Cache population probability factors</label>
+            <tip>Opt in to cached population probability factors for layouts with at least 64 sites. Rounding can change search paths. Hopping is unchanged.</tip>
+            <value_selection type="CheckBox"></value_selection>
+        </population_probability_cache>
         <transient_domain_mask>
             <T>bool</T><val>0</val><label>Restrict transient charges</label>
             <tip>Exclude charges ruled out for final states during annealing too. This changes search paths and can help or harm convergence.</tip>

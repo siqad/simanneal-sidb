@@ -69,6 +69,33 @@ inline bool populationAcceptance(double draw, double x, double kT,
          : bound > 0 && x < -bound ? true
                                    : draw <= 1. / (1 + std::exp(x / kT));
 }
+// The default specialization preserves the original division and shortcuts.
+// Dispatch once per population update, with one shared sampling body.
+template <bool Cached> struct PopulationProbability;
+template <> struct PopulationProbability<false> {
+  double temperature;
+  bool shortcut;
+  PopulationProbability(double kT, bool shortcuts)
+      : temperature(kT), shortcut(shortcuts) {}
+  bool accept(double draw, double x) const {
+    return populationAcceptance(draw, x, temperature, shortcut);
+  }
+};
+template <> struct PopulationProbability<true> {
+  double temperature, bound, inverse;
+  bool use_inverse;
+  PopulationProbability(double kT, bool shortcut)
+      : temperature(kT),
+        bound(shortcut && std::isfinite(kT) && kT > 0 ? 40 * kT : 0),
+        inverse(std::isnormal(kT) && kT > 0 ? 1. / kT : 0),
+        use_inverse(std::isnormal(kT) && kT > 0 && std::isfinite(inverse)) {}
+  bool accept(double draw, double x) const {
+    return bound > 0 && x > bound ? draw == 0
+         : bound > 0 && x < -bound ? true
+         : draw <= 1. / (1 + std::exp(use_inverse ? x * inverse
+                                                : x / temperature));
+  }
+};
 inline bool hopAcceptance(double draw, double delta, double kT, bool shortcut) {
   const double bound = shortcut && std::isfinite(kT) && kT > 0 ? 40 * kT : 0;
   return bound > 0 && delta > bound ? draw == 0 : draw <= std::exp(-delta / kT);

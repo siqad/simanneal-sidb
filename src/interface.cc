@@ -208,6 +208,7 @@ SimParams SimAnnealInterface::loadSimParams()
     else throw std::invalid_argument(name + " must be true or false");
   };
   boolean("probability_shortcuts", sp.probability_shortcuts);
+  boolean("population_probability_cache", sp.population_probability_cache);
   boolean("transient_domain_mask", sp.transient_domain_mask);
   const auto refinement = sqconn->getParameter("refinement");
   if (refinement == "k6") sp.refinement_options.mode = refinement::Mode::K6;
@@ -389,6 +390,7 @@ void SimAnnealInterface::writeSimResults(bool only_suggested_gs, bool qubo_energ
     {"random_backend", effective.random_backend==RandomBackend::PCG32 ? "pcg32" : "mt"},
     {"population_backend", backend},
     {"probability_shortcuts", boolean(effective.probability_shortcuts)},
+    {"population_probability_cache", boolean(effective.population_probability_cache)},
     {"repair", boolean(effective.repair_enabled)},
     {"transient_domain_mask", boolean(effective.transient_domain_mask)},
     {"singleton_shortcut", boolean(effective.singleton_enabled)},

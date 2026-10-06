@@ -27,7 +27,7 @@ struct Observation {
          total_ms = 0;
   int restarts = 0, workers = 0, cycles = 0, hop_factor = 0;
   bool repair = false, singleton = false, probability = false,
-       transient = false;
+       transient = false, population_probability_cache = false;
   int rng = 0, backend = 0, refinement = 0, candidates = 0, rounds = 0;
   int blas_threads = 0;
   phys::SearchStats stats;
@@ -116,6 +116,8 @@ Observation execute(const Tree &request) {
     else
       throw std::invalid_argument("Unknown backend");
     params.probability_shortcuts = request.get<bool>("probability_shortcuts");
+    params.population_probability_cache =
+        request.get<bool>("population_probability_cache", false);
     params.transient_domain_mask = request.get<bool>("transient_domain_mask");
     const auto mode = request.get<std::string>("refinement");
     auto &options = params.refinement_options;
@@ -142,6 +144,7 @@ Observation execute(const Tree &request) {
     observation.repair = effective.repair_enabled;
     observation.singleton = effective.singleton_enabled;
     observation.probability = effective.probability_shortcuts;
+    observation.population_probability_cache = effective.population_probability_cache;
     observation.transient = effective.transient_domain_mask;
     observation.rng = static_cast<int>(effective.random_backend);
     observation.backend = static_cast<int>(effective.population_backend);
@@ -202,6 +205,7 @@ void write(const Tree &request, const Observation &row) {
             << ",\"repair_enabled\":" << row.repair
             << ",\"singleton_enabled\":" << row.singleton
             << ",\"probability_shortcuts\":" << row.probability
+            << ",\"population_probability_cache\":" << row.population_probability_cache
             << ",\"transient_domain_mask\":" << row.transient
             << ",\"random_backend_enum\":" << row.rng
             << ",\"population_backend_enum\":" << row.backend

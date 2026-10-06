@@ -18,6 +18,7 @@
 #include <unordered_set>
 #include <atomic>
 #include <exception>
+#include <future>
 #include <stdexcept>
 
 #include <boost/numeric/ublas/vector.hpp>
@@ -389,25 +390,60 @@ void SimAnneal::storeResults(SimAnnealThread *annealer, int thread_id)
 SuggestedResults SimAnneal::suggestedConfigResults(bool tidy)
 {
   SuggestedResults filtered_results;
+  export_workers_ = 1;
+  export_async_launches_ = 0;
   if (tidy) {
-    // deduplicate and recalculate energy
     std::unordered_set<std::string> config_set;
-    //std::map< ublas::vector<int>, ChargeConfigResult > result_map;
-    for (auto result : suggested_gs_results) {
-      if (!result.initialized) {
-        continue;
-      }
-      if (config_set.find(configToStr(result.config)) == config_set.end()) {
-        config_set.insert(configToStr(result.config));
-        if (isMetastable(result.config)) {
-          result.system_energy = systemEnergy(result.config);
-          filtered_results.push_back(result);
+    std::vector<const ChargeConfigResult *> unique;
+    unique.reserve(suggested_gs_results.size());
+    for (const auto &result : suggested_gs_results)
+      if (result.initialized &&
+          config_set.insert(configToStr(result.config)).second)
+        unique.push_back(&result);
+
+    std::vector<FPType> energies(unique.size());
+    // Distinct bytes avoid the shared-bit writes of vector<bool>.
+    std::vector<unsigned char> valid(unique.size(), 0);
+    const auto validate_range = [&](std::size_t begin, std::size_t end) {
+      for (std::size_t i = begin; i < end; ++i)
+        valid[i] = validatedEnergy(unique[i]->config, energies[i]);
+    };
+    const std::size_t worker_limit = std::max(1, sim_params.num_workers);
+    const std::size_t workers = unique.size() >= 32 && sim_params.n_dbs >= 128 &&
+        double(unique.size()) * sim_params.n_dbs * sim_params.n_dbs >= 4e6
+        ? std::min(worker_limit, (unique.size() + 7) / 8) : 1;
+    export_workers_ = workers;
+    if (workers == 1) {
+      validate_range(0, unique.size());
+    } else {
+      // Futures die before the buffers and lambda, also during unwinding.
+      std::vector<std::future<void>> tasks;
+      tasks.reserve(workers);
+      std::size_t assigned = 0;
+      try {
+        for (std::size_t worker = 0; worker < workers; ++worker) {
+          const std::size_t begin = unique.size() * worker / workers;
+          const std::size_t end = unique.size() * (worker + 1) / workers;
+          tasks.emplace_back(std::async(std::launch::async, validate_range,
+                                       begin, end));
+          assigned = end;
+          ++export_async_launches_;
         }
+      } catch (const std::system_error &) {
+        // Already launched tasks own the prefix. Complete only the tail.
+        validate_range(assigned, unique.size());
       }
+      for (auto &task : tasks)
+        task.get();
     }
+    filtered_results.reserve(unique.size());
+    for (std::size_t i = 0; i < unique.size(); ++i)
+      if (valid[i]) {
+        filtered_results.push_back(*unique[i]);
+        filtered_results.back().system_energy = energies[i];
+      }
   } else {
-    // return every result that has been initialized
-    for (auto result : suggested_gs_results)
+    for (const auto &result : suggested_gs_results)
       if (result.initialized)
         filtered_results.push_back(result);
   }
@@ -993,6 +1029,17 @@ void SimAnnealThread::anneal()
 
 void SimAnnealThread::genPopDelta(ublas::vector<int> &dn, bool &changed)
 {
+  if (sparams->population_probability_cache && sparams->n_dbs >= 64)
+    genPopDeltaImpl<true>(dn, changed);
+  else
+    genPopDeltaImpl<false>(dn, changed);
+}
+
+template <bool Cached>
+void SimAnnealThread::genPopDeltaImpl(ublas::vector<int> &dn, bool &changed)
+{
+  const simanneal_rng::PopulationProbability<Cached> probability(
+      kT, sparams->probability_shortcuts);
   // DB- and DB+ sites can be flipped to DB0, DB0 sites can be flipped to either
   // DB- or DB+ depending on which one is enegetically closer.
   FPType x;
@@ -1024,8 +1071,7 @@ void SimAnnealThread::genPopDelta(ublas::vector<int> &dn, bool &changed)
       continue;
     }
     const FPType draw = uniformDraw();
-    const bool accept = simanneal_rng::populationAcceptance(
-        draw, x, kT, sparams->probability_shortcuts);
+    const bool accept = probability.accept(draw, x);
     if (accept) {
       dn[i] = change_dir;
       changed = true;

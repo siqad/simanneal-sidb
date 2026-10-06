@@ -13,6 +13,7 @@ Set these parameters in the input XML `<sim_params>` section. SiQAD exposes the 
 | `repair` | `profile` | Override the profile with `true` or `false`. |
 | `singleton_shortcut` | `profile` | Validate the sole conservatively admissible configuration before scheduling restarts. |
 | `probability_shortcuts` | `true` | Avoid exponential evaluation when the finite random grid already determines the decision. Preserve random draws and the zero endpoint. |
+| `population_probability_cache` | `false` | For at least 64 sites, cache inverse temperature and the shortcut bound per population update. Rounding can change search paths. Preserve draws, schedules, and hopping acceptance. |
 | `transient_domain_mask` | `false` | Apply final-state charge exclusions during annealing. This changes search paths and can help or harm convergence. |
 | `refinement` | `none` | Select `k6`, `k10`, or `shared`. The latter uses fixed and shifted ten-site clusters. |
 | `refinement_candidates` | `8` | Refine at most this many distinct, lowest-energy valid candidates. |
@@ -37,6 +38,16 @@ Geometry caches belong to the solver job. The persistent cluster-cache limit is 
 One live `SimAnneal` object owns the active model. Keep that object alive while reading or exporting its results. A second live object is rejected. Independent concurrent jobs still require separate processes. Internal workers share one immutable model. The static compatibility API must not be mutated during a job.
 
 XML metadata reports the effective profile, RNG, numerical backend, executed restarts, singleton use, and repair/refinement budget status. A singleton result executes zero restarts. Ordinary restart records remain intact. A strictly better refinement result is an additional exported record. Occurrence counts count exported records, including history when enabled; they are not target-hit probabilities.
+
+Tidy export deduplicates initialized records before full validation. It retains the first record metadata and original order, then recalculates valid energies.
+Export can validate candidates in parallel when there are at least 32 unique records, 128 sites, and four million estimated pair operations.
+Workers never exceed the configured worker count or one per eight unique records, rounded up. Smaller exports remain serial.
+Keep the model and result records unchanged until export returns. Async launch failure completes the unassigned records serially.
+
+For layouts with at least 64 sites, the optional population probability cache uses multiplication by a cached reciprocal for finite positive normal temperatures.
+Smaller layouts retain the original sampler even when the option is enabled.
+Subnormal, zero, negative, or nonfinite temperatures retain division. This option changes floating-point rounding and can change trajectories in either profile.
+The default remains disabled. Python exposes the same `SimParams.population_probability_cache` field, and XML metadata reports the effective value.
 
 ## Numerical backends
 

@@ -12,6 +12,9 @@ for mode in [sa.Mode_Disabled, sa.Mode_K6, sa.Mode_K10, sa.Mode_SharedK10]:
     sp.set_v_ext([0.] * 6)
     sp.set_fixed_charges([], [], [], [])
     assert sp.search_profile == sa.SearchProfile_Optimized
+    assert sp.population_probability_cache is False
+    sp.population_probability_cache = True
+    assert sp.population_probability_cache is True
     sp.refinement_options.mode = mode
     sp.anneal_cycles = 64
     sp.num_instances = 8
@@ -19,6 +22,7 @@ for mode in [sa.Mode_Disabled, sa.Mode_K6, sa.Mode_K10, sa.Mode_SharedK10]:
     sp.deterministic_seed = True
     sp.random_seed = 731
     model = sa.SimAnneal(sp)
+    assert model.effectiveParams().population_probability_cache is True
     model.invokeSimAnneal()
     results = model.suggested_gs_results()
     assert results and all(math.isfinite(r.energy) and len(r.config)==6 for r in results)
