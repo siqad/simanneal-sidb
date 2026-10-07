@@ -1,5 +1,6 @@
 #include "tests/catch2_wrapper.hpp"
 #include "src/simanneal.h"
+#include "src/affinity_workers.h"
 
 TEST_CASE("Restart scheduling and optional history preserve seeded results") {
     phys::SimParams sp;
@@ -13,6 +14,8 @@ TEST_CASE("Restart scheduling and optional history preserve seeded results") {
         for (int workers : {1,4,12,0}) {
             sp.record_history=history; sp.num_workers=workers;
             phys::SimAnneal master(sp);
+            REQUIRE(master.effectiveParams().num_workers ==
+                simanneal_affinity::workerCount(workers, sp.num_instances));
             master.invokeSimAnneal();
             const auto &results=master.suggestedResults();
             REQUIRE(results.size()==12);

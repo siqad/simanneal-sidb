@@ -82,7 +82,7 @@ interpreter, bin_path, command
         </num_instances>
         <num_workers>
             <T>int</T><val>0</val><label>Active workers</label>
-            <tip>Concurrent workers, capped by restart count. 0 uses hardware concurrency.</tip>
+            <tip>Concurrent workers, capped by restart count. 0 uses available CPUs (Linux affinity, otherwise hardware concurrency).</tip>
         </num_workers>
         <search_profile>
             <T>string</T><val>optimized</val><label>Search profile</label>

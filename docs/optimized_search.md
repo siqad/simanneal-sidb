@@ -8,6 +8,7 @@ Set these parameters in the input XML `<sim_params>` section. SiQAD exposes the 
 
 | Parameter | Default | Effect |
 |---|---|---|
+| `num_workers` | `0` | Select available CPUs automatically, capped by the restart count. Linux uses the calling thread's CPU affinity. Other platforms, or failed affinity queries, use hardware concurrency. Explicit positive values remain capped only by restart count. |
 | `search_profile` | `optimized` | `optimized` enables PCG32 sampling, bounded repair, and the singleton shortcut. |
 | `random_backend` | `auto` | Resolve from the profile, or select `mt` or `pcg32` explicitly. |
 | `repair` | `profile` | Override the profile with `true` or `false`. |
