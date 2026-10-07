@@ -7,6 +7,7 @@
 // @desc:     Simulated annealing physics engine
 
 #include "charge_domains.h"
+#include "affinity_workers.h"
 #include "population_blas.h"
 #include "simanneal.h"
 #include <new>
@@ -728,9 +729,7 @@ void SimAnneal::initialize()
 
   if (sp.num_instances <= 0) throw std::invalid_argument("num_instances must be positive or -1");
   if (sp.num_workers < 0) throw std::invalid_argument("num_workers must be nonnegative");
-  if (sp.num_workers == 0)
-    sp.num_workers = std::max(1u, std::thread::hardware_concurrency());
-  sp.num_workers = std::min(sp.num_workers, sp.num_instances);
+  sp.num_workers = simanneal_affinity::workerCount(sp.num_workers, sp.num_instances);
   const auto &options = sp.refinement_options;
   if (options.mode != refinement::Mode::Disabled &&
       options.mode != refinement::Mode::K6 &&

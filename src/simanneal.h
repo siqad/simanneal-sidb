@@ -113,7 +113,7 @@ namespace phys {
 
     // runtime params
     int num_instances=-1;         // Independent restarts (legacy name)
-    int num_workers=0;            // Active workers; 0 selects hardware concurrency
+    int num_workers=0;            // Active workers; 0 selects affinity-aware available CPUs
     PopulationBackend population_backend=PopulationBackend::Auto; // Build-selected dense backend
     SearchProfile search_profile = SearchProfile::Optimized;
     RandomBackend random_backend = RandomBackend::Auto;
