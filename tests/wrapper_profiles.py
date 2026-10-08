@@ -41,6 +41,15 @@ for mode in [sa.Mode_Disabled, sa.Mode_K6, sa.Mode_K10, sa.Mode_SharedK10]:
         assert 'one SimAnneal model' in str(error)
     else:
         raise AssertionError('Overlapping model accepted')
+    expected = [(tuple(r.config), r.energy) for r in results]
+    del model
+    gc.collect()
+    # Python parameters remain reusable, and models own their copied storage.
+    model = sa.SimAnneal(sp)
+    del sp
+    gc.collect()
+    model.invokeSimAnneal()
+    assert [(tuple(r.config), r.energy) for r in model.suggested_gs_results()] == expected
     del model
     gc.collect()
 

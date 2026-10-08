@@ -25,6 +25,7 @@
 #include <thread>
 #include <tuple>
 #include <vector>
+#include <utility>
 
 //#include <boost/thread.hpp>
 #include <boost/random.hpp>
@@ -247,6 +248,10 @@ namespace phys {
 
     //! Constructor taking the simulation parameters.
     SimAnneal(SimParams &sparams);
+    // Explicit rvalues transfer matrix storage; lvalue callers retain their data.
+#ifndef SWIG
+    SimAnneal(SimParams &&sparams);
+#endif
     ~SimAnneal();
     SimAnneal(const SimAnneal &) = delete;
     SimAnneal &operator=(const SimAnneal &) = delete;
@@ -315,6 +320,7 @@ namespace phys {
     static FPType db_distance_scale;     //! convert db distances to m TODO make this configurable in user settings
 
   private:
+    SimAnneal(SimParams &sparams, bool consume);
 
     //! Initialize simulation (precomputation, setup common write-out variables,
     //! etc.

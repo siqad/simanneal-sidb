@@ -183,6 +183,8 @@ else()
         tests/validated_search.test.cc
         tests/result_export.test.cc
         tests/population_probability.test.cc
+        tests/parameter_storage.test.cc
+        tests/kernel_defaults.test.cc
 
         # HEADERS
         libs/catch2/catch.hpp
@@ -214,6 +216,8 @@ else()
     if (BUILD_TEST)
         add_executable(simanneal_tests tests/tests_main.cc ${SIMANNEAL_TESTS})
         target_link_libraries(simanneal_tests simanneal_lib)
+        target_compile_definitions(simanneal_tests PRIVATE
+            SIMANNEAL_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 
         add_dependencies(simanneal_tests simanneal)
 

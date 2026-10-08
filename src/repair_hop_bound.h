@@ -69,7 +69,9 @@ Move select(const Geometry &geometry, Workspace &work, const Charges &charge,
   for (auto &list : work.targets)
     list.clear();
   for (int j = 0; j < geometry.size; ++j)
-    work.targets[charge[j] + 1].push_back(j);
+    // A target must have higher charge than its donor, so -1 is never used.
+    if (charge[j] > -1)
+      work.targets[charge[j] + 1].push_back(j);
   for (auto &list : work.targets)
     std::sort(list.begin(), list.end(), [&](int a, int b) {
       return potential[a] < potential[b] ||
