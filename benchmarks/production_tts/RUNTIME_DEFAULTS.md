@@ -4,8 +4,8 @@ Four implementation changes preserve the search and become internal defaults:
 
 1. Omit negative targets in the charge-class and bounded repair selectors. Every legal target has greater charge than its donor.
 2. Transfer temporary parameter matrix storage explicitly. Boost uBLAS can copy ordinary matrix moves, so the native rvalue constructor swaps matrix storage. CLI reference forwarding avoids another matrix copy. Lvalue and Python callers retain reusable parameters.
-3. Build symmetric geometry in parallel for at least512 sites. Concurrency is at most eight, the available CPUs and resolved worker limit. Small layouts, one-worker jobs and debug logging stay serial.
-4. Schedule tidy export by actual unique-configuration matrix work. Remove the redundant32-configuration gate while retaining the existing4,000,000-work threshold, minimum128 sites, a worker cap based on groups of eight unique configurations, strict validation, order and deduplication.
+3. Build symmetric geometry in parallel for at least 512 sites. Concurrency is at most eight, the available CPUs and resolved worker limit. Small layouts, one-worker jobs and debug logging stay serial.
+4. Schedule tidy export by actual unique-configuration matrix work. Remove the redundant 32-configuration gate while retaining the existing 4,000,000-work threshold, minimum 128 sites, a worker cap based on groups of eight unique configurations, strict validation, order and deduplication.
 
 These changes do not introduce automatic exact-solver selection, transient masking, new refinement policies, different annealing budgets, or new user toggles.
 
@@ -17,7 +17,7 @@ These changes do not introduce automatic exact-solver selection, transient maski
 | Nibi research stack, largest 4 layouts, 651–1211 sites | 30.80% (27.49–33.78%) |
 | macOS production implementation, all 123 layouts | 13.23% (10.94–16.05%) |
 | macOS production implementation, largest 4 layouts | 18.42% (16.39–20.22%) |
-| macOS production implementation,119 layouts below 512 sites | 7.43% (3.60–12.59%) |
+| macOS production implementation, 119 layouts below 512 sites | 7.43% (3.60–12.59%) |
 
 Nibi used Xeon 6972P, 16 allocated CPUs, single-thread OpenBLAS, 128 cycles, 16 restarts and 16 workers. Geometry used eight workers. The research comparison used 16 fresh paired jobs per layout and unchanged targets. Exact 106 controls were approximately neutral (0.96% slower). The global geometric-mean runtime reduction was only 1.00%; large layouts dominate summed runtime savings.
 
