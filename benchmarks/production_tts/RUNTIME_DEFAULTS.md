@@ -5,7 +5,7 @@ Four implementation changes preserve the search and become internal defaults:
 1. Omit negative targets in the charge-class and bounded repair selectors. Every legal target has greater charge than its donor.
 2. Transfer temporary parameter matrix storage explicitly. Boost uBLAS can copy ordinary matrix moves, so the native rvalue constructor swaps matrix storage. CLI reference forwarding avoids another matrix copy. Lvalue and Python callers retain reusable parameters.
 3. Build symmetric geometry in parallel for at least512 sites. Concurrency is at most eight, the available CPUs and resolved worker limit. Small layouts, one-worker jobs and debug logging stay serial.
-4. Schedule tidy export by actual unique-configuration matrix work. Remove the redundant32-configuration gate while retaining the existing4,000,000-work threshold, minimum128 sites, eight configurations per worker, strict validation, order and deduplication.
+4. Schedule tidy export by actual unique-configuration matrix work. Remove the redundant32-configuration gate while retaining the existing4,000,000-work threshold, minimum128 sites, a worker cap based on groups of eight unique configurations, strict validation, order and deduplication.
 
 These changes do not introduce automatic exact-solver selection, transient masking, new refinement policies, different annealing budgets, or new user toggles.
 

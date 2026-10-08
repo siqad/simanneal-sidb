@@ -41,7 +41,7 @@ One live `SimAnneal` object owns the active model. Keep that object alive while 
 XML metadata reports the effective profile, RNG, numerical backend, executed restarts, singleton use, and repair/refinement budget status. A singleton result executes zero restarts. Ordinary restart records remain intact. A strictly better refinement result is an additional exported record. Occurrence counts count exported records, including history when enabled; they are not target-hit probabilities.
 
 Tidy export deduplicates initialized records before full validation. It retains the first record metadata and original order, then recalculates valid energies.
-Export can validate candidates in parallel when there are at least 32 unique records, 128 sites, and four million estimated pair operations.
+Export can validate candidates in parallel with at least 128 sites and four million estimated pair operations across unique records.
 Workers never exceed the configured worker count or one per eight unique records, rounded up. Smaller exports remain serial.
 Keep the model and result records unchanged until export returns. Async launch failure completes the unassigned records serially.
 
