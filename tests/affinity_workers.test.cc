@@ -65,3 +65,17 @@ TEST_CASE("Platforms without Linux affinity retain hardware-based automatic work
   REQUIRE(simanneal_affinity::workerCount(128, 32) == 32);
 }
 #endif
+
+TEST_CASE("Geometry workers honor threshold, debug logging and explicit limits") {
+#ifdef __linux__
+  scenario = Scenario::LargeMask;
+#endif
+  const unsigned available=simanneal_affinity::autoCpuCount();
+  const unsigned automatic=std::min(8u,available);
+  REQUIRE(simanneal_affinity::geometryWorkerCount(0,511,false)==1);
+  REQUIRE(simanneal_affinity::geometryWorkerCount(64,512,true)==1);
+  REQUIRE(simanneal_affinity::geometryWorkerCount(0,512,false)==automatic);
+  REQUIRE(simanneal_affinity::geometryWorkerCount(1,651,false)==1);
+  REQUIRE(simanneal_affinity::geometryWorkerCount(2,651,false)==std::min(2u,automatic));
+  REQUIRE(simanneal_affinity::geometryWorkerCount(64,651,false)==automatic);
+}

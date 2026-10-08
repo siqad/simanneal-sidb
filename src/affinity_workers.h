@@ -46,5 +46,13 @@ inline int workerCount(int requested, int restarts) {
   return static_cast<int>(std::min(autoCpuCount(), static_cast<unsigned>(restarts)));
 }
 
+// Small matrices and debug output stay serial. Preparation never exceeds the
+// caller's worker limit, the current affinity mask, or eight threads.
+inline int geometryWorkerCount(int requested, int sites, bool debug_logging) {
+  if (sites < 512 || debug_logging || requested == 1) return 1;
+  const unsigned limit = requested > 0 ? std::min(requested, 8) : 8;
+  return static_cast<int>(std::min(autoCpuCount(), limit));
+}
+
 } // namespace simanneal_affinity
 #endif

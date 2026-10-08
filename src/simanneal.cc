@@ -129,7 +129,10 @@ void SimParams::setFixedCharges(const std::vector<EuclCoord3d> &locations,
 
 // SimAnneal (master) Implementation
 
-SimAnneal::SimAnneal(SimParams &parameters) {
+SimAnneal::SimAnneal(SimParams &parameters) : SimAnneal(parameters, false) {}
+SimAnneal::SimAnneal(SimParams &&parameters) : SimAnneal(parameters, true) {}
+
+SimAnneal::SimAnneal(SimParams &parameters, bool consume) {
   {
     std::lock_guard<std::recursive_mutex> lock(active_model_mutex);
     if (model_active_)
@@ -137,7 +140,17 @@ SimAnneal::SimAnneal(SimParams &parameters) {
     model_active_ = true;
   }
   try {
-    sim_params = parameters;
+    if (consume) {
+      // uBLAS matrix move assignment can copy; swap guarantees storage transfer.
+      ublas::matrix<FPType> distances, coupling;
+      distances.swap(parameters.db_r);
+      coupling.swap(parameters.v_ij);
+      sim_params = std::move(parameters);
+      sim_params.db_r.swap(distances);
+      sim_params.v_ij.swap(coupling);
+    } else {
+      sim_params = parameters;
+    }
     initialize();
   } catch (...) {
     repair_geometry_.reset();
@@ -516,7 +529,7 @@ SuggestedResults SimAnneal::suggestedConfigResults(bool tidy)
         valid[i] = validatedEnergy(unique[i]->config, energies[i]);
     };
     const std::size_t worker_limit = std::max(1, sim_params.num_workers);
-    const std::size_t workers = unique.size() >= 32 && sim_params.n_dbs >= 128 &&
+    const std::size_t workers = sim_params.n_dbs >= 128 &&
         double(unique.size()) * sim_params.n_dbs * sim_params.n_dbs >= 4e6
         ? std::min(worker_limit, (unique.size() + 7) / 8) : 1;
     export_workers_ = workers;
@@ -684,20 +697,77 @@ void SimAnneal::initialize()
   sp.kT_min = constants::Kb * sp.T_min;
   sp.Kc = 1/(4 * constants::PI * sp.eps_r * constants::EPS0);
 
+  // determine number of threads to run
+  if (sp.num_instances == -1) {
+    if (sp.n_dbs <= 9) {
+      sp.num_instances = 16;
+    } else if (sp.n_dbs <= 25) {
+      sp.num_instances = 32;
+    } else {
+      sp.num_instances = 128;
+    }
+  }
+
+  if (sp.num_instances <= 0) throw std::invalid_argument("num_instances must be positive or -1");
+  if (sp.num_workers < 0) throw std::invalid_argument("num_workers must be nonnegative");
+  sp.num_workers = simanneal_affinity::workerCount(sp.num_workers, sp.num_instances);
   // inter-db distances and voltages
   sp.population_finite_matrix = true;
-  for (int i=0; i<sp.n_dbs; i++) {
-    sp.db_r(i,i) = 0.;
-    sp.v_ij(i,i) = 0.;
-    for (int j=i+1; j<sp.n_dbs; j++) {
-      sp.db_r(i,j) = db_distance_scale * distance(i,j);
-      sp.v_ij(i,j) = interElecPotential(sp.db_r(i,j));
-      if (!std::isfinite(sp.v_ij(i,j))) sp.population_finite_matrix = false;
-      sp.db_r(j,i) = sp.db_r(i,j);
-      sp.v_ij(j,i) = sp.v_ij(i,j);
+  const int geometry_workers = simanneal_affinity::geometryWorkerCount(
+      sp.num_workers, sp.n_dbs, saglobal::log_level >= Logger::DBG);
+  if (geometry_workers > 1) {
+    // Each unordered pair has one writer and retains the serial arithmetic.
+    std::vector<unsigned char> finite(sp.n_dbs, 1);
+    std::atomic<int> next_row(0);
+    std::exception_ptr failure;
+    std::mutex failure_mutex;
+    const auto work = [&] {
+      try {
+        for (;;) {
+          const int first = next_row.fetch_add(8);
+          if (first >= sp.n_dbs) break;
+          for (int i = first; i < std::min(first + 8, sp.n_dbs); ++i) {
+            sp.db_r(i,i) = 0.;
+            sp.v_ij(i,i) = 0.;
+            for (int j = i + 1; j < sp.n_dbs; ++j) {
+              sp.db_r(i,j) = db_distance_scale * distance(i,j);
+              sp.v_ij(i,j) = interElecPotential(sp.db_r(i,j));
+              if (!std::isfinite(sp.v_ij(i,j))) finite[i] = 0;
+              sp.db_r(j,i) = sp.db_r(i,j);
+              sp.v_ij(j,i) = sp.v_ij(i,j);
+            }
+          }
+        }
+      } catch (...) {
+        std::lock_guard<std::mutex> lock(failure_mutex);
+        if (!failure) failure = std::current_exception();
+      }
+    };
+    std::vector<std::thread> threads;
+    try {
+      for (int i = 1; i < geometry_workers; ++i) threads.emplace_back(work);
+    } catch (...) {
+      for (auto &thread : threads) thread.join();
+      throw;
+    }
+    work();
+    for (auto &thread : threads) thread.join();
+    if (failure) std::rethrow_exception(failure);
+    for (const auto value : finite) sp.population_finite_matrix &= value != 0;
+  } else {
+    for (int i=0; i<sp.n_dbs; i++) {
+      sp.db_r(i,i) = 0.;
+      sp.v_ij(i,i) = 0.;
+      for (int j=i+1; j<sp.n_dbs; j++) {
+        sp.db_r(i,j) = db_distance_scale * distance(i,j);
+        sp.v_ij(i,j) = interElecPotential(sp.db_r(i,j));
+        if (!std::isfinite(sp.v_ij(i,j))) sp.population_finite_matrix = false;
+        sp.db_r(j,i) = sp.db_r(i,j);
+        sp.v_ij(j,i) = sp.v_ij(i,j);
 
-      if (saglobal::log_level >= Logger::DBG) log.debug() << "db_r[" << i << "][" << j << "]=" << sp.db_r(i,j)
-        << ", v_ij[" << i << "][" << j << "]=" << sp.v_ij(i,j) << std::endl;
+        if (saglobal::log_level >= Logger::DBG) log.debug() << "db_r[" << i << "][" << j << "]=" << sp.db_r(i,j)
+          << ", v_ij[" << i << "][" << j << "]=" << sp.v_ij(i,j) << std::endl;
+      }
     }
   }
 
@@ -716,20 +786,6 @@ void SimAnneal::initialize()
     sp.hop_neighborhood = HopNeighborhood();
   }
 
-  // determine number of threads to run
-  if (sp.num_instances == -1) {
-    if (sp.n_dbs <= 9) {
-      sp.num_instances = 16;
-    } else if (sp.n_dbs <= 25) {
-      sp.num_instances = 32;
-    } else {
-      sp.num_instances = 128;
-    }
-  }
-
-  if (sp.num_instances <= 0) throw std::invalid_argument("num_instances must be positive or -1");
-  if (sp.num_workers < 0) throw std::invalid_argument("num_workers must be nonnegative");
-  sp.num_workers = simanneal_affinity::workerCount(sp.num_workers, sp.num_instances);
   const auto &options = sp.refinement_options;
   if (options.mode != refinement::Mode::Disabled &&
       options.mode != refinement::Mode::K6 &&

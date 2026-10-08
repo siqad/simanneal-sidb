@@ -135,7 +135,7 @@ Observation execute(const Tree &request) {
     options.rounds = request.get<int>("refinement_rounds");
     options.trials = 1;
 
-    phys::SimAnneal solver(params);
+    phys::SimAnneal solver(std::move(params));
     const auto &effective = solver.effectiveParams();
     observation.restarts = effective.num_instances;
     observation.workers = effective.num_workers;

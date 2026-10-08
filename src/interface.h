@@ -40,7 +40,8 @@ namespace phys {
 
 
     //! Run the simulation, returns 0 if simulation was successful.
-    int runSimulation(SimParams sparams);
+    int runSimulation(const SimParams &sparams);
+    int runSimulation(SimParams &&sparams);
 
   private:
 

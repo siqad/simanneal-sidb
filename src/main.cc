@@ -93,7 +93,7 @@ static int run(int argc, char *argv[])
 
   log.echo() << "\n*** Invoke simulation ***" << std::endl;
   sw_simulation->start();
-  interface.runSimulation(sparams);
+  interface.runSimulation(std::move(sparams));
   sw_simulation->end();
 
   log.echo() << "\n*** Write simulation results ***" << std::endl;

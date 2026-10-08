@@ -41,7 +41,7 @@ One live `SimAnneal` object owns the active model. Keep that object alive while 
 XML metadata reports the effective profile, RNG, numerical backend, executed restarts, singleton use, and repair/refinement budget status. A singleton result executes zero restarts. Ordinary restart records remain intact. A strictly better refinement result is an additional exported record. Occurrence counts count exported records, including history when enabled; they are not target-hit probabilities.
 
 Tidy export deduplicates initialized records before full validation. It retains the first record metadata and original order, then recalculates valid energies.
-Export can validate candidates in parallel when there are at least 32 unique records, 128 sites, and four million estimated pair operations.
+Export can validate candidates in parallel with at least 128 sites and four million estimated pair operations across unique records.
 Workers never exceed the configured worker count or one per eight unique records, rounded up. Smaller exports remain serial.
 Keep the model and result records unchanged until export returns. Async launch failure completes the unassigned records serially.
 
@@ -79,6 +79,19 @@ Fast-math is disabled. `SIMANNEAL_NATIVE_ARCH=ON` enables host-specific instruct
 Optional link-time optimization (LTO) lets the compiler optimize across source files. It is disabled by default because support depends on the toolchain.
 Enable it with `-DSIMANNEAL_ENABLE_LTO=ON`. CMake rejects unsupported requests. GNU builds require CMake 3.13 or later and bound LTO parallelism to four partitions.
 LTO retains strict floating-point flags. It does not enable host-specific instructions.
+
+## Automatic implementation optimizations
+
+These optimizations apply without new settings, including with the legacy profile:
+
+- Repair skips the negative target class. A hopping target must have a higher charge than its donor. Negative sites remain donors.
+- Geometry preparation uses parallel symmetric matrix construction for at least 512 sites. It caps concurrency at eight, the available CPUs, and the resolved `num_workers` limit. Debug logging and smaller layouts remain serial.
+- Tidy result export selects parallel validation from the number of unique configurations and matrix work. It retains full validation, result order, deduplication, and the worker limit.
+- The CLI consumes temporary parameter matrices. Native C++ callers can use `SimAnneal(std::move(params))` to transfer matrix storage. The ordinary lvalue constructor and Python constructor preserve reusable parameters. After explicit consumption, reinitialize parameters before reuse.
+
+Geometry scheduling does not select an exact solver or change annealing settings. Charge-domain classification does not automatically enable transient masking or refinement.
+
+See [runtime qualification](../benchmarks/production_tts/RUNTIME_DEFAULTS.md) for measurements and their limits.
 
 ## Measurement and credit
 

@@ -423,10 +423,15 @@ void SimAnnealInterface::writeSimResults(bool only_suggested_gs, bool qubo_energ
   sqconn->writeResultsXml();
 }
 
-int SimAnnealInterface::runSimulation(SimParams sparams)
+int SimAnnealInterface::runSimulation(const SimParams &sparams)
+{
+  return runSimulation(SimParams(sparams));
+}
+
+int SimAnnealInterface::runSimulation(SimParams &&sparams)
 {
   master_annealer.reset();
-  master_annealer.reset(new SimAnneal(sparams));
+  master_annealer.reset(new SimAnneal(std::move(sparams)));
   master_annealer->invokeSimAnneal();
   return 0;
 }

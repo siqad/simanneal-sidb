@@ -18,7 +18,9 @@ Move select(Workspace &work, const Charges &charge, const Potentials &potential,
   for (auto &list : work.targets)
     list.clear();
   for (int j = 0; j < static_cast<int>(charge.size()); ++j)
-    work.targets[charge[j] + 1].push_back(j);
+    // A target must have higher charge than its donor, so -1 is never used.
+    if (charge[j] > -1)
+      work.targets[charge[j] + 1].push_back(j);
   for (int i = 0; i < static_cast<int>(charge.size()); ++i)
     for (int cls = charge[i] + 2; cls < 3; ++cls)
       for (const int j : work.targets[cls]) {

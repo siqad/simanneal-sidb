@@ -145,9 +145,11 @@ TEST_CASE("Parallel tidy export validates the current model and preserves order"
 
 TEST_CASE("Tidy export bounds worker count and uses all parallel thresholds", "[export]") {
   struct Case { int sites, unique, configured, workers; };
-  for (const auto &test : {Case{512,31,8,1}, Case{512,32,8,4},
+  for (const auto &test : {Case{512,31,8,4}, Case{512,32,8,4},
                           Case{127,256,4,1}, Case{128,244,4,1},
-                          Case{128,245,4,4}, Case{512,32,2,2}}) {
+                          Case{128,245,4,4}, Case{512,32,2,2}, Case{651,16,8,2},
+                          Case{651,9,8,1}, Case{651,10,8,2},
+                          Case{651,16,1,1}}) {
     CAPTURE(test.sites, test.unique, test.configured);
     phys::SimParams params;
     std::vector<phys::EuclCoord> points;
