@@ -98,10 +98,11 @@ def main():
                 if isinstance(job, dict):
                     identity = job.get("id", identity)
                 result = dict(id=identity, ok=True, **simulate(job))
+                encoded = json.dumps(result, allow_nan=False)
             except Exception as error:
                 failures = True
-                result = {"id": identity, "ok": False, "error": str(error)}
-            print(json.dumps(result, allow_nan=False), flush=True)
+                encoded = json.dumps({"id": identity, "ok": False, "error": str(error)}, allow_nan=False)
+            print(encoded, flush=True)
     return int(failures)
 
 
