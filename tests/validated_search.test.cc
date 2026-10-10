@@ -386,3 +386,88 @@ TEST_CASE("Production search exports actual shared cache fallback metadata") {
   REQUIRE(solver.searchStats().refinement.geometry_count == 1);
   REQUIRE(solver.searchStats().refinement.shared_single_cache_fallback);
 }
+
+TEST_CASE("Optimized search retains a strict valid cycle while repairing the "
+          "original loose population incumbent") {
+  auto sp = search_fixture();
+  sp.setDBLocs(std::vector<phys::EuclCoord>{{0, 0}, {10, 0}, {5, 7}});
+  sp.v_ext.clear();
+  sp.v_fc.clear();
+  sp.mu = -.25;
+  sp.anneal_cycles = 128;
+  sp.num_instances = 1;
+  sp.hop_attempt_factor = 1;
+  sp.random_seed = 2;
+  sp.random_backend = phys::RandomBackend::PCG32;
+  sp.singleton_shortcut = phys::FeatureSetting::Disabled;
+  sp.record_history = true;
+  sp.result_queue_factor = 1;
+  phys::ThreadChargeResults expected_history;
+  for (int arm = 0; arm < 3; ++arm) {
+    sp.search_profile = arm == 2 ? phys::SearchProfile::Legacy
+                                : phys::SearchProfile::Optimized;
+    sp.repair = arm == 1 ? phys::FeatureSetting::Disabled
+                        : phys::FeatureSetting::Enabled;
+    phys::SimAnneal model(sp);
+    auto &physical = phys::SimAnneal::sim_params;
+    // One neutral site lies inside the loose 1e-3 population tolerance only.
+    physical.v_ij(0, 1) = physical.v_ij(1, 0) = .2495;
+    physical.v_ij(0, 2) = physical.v_ij(2, 0) = .3;
+    physical.v_ij(1, 2) = physical.v_ij(2, 1) = .3;
+    model.invokeSimAnneal();
+    const auto &history = model.chargeResults()[0];
+    if (expected_history.empty())
+      expected_history = history;
+    REQUIRE(history.size() == expected_history.size());
+    phys::ChargeConfigResult tentative, valid;
+    unsigned changed = 0, unchanged = 0;
+    for (unsigned i = 0; i < history.size(); ++i) {
+      const auto &cycle = history[i];
+      const auto config = phys::SimAnneal::configToStr(cycle.config);
+      REQUIRE(config ==
+              phys::SimAnneal::configToStr(expected_history[i].config));
+      REQUIRE(cycle.system_energy == expected_history[i].system_energy);
+      REQUIRE(cycle.pop_likely_stable == expected_history[i].pop_likely_stable);
+      if (i) {
+        if (config == phys::SimAnneal::configToStr(history[i - 1].config))
+          ++unchanged;
+        else
+          ++changed;
+      }
+      if (cycle.pop_likely_stable &&
+          (!tentative.initialized || cycle.system_energy < tentative.system_energy))
+        tentative = cycle;
+      if (independent_valid(physical, cycle.config)) {
+        const double energy = phys::SimAnneal::systemEnergy(cycle.config);
+        if (!valid.initialized || energy < valid.system_energy)
+          valid = phys::ChargeConfigResult(cycle.config, true, energy);
+      }
+    }
+    REQUIRE(changed > 0);
+    REQUIRE(unchanged > 0);
+    REQUIRE(tentative.initialized);
+    REQUIRE(tentative.pop_likely_stable);
+    REQUIRE_FALSE(independent_valid(physical, tentative.config));
+    REQUIRE(valid.initialized);
+    const auto repaired = phys::SimAnneal::repairConfiguration(tentative.config);
+    REQUIRE(repaired.valid);
+    REQUIRE(independent_valid(physical, repaired.config));
+    REQUIRE(repaired.energy > valid.system_energy);
+    const auto &result = model.suggestedResults()[0];
+    if (arm == 0) {
+      REQUIRE(independent_valid(physical, result.config));
+      REQUIRE(result.system_energy == valid.system_energy);
+    } else if (arm == 1) {
+      REQUIRE(phys::SimAnneal::configToStr(result.config) ==
+              phys::SimAnneal::configToStr(tentative.config));
+    } else {
+      REQUIRE(result.system_energy == repaired.energy);
+    }
+    REQUIRE(result.repair_attempted == (arm != 1));
+    REQUIRE(result.repair_budget_exhausted ==
+            (arm != 1 && repaired.budget_exhausted));
+    REQUIRE(model.searchStats().repair_attempts == (arm != 1 ? 1 : 0));
+    REQUIRE(model.searchStats().repair_budget_exhaustions ==
+            (arm != 1 && repaired.budget_exhausted ? 1 : 0));
+  }
+}

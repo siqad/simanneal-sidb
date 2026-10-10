@@ -8,6 +8,7 @@ TEST_CASE("Restart scheduling and optional history preserve seeded results") {
         {0,7.68},{3.84,7.68},{7.68,7.68}});
     sp.v_ext.clear(); sp.v_fc.clear();
     sp.num_instances=12; sp.anneal_cycles=64; sp.result_queue_factor=.5;
+    sp.hop_attempt_factor=5; // Hold the search budget fixed across history modes.
     sp.deterministic_seed=true; sp.random_seed=731;
     phys::SuggestedResults expected;
     for (bool history : {false,true}) {

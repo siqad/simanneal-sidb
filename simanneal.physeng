@@ -72,7 +72,7 @@ interpreter, bin_path, command
             <T>int</T>
             <val>-1</val>
             <label>Anneal cycles</label>
-            <tip>-1 selects Auto: 256 in the qualified scope, otherwise 10000. Positive values are explicit cycle counts.</tip>
+            <tip>-1 selects Auto: 256 through 35 sites or 512 at 36-62 sites in the qualified scope, otherwise 10000. Positive values are explicit cycle counts.</tip>
         </anneal_cycles>
         <num_instances>
             <T>int</T>

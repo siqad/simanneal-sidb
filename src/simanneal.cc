@@ -639,14 +639,15 @@ void SimAnneal::initialize()
   sp.requested_anneal_cycles = sp.anneal_cycles;
   sp.requested_instances = sp.num_instances;
   sp.requested_hop_attempt_factor = sp.hop_attempt_factor;
-  bool portable = sp.population_backend == PopulationBackend::Portable;
-#ifndef SIMANNEAL_HAVE_ACCELERATE
-  portable |= sp.population_backend == PopulationBackend::Auto;
+  bool qualified_backend = sp.population_backend == PopulationBackend::Portable ||
+                           sp.population_backend == PopulationBackend::Auto;
+#ifdef SIMANNEAL_HAVE_ACCELERATE
+  qualified_backend |= sp.population_backend == PopulationBackend::Accelerate;
 #endif
   // The short budget was qualified only for this physics and search configuration.
-  const bool qualified = sp.n_dbs >= 2 && sp.n_dbs <= 35 &&
-      sp.mu == -.32 && sp.eps_r == 5.6 && sp.debye_length == 5 &&
-      constants::eta == .59 && zero_fields && portable &&
+  const bool qualified_configuration = sp.n_dbs >= 2 && sp.n_dbs <= 62 &&
+      sp.mu >= -.32 && sp.mu <= -.20 &&
+      constants::eta == .59 && zero_fields && qualified_backend &&
       sp.search_profile == SearchProfile::Optimized &&
       sp.random_backend == RandomBackend::PCG32 && sp.repair_enabled &&
       sp.singleton_enabled && sp.probability_shortcuts &&
@@ -658,19 +659,16 @@ void SimAnneal::initialize()
       sp.v_freeze_init == -1 && sp.v_freeze_reset == -1 &&
       sp.v_freeze_threshold == 4 && sp.phys_validity_check_cycles == 10 &&
       !sp.strategic_v_freeze_reset && !sp.reset_T_during_v_freeze_reset;
-  sp.budget_auto_selected = qualified &&
-      (sp.anneal_cycles == AutoAnnealCycles || sp.num_instances == AutoInstances ||
-       sp.hop_attempt_factor == AutoHopAttempts);
   const int stock_instances = sp.n_dbs <= 9 ? 16 : sp.n_dbs <= 25 ? 32 : 128;
-  if (sp.anneal_cycles == AutoAnnealCycles) sp.anneal_cycles = qualified ? 256 : 10000;
-  if (sp.hop_attempt_factor == AutoHopAttempts) sp.hop_attempt_factor = qualified ? 2 : 5;
-  if (sp.num_instances == AutoInstances)
-    sp.num_instances = qualified ? stock_instances / 2 : stock_instances;
+  if ((sp.anneal_cycles <= 0 && sp.anneal_cycles != AutoAnnealCycles) ||
+      (sp.num_instances <= 0 && sp.num_instances != -1 && sp.num_instances != AutoInstances) ||
+      (sp.hop_attempt_factor < 0 && sp.hop_attempt_factor != AutoHopAttempts))
+    throw std::invalid_argument("Invalid Auto budget sentinel");
   if (!std::isfinite(sp.result_queue_factor) || sp.result_queue_factor < 0 ||
       sp.result_queue_factor > 1)
     throw std::invalid_argument("result_queue_factor must be in [0,1]");
-  if (sp.anneal_cycles <= 0 || sp.preanneal_cycles < 0 ||
-      sp.preanneal_cycles > sp.anneal_cycles || sp.hop_attempt_factor < 0 ||
+  if (sp.preanneal_cycles < 0 ||
+      (sp.anneal_cycles > 0 && sp.preanneal_cycles > sp.anneal_cycles) ||
       !std::isfinite(sp.T_init) || sp.T_init <= 0 || !std::isfinite(sp.T_min) ||
       sp.T_min <= 0 || !std::isfinite(sp.T_e_inv_point) ||
       sp.T_e_inv_point <= 0 || !std::isfinite(sp.v_freeze_end_point) ||
@@ -693,57 +691,14 @@ void SimAnneal::initialize()
   if (sp.hop_attempt_factor > std::numeric_limits<int>::max() / sp.n_dbs)
     throw std::invalid_argument("Hop attempt budget exceeds supported range");
 
-  // set default values
-  if (sp.v_freeze_init < 0)
-    sp.v_freeze_init = fabs(sp.mu) / 2;
-  if (sp.v_freeze_reset < 0)
-    sp.v_freeze_reset = fabs(sp.mu);
-
-  // apply schedule scaling
-  sp.alpha = std::pow(std::exp(-1.), 1./(sp.T_e_inv_point * sp.anneal_cycles));
-  const double freeze_cycles = sp.v_freeze_end_point * sp.anneal_cycles;
-  if (!std::isfinite(freeze_cycles) ||
-      freeze_cycles >
-          std::numeric_limits<int>::max() - sp.phys_validity_check_cycles)
-    throw std::invalid_argument(
-        "Freeze schedule exceeds supported cycle range");
-  sp.v_freeze_cycles = freeze_cycles < 1 ? 1 : static_cast<int>(freeze_cycles);
-  sp.v_freeze_step = sp.v_freeze_threshold / sp.v_freeze_cycles;
-
-  if (saglobal::log_level >= Logger::DBG) log.debug() << "Anneal cycles: " << sp.anneal_cycles << ", alpha: "
-    << sp.alpha << ", v_freeze_cycles: " << sp.v_freeze_cycles << std::endl;
-
-  sp.result_queue_size = static_cast<int>(
-      static_cast<double>(sp.anneal_cycles) * sp.result_queue_factor);
-  sp.result_queue_size = std::min(sp.result_queue_size, sp.anneal_cycles);
-  sp.result_queue_size = std::max(sp.result_queue_size, 1);
-  if (saglobal::log_level >= Logger::DBG) log.debug() << "Result queue size: " << sp.result_queue_size << std::endl;
-
-
-  if (sp.preanneal_cycles > sp.anneal_cycles) {
-    std::cerr << "Preanneal cycles > Anneal cycles";
-    throw;
-  }
-
-
   // phys
   sp.kT_min = constants::Kb * sp.T_min;
   sp.Kc = 1/(4 * constants::PI * sp.eps_r * constants::EPS0);
 
-  // determine number of threads to run
-  if (sp.num_instances == -1) {
-    if (sp.n_dbs <= 9) {
-      sp.num_instances = 16;
-    } else if (sp.n_dbs <= 25) {
-      sp.num_instances = 32;
-    } else {
-      sp.num_instances = 128;
-    }
-  }
-
-  if (sp.num_instances <= 0) throw std::invalid_argument("num_instances must be positive, -1, or AutoInstances (-2)");
   if (sp.num_workers < 0) throw std::invalid_argument("num_workers must be nonnegative");
-  sp.num_workers = simanneal_affinity::workerCount(sp.num_workers, sp.num_instances);
+  const int requested_workers = sp.num_workers;
+  sp.num_workers = simanneal_affinity::workerCount(
+      requested_workers, sp.num_instances > 0 ? sp.num_instances : stock_instances);
   // inter-db distances and voltages
   sp.population_finite_matrix = true;
   const int geometry_workers = simanneal_affinity::geometryWorkerCount(
@@ -834,6 +789,64 @@ void SimAnneal::initialize()
   sp.final_domains = simanneal_domains::finalCharges(
       sp.v_ij, sp.v_ext, sp.v_fc, sp.n_dbs, sp.mu, constants::eta,
       std::max(constants::POP_STABILITY_ERR, constants::RECALC_STABILITY_ERR));
+  const bool excludes_positive = std::all_of(
+      sp.final_domains.begin(), sp.final_domains.end(),
+      [](unsigned char domain) { return !(domain & 4); });
+  const bool qualified_physics = (sp.eps_r == 5.6 && sp.debye_length == 5) ||
+      (sp.eps_r >= 1 && sp.eps_r <= 10 && sp.debye_length >= 1 &&
+       sp.debye_length <= 10 && excludes_positive);
+  const bool qualified = qualified_configuration && qualified_physics;
+  sp.budget_auto_selected = qualified &&
+      (sp.anneal_cycles == AutoAnnealCycles || sp.num_instances == AutoInstances ||
+       sp.hop_attempt_factor == AutoHopAttempts);
+  if (sp.anneal_cycles == AutoAnnealCycles) sp.anneal_cycles = qualified ? (sp.n_dbs <= 35 ? 256 : 512) : 10000;
+  if (sp.hop_attempt_factor == AutoHopAttempts) sp.hop_attempt_factor = qualified ? 2 : 5;
+  if (sp.num_instances == AutoInstances)
+    sp.num_instances = qualified && sp.n_dbs <= 35 ? stock_instances / 2 : stock_instances;
+  // determine number of threads to run
+  if (sp.num_instances == -1) {
+    if (sp.n_dbs <= 9) {
+      sp.num_instances = 16;
+    } else if (sp.n_dbs <= 25) {
+      sp.num_instances = 32;
+    } else {
+      sp.num_instances = 128;
+    }
+  }
+
+  if (sp.num_instances <= 0) throw std::invalid_argument("num_instances must be positive, -1, or AutoInstances (-2)");
+  sp.num_workers = simanneal_affinity::workerCount(requested_workers, sp.num_instances);
+  // set default values
+  if (sp.v_freeze_init < 0)
+    sp.v_freeze_init = fabs(sp.mu) / 2;
+  if (sp.v_freeze_reset < 0)
+    sp.v_freeze_reset = fabs(sp.mu);
+
+  // apply schedule scaling
+  sp.alpha = std::pow(std::exp(-1.), 1./(sp.T_e_inv_point * sp.anneal_cycles));
+  const double freeze_cycles = sp.v_freeze_end_point * sp.anneal_cycles;
+  if (!std::isfinite(freeze_cycles) ||
+      freeze_cycles >
+          std::numeric_limits<int>::max() - sp.phys_validity_check_cycles)
+    throw std::invalid_argument(
+        "Freeze schedule exceeds supported cycle range");
+  sp.v_freeze_cycles = freeze_cycles < 1 ? 1 : static_cast<int>(freeze_cycles);
+  sp.v_freeze_step = sp.v_freeze_threshold / sp.v_freeze_cycles;
+
+  if (saglobal::log_level >= Logger::DBG) log.debug() << "Anneal cycles: " << sp.anneal_cycles << ", alpha: "
+    << sp.alpha << ", v_freeze_cycles: " << sp.v_freeze_cycles << std::endl;
+
+  sp.result_queue_size = static_cast<int>(
+      static_cast<double>(sp.anneal_cycles) * sp.result_queue_factor);
+  sp.result_queue_size = std::min(sp.result_queue_size, sp.anneal_cycles);
+  sp.result_queue_size = std::max(sp.result_queue_size, 1);
+  if (saglobal::log_level >= Logger::DBG) log.debug() << "Result queue size: " << sp.result_queue_size << std::endl;
+
+
+  if (sp.preanneal_cycles > sp.anneal_cycles)
+    throw std::invalid_argument("Invalid annealing schedule");
+
+
   if (sp.population_finite_matrix && sp.n_dbs >= 256 &&
       (sp.repair_enabled ||
        sp.refinement_options.mode != refinement::Mode::Disabled))
@@ -1016,6 +1029,11 @@ void SimAnnealThread::anneal()
   Logger log(saglobal::log_level);
 
   bool validity_cached = false, cached_validity = false;
+  const bool retain_valid = sparams->search_profile == SearchProfile::Optimized &&
+                            sparams->repair_enabled;
+  ChargeConfigResult valid_incumbent;
+  bool incumbent_checked = false, incumbent_valid = false;
+  FPType incumbent_energy = 0;
   // Run simulated annealing for predetermined time steps
   while(t < sparams->anneal_cycles) {
     //log.debug() << "Cycle " << t << ", kT=" << kT << ", v_freeze=" << v_freeze << std::endl;
@@ -1025,6 +1043,7 @@ void SimAnnealThread::anneal()
     genPopDelta(dn, pop_changed);
     if (pop_changed) {
       validity_cached = false;
+      incumbent_checked = false;
       n += dn;
       if (radius_hops) population_changed.clear();
       bool dense_updated = false;
@@ -1160,6 +1179,7 @@ void SimAnnealThread::anneal()
       }
       if (acceptHop(hop_E_del)) {
         validity_cached = false;
+        incumbent_checked = false;
         performHop(from_ind, to_ind, E_sys, hop_E_del);
         if (radius_hops && radius_cache.initialized) {
           sparams->hop_neighborhood.setNeutral(from_ind, n[from_ind] == 0, radius_cache);
@@ -1198,6 +1218,19 @@ void SimAnnealThread::anneal()
       }
     }
 
+    // Keep a fully valid incumbent without changing the tentative repair seed.
+    if (retain_valid && pop_valid &&
+        (!valid_incumbent.initialized || E_sys < valid_incumbent.system_energy)) {
+      if (!incumbent_checked) {
+        incumbent_valid = SimAnneal::validatedSearchEnergy(
+            n, incumbent_energy, search_finite_model_);
+        incumbent_checked = true;
+      }
+      if (incumbent_valid && (!valid_incumbent.initialized ||
+                             incumbent_energy < valid_incumbent.system_energy))
+        valid_incumbent = ChargeConfigResult(n, true, incumbent_energy);
+    }
+
     //log.debug() << "db_charges = " << n << std::endl;
 
     // perform time-step if not pre-annealing
@@ -1211,19 +1244,29 @@ void SimAnnealThread::anneal()
   // Preserve an exportable final state even if no likely valid state was found.
   if (!suggested_gs.initialized)
     suggested_gs = ChargeConfigResult(n, populationValid(), E_sys);
+  bool final_valid = false;
   if (sparams->repair_enabled) {
     FPType energy;
-    if (SimAnneal::validatedSearchEnergy(suggested_gs.config, energy, search_finite_model_))
+    final_valid = SimAnneal::validatedSearchEnergy(
+        suggested_gs.config, energy, search_finite_model_);
+    if (final_valid)
       suggested_gs.system_energy = energy;
     else {
       const auto repaired =
           SimAnneal::repairConfiguration(suggested_gs.config, true);
+      final_valid = repaired.valid;
       if (repaired.valid)
         suggested_gs =
             ChargeConfigResult(repaired.config, true, repaired.energy);
       suggested_gs.repair_attempted = true;
       suggested_gs.repair_budget_exhausted = repaired.budget_exhausted;
     }
+  }
+  if (retain_valid && valid_incumbent.initialized &&
+      (!final_valid || valid_incumbent.system_energy < suggested_gs.system_energy)) {
+    valid_incumbent.repair_attempted = suggested_gs.repair_attempted;
+    valid_incumbent.repair_budget_exhausted = suggested_gs.repair_budget_exhausted;
+    suggested_gs = std::move(valid_incumbent);
   }
   SimAnneal::storeResults(this, thread_id);
 }

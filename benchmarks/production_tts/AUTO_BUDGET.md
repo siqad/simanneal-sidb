@@ -1,4 +1,6 @@
-# Scoped Auto search budget
+# Initial scoped Auto qualification
+
+This report records the initial mu=-0.32 eV qualification. The [mu-range extension](MU_RANGE_AUTO.md) describes the subsequent interval and backend qualification. The [larger and wider-physics extension](WIDE_AUTO.md) records the current Auto proposal. The measurements below retain their original scope.
 
 The coupled short budget uses 256 cycles, 8/16/64 independent restarts, and hop factor 2. It retains uniform hopping and the existing optimized search. It does not select an exact solver.
 
