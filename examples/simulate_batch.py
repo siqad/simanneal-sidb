@@ -33,6 +33,18 @@ def finite_float(value):
     return result
 
 
+def physical_float(value, name):
+    if type(value) not in (int, float):
+        raise ValueError(name + " must be a finite number")
+    try:
+        result = float(value)
+    except OverflowError:
+        raise ValueError(name + " must be a finite number") from None
+    if not math.isfinite(result):
+        raise ValueError(name + " must be a finite number")
+    return result
+
+
 def simulate(job):
     allowed = {"id", "points", "mu", "epsilon_r", "lambda_tf", "external_potential",
                "seed", "anneal_cycles", "num_instances", "hop_attempt_factor",
@@ -43,11 +55,14 @@ def simulate(job):
     if not isinstance(points, list) or not points or any(not isinstance(p, list) or len(p) != 2 for p in points):
         raise ValueError("points must contain nonempty [x, y] pairs in angstroms")
     params = sa.SimParams()
-    params.set_db_locs(points)
-    params.mu = job.get("mu", params.mu)
-    params.eps_r = job.get("epsilon_r", params.eps_r)
-    params.debye_length = job.get("lambda_tf", params.debye_length)
-    params.set_v_ext(job.get("external_potential", [0.0] * len(points)))
+    params.set_db_locs([[physical_float(value, "points") for value in point] for point in points])
+    params.mu = physical_float(job.get("mu", params.mu), "mu")
+    params.eps_r = physical_float(job.get("epsilon_r", params.eps_r), "epsilon_r")
+    params.debye_length = physical_float(job.get("lambda_tf", params.debye_length), "lambda_tf")
+    potential = job.get("external_potential", [0.0] * len(points))
+    if not isinstance(potential, list) or len(potential) != len(points):
+        raise ValueError("external_potential must have one value per point")
+    params.set_v_ext([physical_float(value, "external_potential") for value in potential])
     params.set_fixed_charges([], [], [], [])
     for key, automatic in [("anneal_cycles", sa.AutoAnnealCycles),
                            ("num_instances", sa.AutoInstances),
@@ -62,7 +77,10 @@ def simulate(job):
     backends = {"auto": sa.PopulationBackend_Auto, "portable": sa.PopulationBackend_Portable,
                 "accelerate": sa.PopulationBackend_Accelerate, "openblas": sa.PopulationBackend_OpenBLAS,
                 "openblas_symmetric": sa.PopulationBackend_OpenBLASSymmetric}
-    params.population_backend = backends[job.get("population_backend", "auto")]
+    backend = job.get("population_backend", "auto")
+    if not isinstance(backend, str) or backend not in backends:
+        raise ValueError("population_backend must be one of: " + ", ".join(backends))
+    params.population_backend = backends[backend]
     if "seed" in job:
         if type(job["seed"]) is not int or not 0 <= job["seed"] <= 4294967295:
             raise ValueError("seed must be an integer in [0,4294967295]")

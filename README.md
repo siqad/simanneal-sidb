@@ -74,6 +74,8 @@ For example, `requests.jsonl` can contain:
 
 Coordinates use angstroms. Optional physical fields are `mu` in eV, `epsilon_r`, `lambda_tf` in nm, and `external_potential` in eV per site. The example accepts `anneal_cycles`, `num_instances`, `hop_attempt_factor`, and `num_workers` as integers or `"auto"`. Omitted fields retain native defaults. See [Auto budget qualification](benchmarks/production_tts/AUTO_BUDGET.md) for its activation conditions.
 
+Coordinates and physical values must be finite JSON numbers, not booleans or numeric strings. `external_potential` must contain one value per site.
+
 `population_backend` accepts `auto`, `portable`, `accelerate`, `openblas`, or `openblas_symmetric`. The corresponding backend must be available in the build. Optional `seed` is an unsigned 32-bit integer. Results include charge configurations, energies, effective budgets, and search counters.
 
 This example supports free sites and external potentials. Use the full Python interface for fixed charges or other settings. Failed requests produce an error record, subsequent requests continue, and the final exit code is nonzero. SimAnneal results remain heuristic, without ground-state certification. The speed benefit applies to repeated calls. A single invocation still pays process startup costs.
