@@ -107,3 +107,41 @@ assert model.searchStats().executed_restarts == 8
 del model
 gc.collect()
 print('SWIG Auto assignment, request metadata, lifetime, and seeded equivalence passed')
+
+for mu in [-.32, -.25, -.20]:
+    sp = sa.SimParams()
+    sp.set_db_locs([[0., 0.], [7.68, 0.], [15.36, 0.]])
+    sp.mu = mu
+    sp.num_workers = 1
+    model = sa.SimAnneal(sp)
+    effective = model.effectiveParams()
+    assert (effective.anneal_cycles, effective.num_instances, effective.hop_attempt_factor) == (256, 8, 2)
+    assert effective.budget_auto_selected
+    del effective, model
+    gc.collect()
+    sp.anneal_cycles, sp.num_instances, sp.hop_attempt_factor = 1000, 11, 3
+    model = sa.SimAnneal(sp)
+    effective = model.effectiveParams()
+    assert (effective.anneal_cycles, effective.num_instances, effective.hop_attempt_factor) == (1000, 11, 3)
+    assert not effective.budget_auto_selected
+    del effective, model
+    gc.collect()
+print('SWIG mu-range Auto budgets and explicit overrides passed')
+
+for count in [35, 36, 62, 63]:
+    for eps in [5.6, 10.]:
+        sp = sa.SimParams()
+        sp.set_db_locs([[i*10000., 0.] for i in range(count)])
+        sp.mu = -.20
+        sp.eps_r = eps
+        sp.debye_length = 10. if eps == 10. else 5.
+        sp.num_workers = 1
+        model = sa.SimAnneal(sp)
+        effective = model.effectiveParams()
+        expected = (256, 64, 2) if count == 35 else (512, 128, 2) if count <= 62 else (10000, 128, 5)
+        assert (effective.anneal_cycles, effective.num_instances, effective.hop_attempt_factor) == expected
+        assert effective.budget_auto_selected == (count <= 62)
+        assert effective.requested_instances == -2
+        del effective, model
+        gc.collect()
+print('SWIG larger and wider Auto qualification boundaries passed')

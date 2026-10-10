@@ -151,6 +151,14 @@ with tempfile.TemporaryDirectory() as directory:
     assert explicit.findtext('misc/anneal_cycles_request') == '256'
     assert explicit.findtext('misc/num_instances_request') == str(restarts)
     assert explicit.findtext('misc/hop_attempt_factor_request') == '2'
+    for mu in [-.25, -.20]:
+        automatic = run(dict(scoped, muzm=mu))
+        explicit = run(dict(muzm=mu, anneal_cycles=256,
+                            num_instances=restarts, hop_attempt_factor=2))
+        assert signature(automatic) == signature(explicit)
+        assert automatic.findtext('misc/search_budget') == 'scoped_auto'
+        assert automatic.findtext('misc/anneal_cycles') == '256'
+        assert automatic.findtext('misc/hop_attempt_factor') == '2'
     for key, value in [('anneal_cycles', '-2'), ('num_instances', '-3'),
                        ('hop_attempt_factor', '-2'), ('anneal_cycles', '256junk'),
                        ('num_instances', '8junk'), ('hop_attempt_factor', '2junk')]:

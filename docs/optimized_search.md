@@ -34,29 +34,37 @@ New native parameters and the engine description request Auto for three search b
 
 | Budget | Native / GUI Auto value | Qualified result | Fallback |
 | --- | --- | --- | --- |
-| `anneal_cycles` | `phys::AutoAnnealCycles` / `-1` | 256 | 10,000 |
-| `num_instances` | `phys::AutoInstances` / `-2` | 8 / 16 / 64 | 16 / 32 / 128 |
+| `anneal_cycles` | `phys::AutoAnnealCycles` / `-1` | 256 / 512 | 10,000 |
+| `num_instances` | `phys::AutoInstances` / `-2` | 8 / 16 / 64 / 128 | 16 / 32 / 128 |
 | `hop_attempt_factor` | `phys::AutoHopAttempts` / `-1` | 2 | 5 |
 
-The instance tiers are 2–9, 10–25, and 26–35 sites. Beyond 35 sites, Auto retains historical sizing; 64 is not a universal cap.
+The instance tiers are 2–9, 10–25, 26–35, and 36–62 sites. The first three tiers use 256 cycles; the last uses 512.
+Above 62 sites, Auto retains historical budgets.
 XML also accepts `auto`, and omitted budget fields request Auto. The integer GUI values preserve compatibility with the current SiQAD parameter editor.
 Existing saved projects with numeric budgets retain those values. In particular, `num_instances=-1` still selects historical sizing at 9 and 25 sites.
 Each budget resolves independently. Every explicit positive count and nonnegative hop factor remains unchanged, including 10,000 cycles and zero hops.
 Mixed explicit/Auto budgets are supported, but their performance is not established by the coupled-budget measurements.
 
-The short budget activates only for 2–35 sites, `mu=-0.32 eV`, `eps_r=5.6`, screening length 5 nm, and zero external and fixed-charge potential at every site.
-It requires portable arithmetic, the optimized PCG32 search, enabled repair and singleton shortcut, uniform hopping, and the stock temperature, cooling, and freezing settings.
+The short budget activates only for 2–62 sites, `-0.32 <= mu <= -0.20 eV`, and zero external and fixed-charge potential at every site.
+At `eps_r=5.6` and screening length 5 nm, both pre-simulation charge classes qualify.
+Otherwise, `1 <= eps_r <= 10` and screening length 1–10 nm qualify only when preparation excludes positive charge at every site.
+This proof uses the existing all-other-sites-negative bound and model tolerances. It does not inspect simulated outcomes or remove transient charge states.
+It requires portable or Accelerate arithmetic, the optimized PCG32 search, enabled repair and singleton shortcut, uniform hopping, and the stock temperature, cooling, and freezing settings.
 History, refinement, transient masking, and the probability cache must remain disabled; probability shortcuts remain enabled.
-Auto numerical selection qualifies only in builds where it selects portable arithmetic. Accelerate and OpenBLAS retain the historical budget unless budgets are explicitly supplied.
-Native default physics (`mu=-0.25 eV`) also retains the historical budget. No density or charge-domain rule widens this scope.
+Auto numerical selection qualifies when it selects portable or Accelerate arithmetic. OpenBLAS retains the historical budget unless budgets are explicitly supplied.
+Native default physics (`mu=-0.25 eV`, `eps_r=5.6`, screening length 5 nm) qualifies. No density rule widens the scope.
+Qualification sampled eight chemical potentials across the interval. It does not guarantee ground-state discovery at every intermediate value.
 
 Before initialization, these fields contain requests rather than effective counts. Use `effectiveParams()` to read resolved counts and the `requested_*` fields.
 XML exports the three request values, effective counts, and `search_budget`. The existing `requested_restarts` metadata continues to report the effective restart budget.
 See [Auto budget qualification](../benchmarks/production_tts/AUTO_BUDGET.md) for measurements and limitations.
+See [mu-range qualification](../benchmarks/production_tts/MU_RANGE_AUTO.md) for the range extension and its separate Mac backend checks.
+See [larger and wider-physics qualification](../benchmarks/production_tts/WIDE_AUTO.md) for the current Auto guard, larger budget, and evidence limits.
 
 Each accepted repair/refinement result passes the common full population and ordered-hop validator. Neutral-to-positive hopping uses the same electron-transfer direction as the Hamiltonian. Results must have finite energy.
 
 Repair permits at most eight population passes and four times the site count in downhill hops. A capped stage retains a validated incumbent. Budget exhaustion does not mean that the incumbent is invalid or globally optimal.
+The optimized profile also retains the lowest strict-valid state visited at cycle boundaries when repair is enabled. Final repair can still explore the original tentative candidate. Export selects the lower valid result without changing actual repair status flags.
 
 Geometry caches belong to the solver job. The persistent cluster-cache limit is 8 MiB per geometry and 16 MiB for the shared pair. It counts reserved cluster headers and pattern payload. Geometry/engine owner objects and temporary scratch are outside that accounting. Deduplication has a separate 8 MiB limit. These bounds do not cap allocator overhead, model matrices, or parallel scratch storage.
 

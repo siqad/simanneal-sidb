@@ -72,7 +72,7 @@ For example, `requests.jsonl` can contain:
 {"id":"square","points":[[0,0],[7.68,0],[0,7.68],[7.68,7.68]],"mu":-0.32,"population_backend":"portable","num_workers":4,"seed":731}
 ```
 
-Coordinates use angstroms. Optional physical fields are `mu` in eV, `epsilon_r`, `lambda_tf` in nm, and `external_potential` in eV per site. The example accepts `anneal_cycles`, `num_instances`, `hop_attempt_factor`, and `num_workers` as integers or `"auto"`. Omitted fields retain native defaults. See [Auto budget qualification](benchmarks/production_tts/AUTO_BUDGET.md) for its activation conditions.
+Coordinates use angstroms. Optional physical fields are `mu` in eV, `epsilon_r`, `lambda_tf` in nm, and `external_potential` in eV per site. The example accepts `anneal_cycles`, `num_instances`, `hop_attempt_factor`, and `num_workers` as integers or `"auto"`. Omitted fields retain native defaults. See [Auto budgets and activation conditions](docs/optimized_search.md#validity-and-budgets).
 
 Coordinates and physical values must be finite JSON numbers, not booleans or numeric strings. `external_potential` must contain one value per site.
 
