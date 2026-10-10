@@ -171,7 +171,15 @@ SimParams SimAnnealInterface::loadSimParams()
   sp.debye_length = std::stod(sqconn->getParameter("debye_length"));
 
   // variables: schedule
-  sp.num_instances = std::stoi(sqconn->getParameter("num_instances"));
+  const auto budget = [&](const std::string &name, int automatic) {
+    const auto text = sqconn->getParameter(name);
+    if (text.empty() || text == "auto") return automatic;
+    std::size_t used = 0;
+    const int value = std::stoi(text, &used);
+    if (used != text.size()) throw std::invalid_argument(name + " must be auto or an integer");
+    return value;
+  };
+  sp.num_instances = budget("num_instances", AutoInstances);
   const auto workers = sqconn->getParameter("num_workers");
   if (!workers.empty()) sp.num_workers = std::stoi(workers);
   const auto population_backend = sqconn->getParameter("population_backend");
@@ -233,9 +241,9 @@ SimParams SimAnnealInterface::loadSimParams()
     sp.random_seed = SimParams::parseRandomSeed(seed);
     sp.deterministic_seed = true;
   }
-  sp.anneal_cycles = std::stoi(sqconn->getParameter("anneal_cycles"));
+  sp.anneal_cycles = budget("anneal_cycles", AutoAnnealCycles);
   //sp.preanneal_cycles = std::stoi(sqconn->getParameter("preanneal_cycles"));
-  sp.hop_attempt_factor = std::stoi(sqconn->getParameter("hop_attempt_factor"));
+  sp.hop_attempt_factor = budget("hop_attempt_factor", AutoHopAttempts);
   // Optional for backwards compatibility with existing problem XML files.
   const auto hop_policy = sqconn->getParameter("hop_selection");
   if (hop_policy == "local_uniform") sp.hop_selection = LocalUniformHop;
@@ -385,7 +393,16 @@ void SimAnnealInterface::writeSimResults(bool only_suggested_gs, bool qubo_energ
   const std::string refinement_mode = mode==refinement::Mode::Disabled ? "none" :
       mode==refinement::Mode::K6 ? "k6" : mode==refinement::Mode::K10 ? "k10" : "shared";
   const auto boolean = [](bool value) {return value ? "true" : "false";};
+  const auto request = [](int value, int automatic) {
+    return value == automatic ? std::string("auto") : std::to_string(value);
+  };
   std::vector<std::pair<std::string,std::string>> metadata{
+    {"search_budget", effective.budget_auto_selected ? "scoped_auto" : "stock_or_explicit"},
+    {"anneal_cycles_request", request(effective.requested_anneal_cycles, AutoAnnealCycles)},
+    {"num_instances_request", request(effective.requested_instances, AutoInstances)},
+    {"hop_attempt_factor_request", request(effective.requested_hop_attempt_factor, AutoHopAttempts)},
+    {"anneal_cycles", std::to_string(effective.anneal_cycles)},
+    {"hop_attempt_factor", std::to_string(effective.hop_attempt_factor)},
     {"search_profile", effective.search_profile==SearchProfile::Legacy ? "legacy" : "optimized"},
     {"random_backend", effective.random_backend==RandomBackend::PCG32 ? "pcg32" : "mt"},
     {"population_backend", backend},

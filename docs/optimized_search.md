@@ -30,6 +30,30 @@ The domain bounds include external potentials and fixed charges. Final-state exc
 
 ## Validity and budgets
 
+New native parameters and the engine description request Auto for three search budgets:
+
+| Budget | Native / GUI Auto value | Qualified result | Fallback |
+| --- | --- | --- | --- |
+| `anneal_cycles` | `phys::AutoAnnealCycles` / `-1` | 256 | 10,000 |
+| `num_instances` | `phys::AutoInstances` / `-2` | 8 / 16 / 64 | 16 / 32 / 128 |
+| `hop_attempt_factor` | `phys::AutoHopAttempts` / `-1` | 2 | 5 |
+
+The instance tiers are 2–9, 10–25, and 26–35 sites. Beyond 35 sites, Auto retains historical sizing; 64 is not a universal cap.
+XML also accepts `auto`, and omitted budget fields request Auto. The integer GUI values preserve compatibility with the current SiQAD parameter editor.
+Existing saved projects with numeric budgets retain those values. In particular, `num_instances=-1` still selects historical sizing at 9 and 25 sites.
+Each budget resolves independently. Every explicit positive count and nonnegative hop factor remains unchanged, including 10,000 cycles and zero hops.
+Mixed explicit/Auto budgets are supported, but their performance is not established by the coupled-budget measurements.
+
+The short budget activates only for 2–35 sites, `mu=-0.32 eV`, `eps_r=5.6`, screening length 5 nm, and zero external and fixed-charge potential at every site.
+It requires portable arithmetic, the optimized PCG32 search, enabled repair and singleton shortcut, uniform hopping, and the stock temperature, cooling, and freezing settings.
+History, refinement, transient masking, and the probability cache must remain disabled; probability shortcuts remain enabled.
+Auto numerical selection qualifies only in builds where it selects portable arithmetic. Accelerate and OpenBLAS retain the historical budget unless budgets are explicitly supplied.
+Native default physics (`mu=-0.25 eV`) also retains the historical budget. No density or charge-domain rule widens this scope.
+
+Before initialization, these fields contain requests rather than effective counts. Use `effectiveParams()` to read resolved counts and the `requested_*` fields.
+XML exports the three request values, effective counts, and `search_budget`. The existing `requested_restarts` metadata continues to report the effective restart budget.
+See [Auto budget qualification](../benchmarks/production_tts/AUTO_BUDGET.md) for measurements and limitations.
+
 Each accepted repair/refinement result passes the common full population and ordered-hop validator. Neutral-to-positive hopping uses the same electron-transfer direction as the Hamiltonian. Results must have finite energy.
 
 Repair permits at most eight population passes and four times the site count in downhill hops. A capped stage retains a validated incumbent. Budget exhaustion does not mean that the incumbent is invalid or globally optimal.

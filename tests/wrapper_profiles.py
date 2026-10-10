@@ -73,3 +73,37 @@ except RuntimeError:
 else:
     raise AssertionError('Invalid restart count accepted')
 print('SWIG profiles, FP64 results, metadata, lifecycle, and exceptions passed')
+
+# Auto requests survive assignment and model ownership of copied parameters.
+sp = sa.SimParams()
+sp.set_db_locs([[0., 0.], [7.68, 0.], [15.36, 0.]])
+sp.mu = -.32
+sp.population_backend = sa.PopulationBackend_Portable
+sp.num_workers = 1
+sp.deterministic_seed = True
+sp.random_seed = 731
+assert (sp.anneal_cycles, sp.num_instances, sp.hop_attempt_factor) == (-1, -2, -1)
+model = sa.SimAnneal(sp)
+effective = model.effectiveParams()
+assert (effective.anneal_cycles, effective.num_instances, effective.hop_attempt_factor) == (256, 8, 2)
+assert (effective.requested_anneal_cycles, effective.requested_instances, effective.requested_hop_attempt_factor) == (-1, -2, -1)
+assert effective.budget_auto_selected
+sp.anneal_cycles = 256
+sp.num_instances = 8
+sp.hop_attempt_factor = 2
+assert model.effectiveParams().requested_instances == -2
+model.invokeSimAnneal()
+expected = [(tuple(r.config), r.energy) for r in model.suggested_gs_results()]
+assert model.searchStats().executed_restarts == 8
+del effective, model
+gc.collect()
+model = sa.SimAnneal(sp)
+del sp
+gc.collect()
+assert not model.effectiveParams().budget_auto_selected
+model.invokeSimAnneal()
+assert [(tuple(r.config), r.energy) for r in model.suggested_gs_results()] == expected
+assert model.searchStats().executed_restarts == 8
+del model
+gc.collect()
+print('SWIG Auto assignment, request metadata, lifetime, and seeded equivalence passed')
