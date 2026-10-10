@@ -75,6 +75,10 @@ with tempfile.TemporaryDirectory() as directory:
             if out.exists():
                 assert not ET.parse(out).findall('.//dist'), options
             return
+        if '--debug' in args:
+            assert 'Showing additional outputs' in result.stdout
+        else:
+            assert '*** Invoke simulation ***' not in result.stdout
         xml = ET.parse(out)
         distributions = xml.findall('.//dist')
         assert distributions, options
@@ -88,6 +92,9 @@ with tempfile.TemporaryDirectory() as directory:
 
     # Omitting the profile and selecting legacy must resolve independently.
     original = run({})
+    debug = run({}, args=['--debug'])
+    assert [(n.text.strip(), n.get('energy')) for n in debug.findall('.//dist')] == [
+        (n.text.strip(), n.get('energy')) for n in original.findall('.//dist')]
     assert original.findtext('misc/search_profile') == 'optimized'
     assert original.findtext('misc/random_backend') == 'pcg32'
     assert original.findtext('misc/repair') == 'true'

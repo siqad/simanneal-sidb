@@ -151,11 +151,12 @@ namespace std {
     // generate a suitable container for the results.
     std::vector<std::pair<std::vector<int>, double>> phys::SimAnneal::pySuggestedResults(bool tidy) {
         std::vector<std::pair<std::vector<int>, double>> out_results;
-        for (auto result : self->suggestedConfigResults(tidy)) {
+        for (const auto &result : self->suggestedConfigResults(tidy)) {
             std::vector<int> conf;
+            conf.reserve(result.config.size());
             for (int chg : result.config)
                 conf.push_back(chg);
-            out_results.push_back(std::make_pair(conf, result.system_energy));
+            out_results.emplace_back(std::move(conf), result.system_energy);
         }
         return out_results;
     }

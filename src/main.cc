@@ -19,11 +19,9 @@ using namespace phys;
 
 static int run(int argc, char *argv[])
 {
-  std::cout << "Physeng invoked" << std::endl;
   std::string if_name, of_name, ext_pots_name;
   std::vector<std::string> cml_args;
 
-  std::cout << "*** Argument Parsing ***" << std::endl;
 
   if (argc < 3) {
     throw "Less arguments than excepted.";
@@ -46,18 +44,13 @@ static int run(int argc, char *argv[])
   unsigned long cml_i=0;
   while (cml_i < cml_args.size()) {
     if (cml_args[cml_i] == "--ext-pots") {
-      std::cout << "--ext-pots: Import external potentials." << std::endl;
       if (cml_i + 1 >= cml_args.size()) throw std::invalid_argument("--ext-pots requires a path");
       ext_pots_name = cml_args[++cml_i];
     } else if (cml_args[cml_i] == "--ext-pots-step") {
-      std::cout << "--ext-pots-step: Specify the step to use for potentials."
-        << std::endl;
       if (cml_i + 1 >= cml_args.size()) throw std::invalid_argument("--ext-pots-step requires an integer");
       ext_pots_step = stoi(cml_args[++cml_i]);
     } else if (cml_args[cml_i] == "--only-suggested-gs") {
       // each SimAnneal instance only returns one configuration
-      std::cout << "--only-suggested-gs: Only returning suggested ground state "
-        << "from each instance." << std::endl;
       only_suggested_gs = true;
     } else if (cml_args[cml_i] == "--debug") {
       // show additional debug information
@@ -81,27 +74,27 @@ static int run(int argc, char *argv[])
   saglobal::TimeKeeper *tk = saglobal::TimeKeeper::instance();
   saglobal::Stopwatch *sw_simulation = tk->createStopwatch("Total Simulation");
 
-  log.echo() << "In File: " << if_name << std::endl;
-  log.echo() << "Out File: " << of_name << std::endl;
-  log.echo() << "External Potentials File: " << ext_pots_name << std::endl;
+  log.debug() << "In File: " << if_name << std::endl;
+  log.debug() << "Out File: " << of_name << std::endl;
+  log.debug() << "External Potentials File: " << ext_pots_name << std::endl;
 
-  log.echo() << "\n*** Initiate SimAnneal interface ***" << std::endl;
+  log.debug() << "\n*** Initiate SimAnneal interface ***" << std::endl;
   SimAnnealInterface interface(if_name, of_name, ext_pots_name, ext_pots_step, verbose);
 
-  log.echo() << "\n*** Read Simulation parameters ***" << std::endl;
+  log.debug() << "\n*** Read Simulation parameters ***" << std::endl;
   SimParams sparams = interface.loadSimParams();
 
-  log.echo() << "\n*** Invoke simulation ***" << std::endl;
+  log.debug() << "\n*** Invoke simulation ***" << std::endl;
   sw_simulation->start();
   interface.runSimulation(std::move(sparams));
   sw_simulation->end();
 
-  log.echo() << "\n*** Write simulation results ***" << std::endl;
+  log.debug() << "\n*** Write simulation results ***" << std::endl;
   interface.writeSimResults(only_suggested_gs, qubo_energy);
 
-  log.echo() << "\n*** SimAnneal Complete ***" << std::endl;
+  log.debug() << "\n*** SimAnneal Complete ***" << std::endl;
 
-  tk->printAllStopwatches();
+  if (verbose) tk->printAllStopwatches();
 
   delete tk;
   return 0;

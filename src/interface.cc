@@ -100,7 +100,7 @@ SimParams SimAnnealInterface::loadSimParams()
   std::vector<EuclCoord> db_locs;
   for(auto db : *(sqconn->dbCollection())) {
     db_locs.push_back(SimParams::latToEuclCoord(db->n, db->m, db->l, sp.lat_vec));
-    log.debug() << "DB loc: x=" << db_locs.back().first
+    if (saglobal::log_level >= Logger::DBG) log.debug() << "DB loc: x=" << db_locs.back().first
         << ", y=" << db_locs.back().second << std::endl;
   }
   sp.setDBLocs(db_locs);
@@ -163,7 +163,7 @@ SimParams SimAnnealInterface::loadSimParams()
   sp.setFixedCharges(defect_locs, fixed_charges, fixed_charge_eps_rs, fixed_charge_lambdas);
 
   // VAIRABLE INITIALIZATION
-  log.echo() << "Retrieving variables from SiQADConn..." << std::endl;
+  log.debug() << "Retrieving variables from SiQADConn..." << std::endl;
 
   // variables: physical
   sp.mu = std::stod(sqconn->getParameter("muzm"));
@@ -284,7 +284,7 @@ SimParams SimAnnealInterface::loadSimParams()
   // determine result queue size, but be within the range [1,anneal_cycles]
   sp.result_queue_factor = std::stod(sqconn->getParameter("result_queue_size"));
 
-  log.echo() << "Retrieval from SiQADConn complete." << std::endl;
+  log.debug() << "Retrieval from SiQADConn complete." << std::endl;
 
   return sp;
 }
@@ -298,7 +298,7 @@ void SimAnnealInterface::writeSimResults(bool only_suggested_gs, bool qubo_energ
     dbl_data[i].first = std::to_string(SimAnneal::sim_params.db_locs[i].first);
     dbl_data[i].second = std::to_string(SimAnneal::sim_params.db_locs[i].second);
   }
-  sqconn->setExport("db_loc", dbl_data);
+  sqconn->setExport("db_loc", std::move(dbl_data));
 
   // save the results of all distributions to a map, with the vector of 
   // distribution as key and the count of occurances as value.
@@ -371,9 +371,9 @@ void SimAnnealInterface::writeSimResults(bool only_suggested_gs, bool qubo_energ
     db_dist.push_back(std::to_string(result.occ_count));      // occurance freq
     db_dist.push_back(std::to_string(result.is_metastable));  // metastability
     db_dist.push_back("3");                                   // 3-state
-    db_dist_data.push_back(db_dist);
+    db_dist_data.push_back(std::move(db_dist));
   }
-  sqconn->setExport("db_charge", db_dist_data);
+  sqconn->setExport("db_charge", std::move(db_dist_data));
 
   const auto &effective = master_annealer->effectiveParams();
   const auto &stats = master_annealer->searchStats();
@@ -435,7 +435,7 @@ void SimAnnealInterface::writeSimResults(bool only_suggested_gs, bool qubo_energ
     refinement_results += result.refinement_result;
   metadata.emplace_back("refinement_result_count", std::to_string(refinement_results));
   metadata.emplace_back("occurrence_semantics", "exported records; restart results plus optional refinement result and diagnostic history");
-  sqconn->setExport("misc", metadata);
+  sqconn->setExport("misc", std::move(metadata));
 
   sqconn->writeResultsXml();
 }
