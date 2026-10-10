@@ -5,7 +5,12 @@ import json
 import math
 import sys
 
-import simanneal as sa
+try:
+    import simanneal as sa
+except ModuleNotFoundError as error:
+    if error.name != "simanneal":
+        raise
+    from pysimanneal import simanneal as sa
 
 
 def unique_object(pairs):

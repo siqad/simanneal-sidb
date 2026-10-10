@@ -64,6 +64,8 @@ cmake --build build-python --parallel 2
 PYTHONPATH=build-python python3 examples/simulate_batch.py requests.jsonl
 ```
 
+For an installed `pysimanneal` package, omit `PYTHONPATH`.
+
 For example, `requests.jsonl` can contain:
 
 ```json
