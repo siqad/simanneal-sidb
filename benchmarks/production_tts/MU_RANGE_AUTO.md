@@ -51,4 +51,4 @@ This qualifies backend compatibility; it is not a whole-corpus Mac speedup measu
 Warm and one-eighth-warm portfolios remain research comparisons.
 Neither improved aggregate TTS over short on the reserved set.
 No new density classifier, charge-class classifier, or user toggle is introduced.
-No qualification covers more than 35 sites, nonzero fields, or other epsilon/screening values.
+This report does not cover more than 35 sites, nonzero fields, or other epsilon/screening values.
