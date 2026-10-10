@@ -69,6 +69,9 @@ namespace phys {
   enum class SearchProfile { Legacy, Optimized };
   enum class RandomBackend { Auto, MT, PCG32 };
   enum class FeatureSetting { ProfileDefault, Disabled, Enabled };
+  const int AutoAnnealCycles = -1;
+  const int AutoInstances = -2; // -1 retains historical restart sizing.
+  const int AutoHopAttempts = -1;
 
   struct SearchStats {
     std::uint64_t executed_restarts = 0, repair_attempts = 0,
@@ -108,12 +111,12 @@ namespace phys {
       const std::vector<FPType> &t_fc_lambdas);
 
     // used for alpha and v_freeze_cycles calculation
-    int anneal_cycles=10000;      // Total number of annealing cycles
+    int anneal_cycles=AutoAnnealCycles; // Auto or a positive cycle count
     FPType T_e_inv_point=0.09995; // Where in schedule does T = 1/e * T_0
     FPType v_freeze_end_point=0.4;// Where in schedule does v_freeze stop growing
 
     // runtime params
-    int num_instances=-1;         // Independent restarts (legacy name)
+    int num_instances=AutoInstances; // Auto, historical -1, or a positive restart count
     int num_workers=0;            // Active workers; 0 selects affinity-aware available CPUs
     PopulationBackend population_backend=PopulationBackend::Auto; // Build-selected dense backend
     SearchProfile search_profile = SearchProfile::Optimized;
@@ -146,7 +149,12 @@ namespace phys {
     }
     float result_queue_factor=.1; // Number of results to store (per thread)
     int result_queue_size;        // Number of results to store (per thread)
-    int hop_attempt_factor=5;     // total hop attempt = hop_attempt_factor * (num_occ - num_vac)
+    int hop_attempt_factor=AutoHopAttempts; // Auto or a nonnegative hop factor
+    // Original requests and the resolved decision are available via effectiveParams().
+    int requested_anneal_cycles=AutoAnnealCycles;
+    int requested_instances=AutoInstances;
+    int requested_hop_attempt_factor=AutoHopAttempts;
+    bool budget_auto_selected=false;
 
     // Experimental target selection. Uniform preserves the original RNG path.
     HopSelection hop_selection=UniformHop;

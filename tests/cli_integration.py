@@ -22,7 +22,10 @@ def problem(path, options, singleton=False):
         node = params.find(key)
         if node is None:
             node = ET.SubElement(params, key)
-        node.text = str(value)
+        if value is None:
+            params.remove(node)
+        else:
+            node.text = str(value)
     if singleton:
         layer = tree.find("design/layer[@type='DB']")
         for site in list(layer)[1:]:
@@ -118,6 +121,33 @@ with tempfile.TemporaryDirectory() as directory:
                        ('refinement_candidates','0'), ('anneal_cycles','0'),
                        ('population_backend','typo'), ('random_seed','-1')]:
         run({key:value}, succeeds=False)
+    # Auto and omitted managed fields resolve to the same qualified budget.
+    scoped = dict(muzm=-.32, anneal_cycles='auto', num_instances='auto', hop_attempt_factor='auto')
+    automatic = run(scoped)
+    omitted = run(dict(muzm=-.32, anneal_cycles=None, num_instances=None, hop_attempt_factor=None))
+    count = len(ET.parse(base).findall("design/layer[@type='DB']/dbdot"))
+    restarts = 8 if count <= 9 else 16 if count <= 25 else 64
+    explicit = run(dict(muzm=-.32, anneal_cycles=256, num_instances=restarts, hop_attempt_factor=2))
+    def signature(xml):
+        return [(n.text.strip(), n.get('energy'), n.get('count'), n.get('physically_valid'))
+                for n in xml.findall('.//dist')]
+    assert signature(automatic) == signature(omitted) == signature(explicit)
+    for xml in [automatic, omitted]:
+        assert xml.findtext('misc/search_budget') == 'scoped_auto'
+        for key in ['anneal_cycles_request', 'num_instances_request', 'hop_attempt_factor_request']:
+            assert xml.findtext('misc/' + key) == 'auto'
+        assert xml.findtext('misc/anneal_cycles') == '256'
+        assert xml.findtext('misc/hop_attempt_factor') == '2'
+        assert int(xml.findtext('misc/executed_restarts')) == restarts
+        assert int(xml.findtext('misc/requested_restarts')) == restarts
+    assert explicit.findtext('misc/search_budget') == 'stock_or_explicit'
+    assert explicit.findtext('misc/anneal_cycles_request') == '256'
+    assert explicit.findtext('misc/num_instances_request') == str(restarts)
+    assert explicit.findtext('misc/hop_attempt_factor_request') == '2'
+    for key, value in [('anneal_cycles', '-2'), ('num_instances', '-3'),
+                       ('hop_attempt_factor', '-2'), ('anneal_cycles', '256junk'),
+                       ('num_instances', '8junk'), ('hop_attempt_factor', '2junk')]:
+        run({key: value}, succeeds=False)
     pots = directory/'pots.json'
     pots.write_text(json.dumps({'pots': [[0.0]]}))
     run({}, args=['--ext-pots', str(pots)], succeeds=False)

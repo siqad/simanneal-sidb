@@ -628,11 +628,44 @@ void SimAnneal::initialize()
   if (!std::isfinite(sp.mu) || !std::isfinite(sp.eps_r) || sp.eps_r <= 0 ||
       !std::isfinite(sp.debye_length) || sp.debye_length <= 0)
     throw std::invalid_argument("Invalid physical parameters");
-  for (int i = 0; i < sp.n_dbs; ++i)
+  bool zero_fields = true;
+  for (int i = 0; i < sp.n_dbs; ++i) {
     if (!std::isfinite(sp.db_locs[i].first) ||
         !std::isfinite(sp.db_locs[i].second) || !std::isfinite(sp.v_ext[i]) ||
         !std::isfinite(sp.v_fc[i]))
       throw std::invalid_argument("Coordinates and fields must be finite");
+    zero_fields &= sp.v_ext[i] == 0 && sp.v_fc[i] == 0;
+  }
+  sp.requested_anneal_cycles = sp.anneal_cycles;
+  sp.requested_instances = sp.num_instances;
+  sp.requested_hop_attempt_factor = sp.hop_attempt_factor;
+  bool portable = sp.population_backend == PopulationBackend::Portable;
+#ifndef SIMANNEAL_HAVE_ACCELERATE
+  portable |= sp.population_backend == PopulationBackend::Auto;
+#endif
+  // The short budget was qualified only for this physics and search configuration.
+  const bool qualified = sp.n_dbs >= 2 && sp.n_dbs <= 35 &&
+      sp.mu == -.32 && sp.eps_r == 5.6 && sp.debye_length == 5 &&
+      constants::eta == .59 && zero_fields && portable &&
+      sp.search_profile == SearchProfile::Optimized &&
+      sp.random_backend == RandomBackend::PCG32 && sp.repair_enabled &&
+      sp.singleton_enabled && sp.probability_shortcuts &&
+      !sp.population_probability_cache && !sp.transient_domain_mask &&
+      !sp.record_history && sp.refinement_options.mode == refinement::Mode::Disabled &&
+      sp.hop_selection == UniformHop && sp.preanneal_cycles == 0 &&
+      sp.T_schedule == ExponentialSchedule && sp.T_init == 500 && sp.T_min == 2 &&
+      sp.T_e_inv_point == .09995 && sp.v_freeze_end_point == .4 &&
+      sp.v_freeze_init == -1 && sp.v_freeze_reset == -1 &&
+      sp.v_freeze_threshold == 4 && sp.phys_validity_check_cycles == 10 &&
+      !sp.strategic_v_freeze_reset && !sp.reset_T_during_v_freeze_reset;
+  sp.budget_auto_selected = qualified &&
+      (sp.anneal_cycles == AutoAnnealCycles || sp.num_instances == AutoInstances ||
+       sp.hop_attempt_factor == AutoHopAttempts);
+  const int stock_instances = sp.n_dbs <= 9 ? 16 : sp.n_dbs <= 25 ? 32 : 128;
+  if (sp.anneal_cycles == AutoAnnealCycles) sp.anneal_cycles = qualified ? 256 : 10000;
+  if (sp.hop_attempt_factor == AutoHopAttempts) sp.hop_attempt_factor = qualified ? 2 : 5;
+  if (sp.num_instances == AutoInstances)
+    sp.num_instances = qualified ? stock_instances / 2 : stock_instances;
   if (!std::isfinite(sp.result_queue_factor) || sp.result_queue_factor < 0 ||
       sp.result_queue_factor > 1)
     throw std::invalid_argument("result_queue_factor must be in [0,1]");
@@ -708,7 +741,7 @@ void SimAnneal::initialize()
     }
   }
 
-  if (sp.num_instances <= 0) throw std::invalid_argument("num_instances must be positive or -1");
+  if (sp.num_instances <= 0) throw std::invalid_argument("num_instances must be positive, -1, or AutoInstances (-2)");
   if (sp.num_workers < 0) throw std::invalid_argument("num_workers must be nonnegative");
   sp.num_workers = simanneal_affinity::workerCount(sp.num_workers, sp.num_instances);
   // inter-db distances and voltages

@@ -185,6 +185,7 @@ else()
         tests/population_probability.test.cc
         tests/parameter_storage.test.cc
         tests/kernel_defaults.test.cc
+        tests/auto_budget.test.cc
 
         # HEADERS
         libs/catch2/catch.hpp

@@ -70,15 +70,15 @@ interpreter, bin_path, command
     <sim_params preserve_order="true">
         <anneal_cycles>
             <T>int</T>
-            <val>10000</val>
+            <val>-1</val>
             <label>Anneal cycles</label>
-            <tip>The number of simulated annealing cycles.</tip>
+            <tip>-1 selects Auto: 256 in the qualified scope, otherwise 10000. Positive values are explicit cycle counts.</tip>
         </anneal_cycles>
         <num_instances>
             <T>int</T>
-            <val>-1</val>
+            <val>-2</val>
             <label>Instance count</label>
-            <tip>The number of independent SimAnneal restarts. If left at -1, a number is automatically selected based on the DB layout.</tip>
+            <tip>-2 selects the scoped Auto budget. -1 retains historical sizing (16/32/128). Positive values are explicit independent restart counts.</tip>
         </num_instances>
         <num_workers>
             <T>int</T><val>0</val><label>Active workers</label>
@@ -166,9 +166,9 @@ interpreter, bin_path, command
         </debye_length>
         <hop_attempt_factor>
             <T>int</T>
-            <val>5</val>
+            <val>-1</val>
             <label>Hop attempt factor</label>
-            <tip></tip>
+            <tip>-1 selects Auto: 2 in the qualified scope, otherwise 5. Nonnegative values are explicit factors.</tip>
         </hop_attempt_factor>
         <hop_selection>
             <T>string</T><val>uniform</val><label>Hop target selection</label>
