@@ -51,6 +51,7 @@ jobs:
         cmake -S . -B build-python -DSKBUILD=ON -DCMAKE_BUILD_TYPE=Release -DSIMANNEAL_ENABLE_OPENBLAS=ON -DSIMANNEAL_ENABLE_LTO=ON
         cmake --build build-python --parallel 2
         python3 tests/wrapper_profiles.py build-python
+        python3 tests/batch_interface.py build-python
 
     - name: Test benchmark safeguards with and without Python optimization
       if: matrix.os == 'ubuntu-22.04' && matrix.openblas == 'ON'

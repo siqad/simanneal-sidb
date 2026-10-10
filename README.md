@@ -52,6 +52,30 @@ which will deposit `__init__.py`, `simanneal.py`, and `_simanneal.so` in `_skbui
 
 Read `swig/py_demo_script.py` for usage in Python.
 
+### Repeated simulations in Python
+
+Keep the Python module loaded when running many independent problems. This avoids repeated process creation and library loading. Each problem still gets its own parameters, solver, and random stream.
+
+The example [simulate_batch.py](examples/simulate_batch.py) reads one JSON request per line and writes one JSON result per line. Build the SWIG module with the same Python interpreter used to run the example:
+
+```sh
+cmake -S . -B build-python -DSKBUILD=ON -DCMAKE_BUILD_TYPE=Release
+cmake --build build-python --parallel 2
+PYTHONPATH=build-python python3 examples/simulate_batch.py requests.jsonl
+```
+
+For example, `requests.jsonl` can contain:
+
+```json
+{"id":"square","points":[[0,0],[7.68,0],[0,7.68],[7.68,7.68]],"mu":-0.32,"population_backend":"portable","num_workers":4,"seed":731}
+```
+
+Coordinates use angstroms. Optional physical fields are `mu` in eV, `epsilon_r`, `lambda_tf` in nm, and `external_potential` in eV per site. The example accepts `anneal_cycles`, `num_instances`, `hop_attempt_factor`, and `num_workers` as integers or `"auto"`. Omitted fields retain native defaults. See [Auto budget qualification](benchmarks/production_tts/AUTO_BUDGET.md) for its activation conditions.
+
+`population_backend` accepts `auto`, `portable`, `accelerate`, `openblas`, or `openblas_symmetric`. The corresponding backend must be available in the build. Optional `seed` is an unsigned 32-bit integer. Results include charge configurations, energies, effective budgets, and search counters.
+
+This example supports free sites and external potentials. Use the full Python interface for fixed charges or other settings. Failed requests produce an error record, subsequent requests continue, and the final exit code is nonzero. SimAnneal results remain heuristic, without ground-state certification. The speed benefit applies to repeated calls. A single invocation still pays process startup costs.
+
 ### Optimized search profiles
 
 The default optimized profile enables PCG32 sampling, bounded validated repair, and the singleton shortcut. Select `search_profile=legacy` for legacy profile defaults. Bounded cluster refinement and transient domain masking remain opt-in. See [search settings and limits](docs/optimized_search.md), [method attribution](docs/ATTRIBUTION.md), and the [production TTS benchmark](benchmarks/production_tts/README.md). The optimized profile does not certify a global ground state.
