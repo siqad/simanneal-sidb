@@ -245,6 +245,7 @@ void SimAnneal::invokeSimAnneal()
   energy_results.assign(sim_params.num_instances, ThreadEnergyResults());
   suggested_gs_results.assign(sim_params.num_instances, ChargeConfigResult());
   anneal_threads.clear();
+  std::vector<mv::Stats> mv_restart_stats(sim_params.mv.polish_mode ? sim_params.num_instances : 0);
   std::atomic<int> next_restart(0);
   std::atomic<bool> failed(false);
   std::exception_ptr failure;
@@ -256,6 +257,7 @@ void SimAnneal::invokeSimAnneal()
         if (id >= sim_params.num_instances) break;
         SimAnnealThread annealer(id, seeds[id], search_scope.finite);
         annealer.run();
+        if (sim_params.mv.polish_mode) mv_restart_stats[id] = annealer.mv_stats;
       }
     } catch (...) {
       std::lock_guard<std::mutex> lock(failure_mutex);
@@ -275,6 +277,53 @@ void SimAnneal::invokeSimAnneal()
   for (auto &th : anneal_threads) th.join();
   anneal_threads.clear();
   if (failure) std::rethrow_exception(failure);
+  for (const auto &restart : mv_restart_stats) stats_.mv.add(restart);
+  if (sim_params.mv.polish_mode && sim_params.mv.polish_top > 0) {
+    // Post-run polish of the K lowest-energy distinct restart endpoints.
+    std::vector<int> order;
+    for (int i = 0; i < sim_params.num_instances; ++i)
+      if (suggested_gs_results[i].config.size() == static_cast<std::size_t>(sim_params.n_dbs)) order.push_back(i);
+    std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
+      const auto &x = suggested_gs_results[a], &y = suggested_gs_results[b];
+      if (x.pop_likely_stable != y.pop_likely_stable) return x.pop_likely_stable;
+      return x.system_energy < y.system_energy;
+    });
+    std::vector<int> chosen;
+    for (int i : order) {
+      bool dup = false;
+      for (int j : chosen) {
+        const auto &a = suggested_gs_results[i].config, &b = suggested_gs_results[j].config;
+        if (std::equal(a.begin(), a.end(), b.begin())) { dup = true; break; }
+      }
+      if (!dup) chosen.push_back(i);
+      if (static_cast<int>(chosen.size()) >= sim_params.mv.polish_top) break;
+    }
+    std::vector<mv::Stats> polish_stats(chosen.size());
+    std::atomic<std::size_t> next_polish(0);
+    auto polisher = [&]() {
+      try {
+        for (std::size_t k; (k = next_polish.fetch_add(1)) < chosen.size();) {
+          SimAnnealThread worker(0, seeds[chosen[k]], search_scope.finite);
+          worker.mvPolish(suggested_gs_results[chosen[k]]);
+          polish_stats[k] = worker.mv_stats;
+        }
+      } catch (...) {
+        std::lock_guard<std::mutex> lock(failure_mutex);
+        if (!failure) failure = std::current_exception();
+      }
+    };
+    std::vector<std::thread> polish_threads;
+    const int pw = std::max(1, std::min<int>(sim_params.num_workers, chosen.size()));
+    try {
+      for (int i = 0; i < pw; ++i) polish_threads.emplace_back(polisher);
+    } catch (...) {
+      for (auto &th : polish_threads) if (th.joinable()) th.join();
+      throw;
+    }
+    for (auto &th : polish_threads) th.join();
+    if (failure) std::rethrow_exception(failure);
+    for (const auto &ps : polish_stats) stats_.mv.add(ps);
+  }
   stats_.executed_restarts = sim_params.num_instances;
   for (const auto &candidate : suggested_gs_results) {
     stats_.repair_attempts += candidate.repair_attempted;
@@ -803,6 +852,11 @@ void SimAnneal::initialize()
   if (sp.hop_attempt_factor == AutoHopAttempts) sp.hop_attempt_factor = qualified ? 2 : 5;
   if (sp.num_instances == AutoInstances)
     sp.num_instances = qualified && sp.n_dbs <= 35 ? stock_instances / 2 : stock_instances;
+  if (sp.mv.polish_mode == -1) sp.mv.polish_mode = 0;
+  if (sp.mv.polish_top == -1) sp.mv.polish_top = 0;
+  sp.mv.validate();
+  sp.mv_knn.clear();
+  if (sp.mv.polish_mode >= 2) sp.mv_knn = mv::nearest(sp.db_r, sp.mv.knn);
   // determine number of threads to run
   if (sp.num_instances == -1) {
     if (sp.n_dbs <= 9) {
@@ -1268,6 +1322,7 @@ void SimAnnealThread::anneal()
     valid_incumbent.repair_budget_exhausted = suggested_gs.repair_budget_exhausted;
     suggested_gs = std::move(valid_incumbent);
   }
+  if (sparams->mv.polish_mode && sparams->mv.polish_top == 0) mvPolish(suggested_gs);
   SimAnneal::storeResults(this, thread_id);
 }
 
@@ -1488,3 +1543,104 @@ bool SimAnnealThread::populationValid() const
   }
   return true;
 }
+
+namespace phys {
+mv::State SimAnnealThread::mvState() {
+  mv::State st;
+  st.V = &sparams->v_ij; st.n = &n; st.v = &v_local; st.E = &E_sys;
+  st.mu = muzm; st.eta = constants::eta;
+  return st;
+}
+
+void SimAnnealThread::mvPolish(ChargeConfigResult &result) {
+  const auto &o = sparams->mv;
+  if (!o.polish_mode || result.config.size() != static_cast<std::size_t>(sparams->n_dbs)) return;
+  ++mv_stats.polish_restarts;
+  const int N = sparams->n_dbs;
+  auto reset = [&](const ublas::vector<int> &cfg) {
+    n = cfg;
+    E_sys = systemEnergy();
+    v_local = -(sparams->v_ext + sparams->v_fc) - ublas::prod(sparams->v_ij, n);
+  };
+  auto st = mvState();
+  reset(result.config);
+  const bool was_valid = result.pop_likely_stable && result.initialized;
+  FPType e0 = 0;
+  const bool start_valid = SimAnneal::validatedSearchEnergy(n, e0, search_finite_model_);
+  ublas::vector<int> best = n; FPType best_e = start_valid ? e0 : 0; bool best_valid = start_valid;
+  if (!start_valid || o.polish_mode >= 1) {
+    if (mv::relax(st, 20 * N + 20)) {
+      FPType e;
+      if (SimAnneal::validatedSearchEnergy(n, e, search_finite_model_) &&
+          (!best_valid || e < best_e - 1e-12)) {
+        if (!start_valid) ++mv_stats.polish_relax_fixed;
+        best = n; best_e = e; best_valid = true;
+      }
+    }
+  }
+  if (o.polish_mode >= 2 && best_valid) {
+    const auto &knn = sparams->mv_knn;
+    auto neighbours = [&](int i, std::vector<int> &out) {
+      out.clear();
+      if (!knn.empty()) { const int lim = std::min<int>(o.knn, knn[i].size()); out.assign(knn[i].begin(), knn[i].begin() + lim); }
+      else for (int j = 0; j < N; ++j) if (j != i) out.push_back(j);
+    };
+    std::vector<int> nb;
+    for (int round = 0; round < o.polish_rounds; ++round) {
+      reset(best);
+      const ublas::vector<int> base_n = n; const ublas::vector<FPType> base_v = v_local; const FPType base_E = E_sys;
+      bool improved = false;
+      std::vector<int> region; std::vector<char> in_region(N, 0);
+      auto trial = [&](const int *s, const int *d, int m) {
+        n = base_n; v_local = base_v; E_sys = base_E;
+        st.apply(s, d, m, st.dE(s, d, m));
+        ++mv_stats.polish_kick_evals;
+        // Local relax around the kicked sites, then one global relax only for
+        // promising candidates; final acceptance is the strict validator.
+        region.clear();
+        for (int a = 0; a < m; ++a) {
+          if (!in_region[s[a]]) { in_region[s[a]] = 1; region.push_back(s[a]); }
+          if (!knn.empty()) for (int j : knn[s[a]]) if (!in_region[j]) { in_region[j] = 1; region.push_back(j); }
+        }
+        for (int j : region) in_region[j] = 0;
+        if (!knn.empty()) mv::relax(st, 4 * static_cast<int>(region.size()) + 8, 1e-9, &region);
+        if (E_sys >= best_e - 1e-9) return false;
+        if (!mv::relax(st, 4 * N + 8)) return false;
+        if (E_sys >= best_e - 1e-9) return false;
+        FPType e;
+        if (!SimAnneal::validatedSearchEnergy(n, e, search_finite_model_) || e >= best_e - 1e-12) return false;
+        best = n; best_e = e; return true;
+      };
+      for (int i = 0; i < N && !improved; ++i) {
+        for (int t = -1; t <= 1 && !improved; ++t) {
+          if (t == base_n[i]) continue;
+          int s[1] = {i}, d[1] = {t - base_n[i]};
+          improved = trial(s, d, 1);
+        }
+        neighbours(i, nb);
+        for (std::size_t q = 0; q < nb.size() && !improved; ++q) {
+          const int j = nb[q];
+          int s[2] = {i, j};
+          if (base_n[i] < 1 && base_n[j] > -1) { int d[2] = {1, -1}; improved = trial(s, d, 2); }
+          if (improved || o.polish_mode < 3) continue;
+          if (base_n[i] == 0 && base_n[j] == 0) {
+            int d1[2] = {-1, 1}; improved = trial(s, d1, 2);
+            if (!improved) { int d2[2] = {1, -1}; improved = trial(s, d2, 2); }
+          } else if (base_n[i] != 0 && base_n[j] == -base_n[i]) {
+            int d1[2] = {-base_n[i], -base_n[j]}; improved = trial(s, d1, 2);
+            if (!improved) { int d2[2] = {-2 * base_n[i], -2 * base_n[j]}; improved = trial(s, d2, 2); }
+          }
+        }
+      }
+      if (!improved) break;
+    }
+  }
+  if (best_valid && (!was_valid || !start_valid || best_e < e0 - 1e-12)) {
+    if (start_valid && best_e < e0 - 1e-12) { ++mv_stats.polish_improved; mv_stats.polish_delta_e += best_e - e0; }
+    const bool ra = result.repair_attempted, rb = result.repair_budget_exhausted;
+    result = ChargeConfigResult(best, true, best_e);
+    result.repair_attempted = ra; result.repair_budget_exhausted = rb;
+  }
+}
+
+} // namespace phys

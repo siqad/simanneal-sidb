@@ -14,6 +14,7 @@
 #include "libs/siqadconn/src/siqadconn.h"
 #include "physical_repair.h"
 #include "refinement.h"
+#include "mv_kernel.h"
 #include "search_rng.h"
 #include <cmath>
 #include <deque>
@@ -80,6 +81,7 @@ namespace phys {
     int refinement_center_offset = 0;
     int population_blas_threads = 0;
     refinement::Stats refinement;
+    mv::Stats mv;
   };
 
   // Forward declaration
@@ -127,6 +129,8 @@ namespace phys {
     bool population_probability_cache = false;
     bool transient_domain_mask = false;
     refinement::Options refinement_options;
+    mv::Options mv;
+    std::vector<std::vector<int>> mv_knn;
     // Resolved by solver initialization; callers must use effectiveParams().
     bool repair_enabled = false, singleton_enabled = false;
     std::vector<unsigned char> final_domains;
@@ -467,6 +471,9 @@ namespace phys {
       ~RandomStorage() {}
     } engines;
     bool use_pcg = false;
+    mv::Stats mv_stats;
+    mv::State mvState();
+    void mvPolish(ChargeConfigResult &result);
     FPType uniformDraw();
     RandRealDist dis01;
 

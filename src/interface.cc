@@ -234,6 +234,8 @@ SimParams SimAnnealInterface::loadSimParams()
   integer("refinement_candidates", sp.refinement_options.candidates);
   integer("refinement_rounds", sp.refinement_options.rounds);
   integer("refinement_trials", sp.refinement_options.trials);
+  integer("mv_polish_mode", sp.mv.polish_mode);
+  integer("mv_polish_top", sp.mv.polish_top);
   const auto history = sqconn->getParameter("record_history");
   sp.record_history = history == "true" || history == "1";
   const auto seed = sqconn->getParameter("random_seed");
@@ -417,6 +419,8 @@ void SimAnnealInterface::writeSimResults(bool only_suggested_gs, bool qubo_energ
     {"active_workers", std::to_string(effective.num_workers)},
     {"repair_attempts", std::to_string(stats.repair_attempts)},
     {"repair_budget_exhaustions", std::to_string(stats.repair_budget_exhaustions)},
+    {"mv_polish_mode", std::to_string(effective.mv.polish_mode)},
+    {"mv_polish_top", std::to_string(effective.mv.polish_top)},
     {"refinement", refinement_mode},
     {"refinement_candidates", std::to_string(effective.refinement_options.candidates)},
     {"refinement_rounds", std::to_string(effective.refinement_options.rounds)},

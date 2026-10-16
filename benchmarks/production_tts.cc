@@ -31,6 +31,7 @@ struct Observation {
   int rng = 0, backend = 0, refinement = 0, candidates = 0, rounds = 0;
   int blas_threads = 0;
   phys::SearchStats stats;
+  phys::mv::Options mv;
 };
 
 double milliseconds(Clock::time_point a, Clock::time_point b) {
@@ -134,9 +135,12 @@ Observation execute(const Tree &request) {
     options.candidates = request.get<int>("refinement_candidates");
     options.rounds = request.get<int>("refinement_rounds");
     options.trials = 1;
+    params.mv.polish_mode = request.get<int>("mv_polish_mode", -1);
+    params.mv.polish_top = request.get<int>("mv_polish_top", -1);
 
     phys::SimAnneal solver(std::move(params));
     const auto &effective = solver.effectiveParams();
+    observation.mv = effective.mv;
     observation.restarts = effective.num_instances;
     observation.workers = effective.num_workers;
     observation.cycles = effective.anneal_cycles;
@@ -234,7 +238,10 @@ void write(const Tree &request, const Observation &row) {
             << ",\"refinement_geometry_bytes\":"
             << row.stats.refinement.geometry_bytes
             << ",\"refinement_dedup_bytes\":"
-            << row.stats.refinement.dedup_bytes << "}\n";
+            << row.stats.refinement.dedup_bytes
+            << ",\"mv_polish_mode\":" << row.mv.polish_mode
+            << ",\"mv_polish_top\":" << row.mv.polish_top
+            << ",\"polish_restarts\":" << row.stats.mv.polish_restarts << "}\n";
 }
 } // namespace
 
