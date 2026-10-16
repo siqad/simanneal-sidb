@@ -71,7 +71,6 @@ Each explicit cleanup field overrides its Auto choice independently. Any literal
 For exact pre-PR2b behavior, use a literal budget field and leave cleanup absent or set `mv_polish_mode=0,mv_vblock_k=0`.
 For example, 10,000 literal cycles preserve the old resolution of remaining Auto fields. Disabling cleanup alone retains the new Auto budget.
 XML metadata reports effective cleanup settings and `pkp_large_auto_selected`. In Python, use `params.mv.polish_mode`, `params.mv.polish_top`, and corresponding `vblock_*` fields.
-The [offline qualification harness](../codex_run/pr2b_check/README.md) describes the evidence, seed contract, and pending Linux checks.
 
 Before initialization, these fields contain requests rather than effective counts. Use `effectiveParams()` to read resolved counts and the `requested_*` fields.
 XML exports the three request values, effective counts, and `search_budget`. The existing `requested_restarts` metadata continues to report the effective restart budget.
