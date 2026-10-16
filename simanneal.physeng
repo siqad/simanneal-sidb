@@ -123,6 +123,22 @@ interpreter, bin_path, command
             <T>int</T><val>-1</val><label>End polish candidates</label>
             <tip>-1 selects Auto. 0 polishes every restart. A positive value limits distinct endpoints.</tip>
         </mv_polish_top>
+        <mv_vblock_k>
+            <T>int</T><val>-1</val><label>Valid block size</label>
+            <tip>-1 selects Auto, 0 disables cleanup. Explicit sizes are 6, 8, and 10.</tip>
+        </mv_vblock_k>
+        <mv_vblock_scope>
+            <T>int</T><val>1</val><label>Valid block scope</label>
+            <tip>0 selects polished endpoints. 1 selects all restart endpoints before the top guard.</tip>
+        </mv_vblock_scope>
+        <mv_vblock_top>
+            <T>int</T><val>-1</val><label>Valid block candidates</label>
+            <tip>-1 selects Auto. 0 removes the guard. Positive values limit distinct valid endpoints by energy.</tip>
+        </mv_vblock_top>
+        <mv_vblock_cache>
+            <T>bool</T><val>true</val><label>Valid block suffix cache</label>
+            <tip>Defaults ON when valid block cleanup is enabled. Exact charge and field keys preserve results.</tip>
+        </mv_vblock_cache>
         <refinement>
             <T>string</T><val>none</val><label>Local refinement</label>
             <tip>none, k6, k10, or shared. shared refines the same candidates using fixed and shifted ten-site clusters.</tip>

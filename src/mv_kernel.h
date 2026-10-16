@@ -15,21 +15,40 @@ typedef double FP;
 struct Options {
   int polish_mode = -1; // -1 Auto, 0 off, 1 relax, 2 single/hop, 3 pair/swap
   int polish_top = -1;  // -1 Auto, 0 all restarts, K best distinct endpoints
+  int vblock_k = -1;     // -1 Auto, 0 off, else 6, 8, 10
+  int vblock_scope = 1;  // 0 polished endpoints, 1 all restarts
+  int vblock_top = -1;   // -1 Auto, 0 unlimited, K distinct valid endpoints
+  bool vblock_cache = true; // Exact state+field suffix memo, enabled with vblock
+  int vblock_graph = 0;
+  double vblock_max_ms = 0;
+  int vblock_max_blocks = 0;
   int polish_rounds = 8;
   int knn = 8;
   void validate() const {
     if (polish_mode < 0 || polish_mode > 3 || polish_top < 0 || polish_rounds < 0 || knn < 0)
       throw std::invalid_argument("mv_polish options out of range");
+    if ((vblock_k != 0 && vblock_k != 6 && vblock_k != 8 && vblock_k != 10) ||
+        vblock_scope < 0 || vblock_scope > 1 || vblock_top < 0 ||
+        vblock_graph < 0 || vblock_graph > 1 || !std::isfinite(vblock_max_ms) ||
+        vblock_max_ms < 0 || vblock_max_blocks < 0)
+      throw std::invalid_argument("mv_vblock options out of range");
   }
 };
 struct Stats {
   std::uint64_t polish_restarts = 0, polish_relax_fixed = 0,
                 polish_improved = 0, polish_kick_evals = 0;
   double polish_delta_e = 0;
+  std::uint64_t vblock_endpoints = 0, vblock_improved = 0, vblock_moves = 0,
+                vblock_guard_hits = 0, vblock_reverts = 0;
+  double vblock_delta_e = 0, vblock_ms = 0;
   void add(const Stats &o) {
     polish_restarts += o.polish_restarts; polish_relax_fixed += o.polish_relax_fixed;
     polish_improved += o.polish_improved; polish_kick_evals += o.polish_kick_evals;
     polish_delta_e += o.polish_delta_e;
+    vblock_endpoints += o.vblock_endpoints; vblock_improved += o.vblock_improved;
+    vblock_moves += o.vblock_moves; vblock_guard_hits += o.vblock_guard_hits;
+    vblock_reverts += o.vblock_reverts; vblock_delta_e += o.vblock_delta_e;
+    vblock_ms += o.vblock_ms;
   }
 };
 

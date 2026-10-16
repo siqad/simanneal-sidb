@@ -15,6 +15,7 @@
 #include "physical_repair.h"
 #include "refinement.h"
 #include "mv_kernel.h"
+#include "vblock.h"
 #include "search_rng.h"
 #include <cmath>
 #include <deque>
@@ -349,6 +350,8 @@ namespace phys {
     std::recursive_mutex invocation_mutex_;
     bool invocation_active_ = false;
     SearchStats stats_;
+    void runVblock(const std::vector<int> &touched, bool finite);
+    std::unique_ptr<vblock::Geometry> vblock_geometry_;
     friend struct SimAnnealExportTestAccess;
     std::size_t export_workers_ = 1, export_async_launches_ = 0;
     std::unique_ptr<refinement::Geometry> refinement_geometry_;

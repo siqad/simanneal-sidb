@@ -11,6 +11,9 @@
 #include "population_blas.h"
 #include "simanneal.h"
 #include <new>
+#include <fstream>
+#include <iomanip>
+#include <cstdlib>
 #ifdef SIMANNEAL_HAVE_ACCELERATE
 #include <Accelerate/Accelerate.h>
 #endif
@@ -165,6 +168,7 @@ SimAnneal::~SimAnneal() {
   for (auto &worker : anneal_threads)
     if (worker.joinable())
       worker.join();
+  vblock_geometry_.reset();
   refinement_geometry_.reset();
   repair_geometry_.reset();
   AllChargeResults().swap(charge_results);
@@ -228,6 +232,7 @@ void SimAnneal::invokeSimAnneal()
       suggested_gs_results.assign(
           1, ChargeConfigResult(configuration, true, energy));
       stats_.singleton_used = true;
+      if (vblock_geometry_) runVblock({}, search_scope.finite);
       return;
     }
   }
@@ -278,6 +283,7 @@ void SimAnneal::invokeSimAnneal()
   anneal_threads.clear();
   if (failure) std::rethrow_exception(failure);
   for (const auto &restart : mv_restart_stats) stats_.mv.add(restart);
+  std::vector<int> vblock_touched;
   if (sim_params.mv.polish_mode && sim_params.mv.polish_top > 0) {
     // Post-run polish of the K lowest-energy distinct restart endpoints.
     std::vector<int> order;
@@ -298,6 +304,7 @@ void SimAnneal::invokeSimAnneal()
       if (!dup) chosen.push_back(i);
       if (static_cast<int>(chosen.size()) >= sim_params.mv.polish_top) break;
     }
+    if (vblock_geometry_) vblock_touched = chosen;
     std::vector<mv::Stats> polish_stats(chosen.size());
     std::atomic<std::size_t> next_polish(0);
     auto polisher = [&]() {
@@ -323,6 +330,11 @@ void SimAnneal::invokeSimAnneal()
     for (auto &th : polish_threads) th.join();
     if (failure) std::rethrow_exception(failure);
     for (const auto &ps : polish_stats) stats_.mv.add(ps);
+  }
+  if (vblock_geometry_) {
+    if (sim_params.mv.polish_mode && sim_params.mv.polish_top == 0)
+      for (int i = 0; i < sim_params.num_instances; ++i) vblock_touched.push_back(i);
+    runVblock(vblock_touched, search_scope.finite);
   }
   stats_.executed_restarts = sim_params.num_instances;
   for (const auto &candidate : suggested_gs_results) {
@@ -854,9 +866,17 @@ void SimAnneal::initialize()
     sp.num_instances = qualified && sp.n_dbs <= 35 ? stock_instances / 2 : stock_instances;
   if (sp.mv.polish_mode == -1) sp.mv.polish_mode = 0;
   if (sp.mv.polish_top == -1) sp.mv.polish_top = 0;
+  if (sp.mv.vblock_k == -1) sp.mv.vblock_k = 0;
+  if (sp.mv.vblock_top == -1) sp.mv.vblock_top = 0;
   sp.mv.validate();
   sp.mv_knn.clear();
   if (sp.mv.polish_mode >= 2) sp.mv_knn = mv::nearest(sp.db_r, sp.mv.knn);
+  if (sp.mv.vblock_k) {
+    const auto neighbours = sp.mv.vblock_graph == 1 && sp.mv_knn.empty()
+        ? mv::nearest(sp.db_r, sp.mv.knn) : sp.mv_knn;
+    vblock_geometry_.reset(new vblock::Geometry(sp.v_ij, sp.v_ext, sp.v_fc,
+                                              sp.mu, sp.mv, neighbours));
+  }
   // determine number of threads to run
   if (sp.num_instances == -1) {
     if (sp.n_dbs <= 9) {
@@ -1644,3 +1664,85 @@ void SimAnnealThread::mvPolish(ChargeConfigResult &result) {
 }
 
 } // namespace phys
+
+// Run serially after workers join: one shared table cache and invocation budget.
+void SimAnneal::runVblock(const std::vector<int> &touched, bool finite) {
+  const auto &o = sim_params.mv;
+  auto &stats = stats_.mv;
+  vblock::Budget budget(o);
+  std::map<vblock::Charges, vblock::Descent> memo;
+  vblock::Memo suffix_memo;
+  const bool cache_suffix = o.vblock_cache && !o.vblock_max_blocks && !o.vblock_max_ms;
+  std::ofstream trace;
+  if (const char *path = std::getenv("SIMANNEAL_VBLOCK_TRACE")) {
+    if (*path) {
+      trace.open(path, std::ios::app);
+      if (!trace) throw std::runtime_error("Cannot open SIMANNEAL_VBLOCK_TRACE");
+      trace << std::setprecision(17);
+    }
+  }
+  std::vector<int> eligible = touched;
+  if (o.vblock_scope == 1) {
+    eligible.clear();
+    for (std::size_t i = 0; i < suggested_gs_results.size(); ++i) eligible.push_back(i);
+  }
+  if (o.vblock_top) {
+    std::vector<std::pair<FPType,int>> ranked;
+    std::set<vblock::Charges> seen;
+    for (int id : eligible) {
+      const auto &result = suggested_gs_results[id];
+      if (!result.initialized || result.config.size() != static_cast<std::size_t>(sim_params.n_dbs)) continue;
+      const vblock::Charges q(result.config.begin(),result.config.end());
+      if (!seen.insert(q).second || !vblock_geometry_->valid(q,vblock_geometry_->fields(q))) continue;
+      const FPType e = systemEnergy(result.config);
+      if (std::isfinite(e)) ranked.emplace_back(e,id);
+    }
+    // Freeze selection before any descent: energy, then restart ID for exact ties.
+    std::sort(ranked.begin(),ranked.end());
+    if (ranked.size() > static_cast<std::size_t>(o.vblock_top)) ranked.resize(o.vblock_top);
+    eligible.clear();
+    for (const auto &entry : ranked) eligible.push_back(entry.second);
+  }
+  for (int id : eligible) {
+    if (budget.expired()) break;
+    auto &result = suggested_gs_results[id];
+    if (!result.initialized || result.config.size() != static_cast<std::size_t>(sim_params.n_dbs)) continue;
+    const vblock::Charges pre(result.config.begin(),result.config.end());
+    if (!vblock_geometry_->valid(pre,vblock_geometry_->fields(pre))) continue;
+    const FPType e_pre = systemEnergy(result.config);
+    ++stats.vblock_endpoints;
+    const auto cached = memo.find(pre);
+    auto descent = cached == memo.end() ? vblock_geometry_->descend(pre,budget,cache_suffix ? &suffix_memo : nullptr) : cached->second;
+    ublas::vector<int> post(descent.q.size());
+    std::copy(descent.q.begin(),descent.q.end(),post.begin());
+    FPType e_post;
+    if (!validatedSearchEnergy(post,e_post,finite) ||
+        (descent.q != pre && e_post >= e_pre-vblock::EPS*.5) ||
+        !vblock_geometry_->valid(descent.q,vblock_geometry_->fields(descent.q))) {
+      ++stats.vblock_reverts;
+      descent = vblock::Descent(pre); post = result.config; e_post = e_pre;
+    }
+    if (!budget.hit && cached == memo.end()) memo.emplace(pre,descent);
+    if (e_post < e_pre-vblock::EPS) {
+      ++stats.vblock_improved; stats.vblock_delta_e += e_post-e_pre;
+      stats.vblock_moves += descent.moves;
+      result.config = post; result.system_energy = e_post;
+      result.pop_likely_stable = true;
+    }
+    if (trace.is_open()) {
+      auto array = [&](const vblock::Charges &q) {
+        trace << '[';
+        for (std::size_t j = 0; j < q.size(); ++j) { if (j) trace << ','; trace << q[j]; }
+        trace << ']';
+      };
+      trace << "{\"restart\":" << id << ",\"pre\":"; array(pre);
+      trace << ",\"post\":"; array(descent.q);
+      trace << ",\"e_pre\":" << e_pre << ",\"e_post\":" << e_post
+            << ",\"moves\":" << descent.moves << "}\n";
+    }
+    if (budget.hit) break;
+  }
+  if (trace.is_open()) { trace.flush(); if (!trace) throw std::runtime_error("Cannot write vblock trace"); }
+  stats.vblock_guard_hits += budget.hit;
+  stats.vblock_ms += budget.ms();
+}

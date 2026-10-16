@@ -46,3 +46,57 @@ TEST_CASE("End polish validates results and is independent of worker count") {
         }
     }
 }
+
+TEST_CASE("Vblock validates options and defaults to an enabled suffix cache") {
+    phys::SimParams p;
+    p.setDBLocs(std::vector<phys::EuclCoord>{{0,0},{7.68,0},{15.36,0}});
+    {
+        phys::SimAnneal solver(p);
+        REQUIRE(solver.effectiveParams().mv.vblock_k==0);
+        REQUIRE(solver.effectiveParams().mv.vblock_top==0);
+        REQUIRE(solver.effectiveParams().mv.vblock_cache);
+    }
+    for (int k:{-2,5,12}) {
+        p.mv.vblock_k=k;
+        REQUIRE_THROWS_AS(phys::SimAnneal(p),std::invalid_argument);
+    }
+    p.mv.vblock_k=8; p.mv.vblock_scope=2;
+    REQUIRE_THROWS_AS(phys::SimAnneal(p),std::invalid_argument);
+    p.mv.vblock_scope=1; p.mv.vblock_top=-2;
+    REQUIRE_THROWS_AS(phys::SimAnneal(p),std::invalid_argument);
+}
+
+TEST_CASE("Vblock top guard and suffix cache preserve validated results") {
+    phys::SimParams p;
+    std::vector<phys::EuclCoord> points;
+    for (int i=0;i<10;++i) points.emplace_back((i%5)*3.84,(i/5)*7.68);
+    p.setDBLocs(points);
+    p.num_instances=16; p.anneal_cycles=32; p.hop_attempt_factor=2;
+    p.deterministic_seed=true; p.random_seed=777; p.num_workers=2;
+    p.population_backend=phys::PopulationBackend::Portable;
+    p.mv.polish_mode=3; p.mv.polish_top=4;
+    p.mv.vblock_k=8; p.mv.vblock_top=1;
+    phys::SuggestedResults expected;
+    for (bool cache:{false,true}) {
+        p.mv.vblock_cache=cache;
+        phys::SimAnneal solver(p); solver.invokeSimAnneal();
+        REQUIRE(solver.searchStats().mv.vblock_endpoints<=1);
+        REQUIRE(solver.searchStats().mv.vblock_endpoints>0);
+        const auto results=solver.suggestedConfigResults(true);
+        REQUIRE_FALSE(results.empty());
+        for (const auto &r:results) {
+            FPType energy;
+            REQUIRE(phys::SimAnneal::validatedEnergy(r.config,energy));
+        }
+        if (!cache) expected=results;
+        else {
+            REQUIRE(results.size()==expected.size());
+            for (std::size_t i=0;i<results.size();++i) {
+                REQUIRE(phys::SimAnneal::configToStr(results[i].config)==phys::SimAnneal::configToStr(expected[i].config));
+                REQUIRE(results[i].system_energy==expected[i].system_energy);
+            }
+        }
+    }
+    phys::vblock::Charges q{-1,0};
+    REQUIRE(phys::vblock::stateKey(q,{0.,0.})!=phys::vblock::stateKey(q,{-0.,0.}));
+}

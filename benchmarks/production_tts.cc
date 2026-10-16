@@ -137,6 +137,10 @@ Observation execute(const Tree &request) {
     options.trials = 1;
     params.mv.polish_mode = request.get<int>("mv_polish_mode", -1);
     params.mv.polish_top = request.get<int>("mv_polish_top", -1);
+    params.mv.vblock_k = request.get<int>("mv_vblock_k", -1);
+    params.mv.vblock_scope = request.get<int>("mv_vblock_scope", 1);
+    params.mv.vblock_top = request.get<int>("mv_vblock_top", -1);
+    params.mv.vblock_cache = request.get<bool>("mv_vblock_cache", true);
 
     phys::SimAnneal solver(std::move(params));
     const auto &effective = solver.effectiveParams();
@@ -241,7 +245,14 @@ void write(const Tree &request, const Observation &row) {
             << row.stats.refinement.dedup_bytes
             << ",\"mv_polish_mode\":" << row.mv.polish_mode
             << ",\"mv_polish_top\":" << row.mv.polish_top
-            << ",\"polish_restarts\":" << row.stats.mv.polish_restarts << "}\n";
+            << ",\"polish_restarts\":" << row.stats.mv.polish_restarts
+            << ",\"mv_vblock_k\":" << row.mv.vblock_k
+            << ",\"mv_vblock_scope\":" << row.mv.vblock_scope
+            << ",\"mv_vblock_top\":" << row.mv.vblock_top
+            << ",\"mv_vblock_cache\":" << row.mv.vblock_cache
+            << ",\"vblock_endpoints\":" << row.stats.mv.vblock_endpoints
+            << ",\"vblock_improved\":" << row.stats.mv.vblock_improved
+            << ",\"vblock_reverts\":" << row.stats.mv.vblock_reverts << "}\n";
 }
 } // namespace
 
