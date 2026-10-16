@@ -263,7 +263,13 @@ void SimAnneal::invokeSimAnneal()
       failed.store(true);
     }
   };
-  try {
+  // One worker runs on the calling thread: a fresh std::thread per invocation
+  // adds a create/wake/join round trip whose wall-clock cost grows sharply on
+  // busy or oversubscribed nodes. Restart IDs, seeds and result slots are
+  // unchanged, so results are identical.
+  if (sim_params.num_workers == 1) {
+    worker();
+  } else try {
     for (int i=0; i<sim_params.num_workers; ++i)
       anneal_threads.emplace_back(worker);
   } catch (...) {
