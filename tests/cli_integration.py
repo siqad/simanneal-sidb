@@ -119,6 +119,19 @@ with tempfile.TemporaryDirectory() as directory:
         assert int(result.findtext('misc/refinement_geometry_count')) >= 0
         assert result.findtext('misc/refinement_shared_single_cache_fallback') == ('true' if refinement == 'shared' else 'false')
         assert any(x.get('physically_valid') == '1' for x in result.findall('.//dist'))
+    for mode in [0, 1, 2, 3]:
+        cleanup = run(dict(mv_polish_mode=mode, mv_polish_top=4,
+                           mv_vblock_k=8, mv_vblock_scope=1, mv_vblock_top=16,
+                           mv_vblock_cache='false'))
+        assert cleanup.findtext('misc/mv_polish_mode') == str(mode)
+        assert cleanup.findtext('misc/mv_polish_top') == '4'
+        assert cleanup.findtext('misc/mv_vblock_k') == '8'
+        assert cleanup.findtext('misc/mv_vblock_scope') == '1'
+        assert cleanup.findtext('misc/mv_vblock_top') == '16'
+        assert cleanup.findtext('misc/mv_vblock_cache') == 'false'
+    for key, value in [('mv_polish_mode',4), ('mv_polish_top',-2), ('mv_vblock_k',12),
+                       ('mv_vblock_scope',2), ('mv_vblock_top',-2), ('mv_vblock_cache','perhaps')]:
+        run({key:value}, succeeds=False)
     singleton = run({}, singleton=True)
     assert singleton.findtext('misc/executed_restarts') == '0'
     assert singleton.findtext('misc/singleton_used') == 'true'

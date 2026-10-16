@@ -88,6 +88,19 @@ TEST_CASE("Vblock top guard and suffix cache preserve validated results") {
             FPType energy;
             REQUIRE(phys::SimAnneal::validatedEnergy(r.config,energy));
         }
+        if (cache) {
+            const auto &e=solver.effectiveParams();
+            phys::vblock::Geometry geometry(e.v_ij,e.v_ext,e.v_fc,e.mu,e.mv,e.mv_knn);
+            phys::vblock::Charges q(results[0].config.begin(),results[0].config.end());
+            phys::vblock::Memo memo;
+            phys::vblock::Budget first(e.mv), second(e.mv);
+            const auto a=geometry.descend(q,first,&memo);
+            const auto b=geometry.descend(q,second,&memo);
+            REQUIRE(first.blocks>0);
+            REQUIRE(second.blocks==0);
+            REQUIRE(a.q==b.q);
+            REQUIRE(a.moves==b.moves);
+        }
         if (!cache) expected=results;
         else {
             REQUIRE(results.size()==expected.size());

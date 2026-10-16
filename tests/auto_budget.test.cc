@@ -265,3 +265,26 @@ TEST_CASE("Large cleanup honors explicit off and preserves unqualified search co
     REQUIRE_FALSE(solver.effectiveParams().pkp_large_auto_selected);
     REQUIRE(solver.effectiveParams().mv.vblock_k==0);
 }
+
+TEST_CASE("Large positive-possible Auto stays within the measured physics box") {
+    const std::vector<std::function<void(phys::SimParams &)>> outside={
+        [](phys::SimParams &p){p.mu=std::nextafter(-.5,-1.);},
+        [](phys::SimParams &p){p.mu=std::nextafter(-.1,0.);},
+        [](phys::SimParams &p){p.eps_r=std::nextafter(1.,0.);},
+        [](phys::SimParams &p){p.eps_r=std::nextafter(10.,11.);},
+        [](phys::SimParams &p){p.debye_length=std::nextafter(1.,0.);},
+        [](phys::SimParams &p){p.debye_length=std::nextafter(10.,11.);}
+    };
+    for (const auto &change:outside) {
+        auto p=scoped(36); p.mu=-.4; p.eps_r=1; change(p);
+        phys::SimAnneal solver(p);
+        REQUIRE_FALSE(solver.effectiveParams().pkp_large_auto_selected);
+        REQUIRE(solver.effectiveParams().mv.polish_mode==0);
+        REQUIRE(solver.effectiveParams().mv.vblock_k==0);
+    }
+    for (double mu:{-.5,-.1}) {
+        auto p=scoped(36); p.mu=mu; p.eps_r=1;
+        phys::SimAnneal solver(p);
+        REQUIRE(solver.effectiveParams().pkp_large_auto_selected);
+    }
+}

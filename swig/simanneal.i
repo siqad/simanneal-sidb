@@ -63,6 +63,8 @@ namespace phys {
 %ignore phys::refinement::Result;
 %ignore phys::refinement::run;
 %include "refinement.h"
+%rename(MvOptions) phys::mv::Options;
+%rename(MvStats) phys::mv::Stats;
 %ignore phys::mv::State;
 %ignore phys::mv::nearest;
 %ignore phys::mv::relax;

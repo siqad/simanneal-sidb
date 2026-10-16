@@ -85,15 +85,6 @@ struct State {
     }
     return e;
   }
-  // Chemical part of dG = mu*dQ + eta*dP with Q = N- - N+ = -sum n.
-  FP dChem(const int *s, const int *d, int m) const {
-    FP g = 0;
-    for (int a = 0; a < m; ++a) {
-      const int before = (*n)[s[a]], after = before + d[a];
-      g += mu * (-d[a]) + eta * ((after == 1) - (before == 1));
-    }
-    return g;
-  }
   void apply(const int *s, const int *d, int m, FP de) {
     const int count = size();
     for (int a = 0; a < m; ++a) {
@@ -112,7 +103,7 @@ struct State {
 // acceptor charge) ranked by dE. Every accepted step strictly lowers G, so
 // the descent terminates. If region is non-null, only moves whose sites all
 // lie in region are considered (local relax; caller must validate globally).
-inline bool relax(State &st, int cap, FP tol = 1e-9, const std::vector<int> *region = nullptr, bool pair_hops = false) {
+inline bool relax(State &st, int cap, FP tol = 1e-9, const std::vector<int> *region = nullptr) {
   const int n = st.size();
   std::vector<int> all;
   if (!region) { all.resize(n); for (int i = 0; i < n; ++i) all[i] = i; region = &all; }
@@ -139,7 +130,7 @@ inline bool relax(State &st, int cap, FP tol = 1e-9, const std::vector<int> *reg
       const FP a = -v[i];
       const FP *row = &(st.V->data()[static_cast<std::size_t>(i) * n]);
       for (int j : R) {
-        if (j == i || q[j] <= -1 || (!pair_hops && q[j] <= q[i])) continue; // acceptor holds fewer electrons
+        if (j == i || q[j] <= -1 || q[j] <= q[i]) continue; // acceptor holds fewer electrons
         const FP e = a + v[j] - row[j];
         if (e < best) { best = e; bs[0] = i; bs[1] = j; bd[0] = 1; bd[1] = -1; bm = 2; }
       }
