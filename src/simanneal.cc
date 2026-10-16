@@ -706,8 +706,7 @@ void SimAnneal::initialize()
   qualified_backend |= sp.population_backend == PopulationBackend::Accelerate;
 #endif
   // The short budget was qualified only for this physics and search configuration.
-  const bool qualified_configuration = sp.n_dbs >= 2 && sp.n_dbs <= 62 &&
-      sp.mu >= -.32 && sp.mu <= -.20 &&
+  const bool qualified_search_configuration = sp.n_dbs >= 2 && sp.n_dbs <= 62 &&
       constants::eta == .59 && zero_fields && qualified_backend &&
       sp.search_profile == SearchProfile::Optimized &&
       sp.random_backend == RandomBackend::PCG32 && sp.repair_enabled &&
@@ -856,7 +855,16 @@ void SimAnneal::initialize()
   const bool qualified_physics = (sp.eps_r == 5.6 && sp.debye_length == 5) ||
       (sp.eps_r >= 1 && sp.eps_r <= 10 && sp.debye_length >= 1 &&
        sp.debye_length <= 10 && excludes_positive);
-  const bool qualified = qualified_configuration && qualified_physics;
+  const bool qualified_configuration = qualified_search_configuration &&
+      sp.mu >= -.32 && sp.mu <= -.20;
+  // pk+ means at least one prepared site still permits positive charge.
+  // The new default requires untouched Auto budgets and the tested physics box.
+  sp.pkp_large_auto_selected = qualified_search_configuration && sp.n_dbs >= 36 &&
+      !excludes_positive && sp.mu >= -.5 && sp.mu <= -.1 &&
+      sp.eps_r >= 1 && sp.eps_r <= 10 && sp.debye_length >= 1 && sp.debye_length <= 10 &&
+      sp.anneal_cycles == AutoAnnealCycles && sp.num_instances == AutoInstances &&
+      sp.hop_attempt_factor == AutoHopAttempts;
+  const bool qualified = (qualified_configuration && qualified_physics) || sp.pkp_large_auto_selected;
   sp.budget_auto_selected = qualified &&
       (sp.anneal_cycles == AutoAnnealCycles || sp.num_instances == AutoInstances ||
        sp.hop_attempt_factor == AutoHopAttempts);
@@ -864,10 +872,10 @@ void SimAnneal::initialize()
   if (sp.hop_attempt_factor == AutoHopAttempts) sp.hop_attempt_factor = qualified ? 2 : 5;
   if (sp.num_instances == AutoInstances)
     sp.num_instances = qualified && sp.n_dbs <= 35 ? stock_instances / 2 : stock_instances;
-  if (sp.mv.polish_mode == -1) sp.mv.polish_mode = 0;
-  if (sp.mv.polish_top == -1) sp.mv.polish_top = 0;
-  if (sp.mv.vblock_k == -1) sp.mv.vblock_k = 0;
-  if (sp.mv.vblock_top == -1) sp.mv.vblock_top = 0;
+  if (sp.mv.polish_mode == -1) sp.mv.polish_mode = sp.pkp_large_auto_selected ? 3 : 0;
+  if (sp.mv.polish_top == -1) sp.mv.polish_top = sp.pkp_large_auto_selected ? 4 : 0;
+  if (sp.mv.vblock_k == -1) sp.mv.vblock_k = sp.pkp_large_auto_selected ? 8 : 0;
+  if (sp.mv.vblock_top == -1) sp.mv.vblock_top = sp.pkp_large_auto_selected ? 16 : 0;
   sp.mv.validate();
   sp.mv_knn.clear();
   if (sp.mv.polish_mode >= 2) sp.mv_knn = mv::nearest(sp.db_r, sp.mv.knn);

@@ -193,12 +193,15 @@ TEST_CASE("Larger and wider Auto budgets match explicit seeded execution") {
         if (eps!=5.6 && count!=6) for (int i=0;i<count;++i) p.db_locs[i].first=i*10000.;
         p.deterministic_seed=true; p.random_seed=731;
         phys::SuggestedResults expected;
+        phys::mv::Options cleanup;
         {
             phys::SimAnneal model(p); REQUIRE(model.effectiveParams().budget_auto_selected);
+            cleanup=model.effectiveParams().mv;
             model.invokeSimAnneal(); expected=model.suggestedResults();
         }
         p.anneal_cycles=count<=35?256:512;
         p.num_instances=count<=9?8:count<=35?64:128; p.hop_attempt_factor=2;
+        p.mv=cleanup; // Compare the complete resolved Auto configuration.
         phys::SimAnneal model(p); model.invokeSimAnneal();
         const auto &actual=model.suggestedResults();
         REQUIRE(actual.size()==expected.size());
@@ -207,4 +210,58 @@ TEST_CASE("Larger and wider Auto budgets match explicit seeded execution") {
             REQUIRE(actual[i].system_energy==expected[i].system_energy);
         }
     }
+}
+
+TEST_CASE("Positive-possible large Auto selects cleanup only with all budgets automatic") {
+    for (int count:{35,36,62,63}) {
+        auto p=scoped(count); p.eps_r=1; p.debye_length=10; p.mu=-.4;
+        for (int i=0;i<count;++i) p.db_locs[i].first=i*3.84;
+        phys::SimAnneal solver(p);
+        const auto &e=solver.effectiveParams();
+        const bool selected=count>=36 && count<=62;
+        REQUIRE(e.pkp_large_auto_selected==selected);
+        REQUIRE(e.anneal_cycles==(selected?512:10000));
+        REQUIRE(e.num_instances==128);
+        REQUIRE(e.hop_attempt_factor==(selected?2:5));
+        REQUIRE(e.mv.polish_mode==(selected?3:0));
+        REQUIRE(e.mv.polish_top==(selected?4:0));
+        REQUIRE(e.mv.vblock_k==(selected?8:0));
+        REQUIRE(e.mv.vblock_top==(selected?16:0));
+        REQUIRE(e.mv.vblock_scope==1);
+        REQUIRE(e.mv.vblock_cache);
+    }
+    for (int field:{0,1,2}) {
+        auto p=scoped(36); p.eps_r=1; p.mu=-.4;
+        if (field==0) p.anneal_cycles=512;
+        if (field==1) p.num_instances=128;
+        if (field==2) p.hop_attempt_factor=2;
+        phys::SimAnneal solver(p); const auto &e=solver.effectiveParams();
+        REQUIRE_FALSE(e.pkp_large_auto_selected);
+        REQUIRE(e.anneal_cycles==(field==0?512:10000));
+        REQUIRE(e.hop_attempt_factor==(field==2?2:5));
+        REQUIRE(e.mv.polish_mode==0);
+        REQUIRE(e.mv.vblock_k==0);
+    }
+}
+
+TEST_CASE("Large cleanup honors explicit off and preserves unqualified search configurations") {
+    auto p=scoped(36); p.eps_r=1; p.mu=-.4;
+    p.mv.polish_mode=0; p.mv.vblock_k=0; p.mv.vblock_cache=false; p.mv.vblock_top=8;
+    {
+        phys::SimAnneal solver(p); const auto &e=solver.effectiveParams();
+        REQUIRE(e.pkp_large_auto_selected);
+        REQUIRE(e.mv.polish_mode==0); REQUIRE(e.mv.vblock_k==0);
+        REQUIRE_FALSE(e.mv.vblock_cache); REQUIRE(e.mv.vblock_top==8);
+    }
+    p=scoped(36); p.eps_r=1; p.mu=-.4; p.T_init=501;
+    {
+        phys::SimAnneal solver(p);
+        REQUIRE_FALSE(solver.effectiveParams().pkp_large_auto_selected);
+        REQUIRE(solver.effectiveParams().anneal_cycles==10000);
+    }
+    p=scoped(36); p.eps_r=1; p.mu=-.4;
+    for (int i=0;i<36;++i) p.db_locs[i].first=i*10000.;
+    phys::SimAnneal solver(p);
+    REQUIRE_FALSE(solver.effectiveParams().pkp_large_auto_selected);
+    REQUIRE(solver.effectiveParams().mv.vblock_k==0);
 }

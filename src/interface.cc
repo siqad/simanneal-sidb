@@ -423,6 +423,7 @@ void SimAnnealInterface::writeSimResults(bool only_suggested_gs, bool qubo_energ
     {"active_workers", std::to_string(effective.num_workers)},
     {"repair_attempts", std::to_string(stats.repair_attempts)},
     {"repair_budget_exhaustions", std::to_string(stats.repair_budget_exhaustions)},
+    {"pkp_large_auto_selected", boolean(effective.pkp_large_auto_selected)},
     {"mv_polish_mode", std::to_string(effective.mv.polish_mode)},
     {"mv_polish_top", std::to_string(effective.mv.polish_top)},
     {"mv_vblock_k", std::to_string(effective.mv.vblock_k)},

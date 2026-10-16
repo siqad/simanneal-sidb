@@ -117,15 +117,15 @@ interpreter, bin_path, command
         </transient_domain_mask>
         <mv_polish_mode>
             <T>int</T><val>-1</val><label>End polish mode</label>
-            <tip>-1 selects Auto, 0 disables polish, 1 relaxes, 2 adds single and hop kicks, 3 adds pair and swap kicks.</tip>
+            <tip>-1 selects mode 3 for qualified pk+ n36-62 Auto runs, otherwise off. 0 disables polish, 1 relaxes, 2 adds single and hop kicks, 3 adds pair and swap kicks.</tip>
         </mv_polish_mode>
         <mv_polish_top>
             <T>int</T><val>-1</val><label>End polish candidates</label>
-            <tip>-1 selects Auto. 0 polishes every restart. A positive value limits distinct endpoints.</tip>
+            <tip>-1 selects 4 for qualified pk+ n36-62 Auto runs, otherwise 0. 0 polishes every restart. A positive value limits distinct endpoints.</tip>
         </mv_polish_top>
         <mv_vblock_k>
             <T>int</T><val>-1</val><label>Valid block size</label>
-            <tip>-1 selects Auto, 0 disables cleanup. Explicit sizes are 6, 8, and 10.</tip>
+            <tip>-1 selects 8 for qualified pk+ n36-62 Auto runs, otherwise off. 0 disables cleanup. Explicit sizes are 6, 8, and 10.</tip>
         </mv_vblock_k>
         <mv_vblock_scope>
             <T>int</T><val>1</val><label>Valid block scope</label>
@@ -133,7 +133,7 @@ interpreter, bin_path, command
         </mv_vblock_scope>
         <mv_vblock_top>
             <T>int</T><val>-1</val><label>Valid block candidates</label>
-            <tip>-1 selects Auto. 0 removes the guard. Positive values limit distinct valid endpoints by energy.</tip>
+            <tip>-1 selects 16 for qualified pk+ n36-62 Auto runs, otherwise 0. 0 removes the guard. Positive values limit distinct valid endpoints by energy.</tip>
         </mv_vblock_top>
         <mv_vblock_cache>
             <T>bool</T><val>true</val><label>Valid block suffix cache</label>

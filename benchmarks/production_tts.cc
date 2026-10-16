@@ -32,6 +32,8 @@ struct Observation {
   int blas_threads = 0;
   phys::SearchStats stats;
   phys::mv::Options mv;
+  bool pkp_large_auto_selected = false;
+  int positive_sites = 0;
 };
 
 double milliseconds(Clock::time_point a, Clock::time_point b) {
@@ -145,6 +147,8 @@ Observation execute(const Tree &request) {
     phys::SimAnneal solver(std::move(params));
     const auto &effective = solver.effectiveParams();
     observation.mv = effective.mv;
+    observation.pkp_large_auto_selected = effective.pkp_large_auto_selected;
+    for (unsigned char domain : effective.final_domains) observation.positive_sites += (domain & 4) != 0;
     observation.restarts = effective.num_instances;
     observation.workers = effective.num_workers;
     observation.cycles = effective.anneal_cycles;
@@ -243,6 +247,8 @@ void write(const Tree &request, const Observation &row) {
             << row.stats.refinement.geometry_bytes
             << ",\"refinement_dedup_bytes\":"
             << row.stats.refinement.dedup_bytes
+            << ",\"pkp_large_auto_selected\":" << row.pkp_large_auto_selected
+            << ",\"positive_sites\":" << row.positive_sites
             << ",\"mv_polish_mode\":" << row.mv.polish_mode
             << ",\"mv_polish_top\":" << row.mv.polish_top
             << ",\"polish_restarts\":" << row.stats.mv.polish_restarts
