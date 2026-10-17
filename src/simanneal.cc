@@ -11,6 +11,9 @@
 #include "population_blas.h"
 #include "simanneal.h"
 #include <new>
+#include <fstream>
+#include <iomanip>
+#include <cstdlib>
 #ifdef SIMANNEAL_HAVE_ACCELERATE
 #include <Accelerate/Accelerate.h>
 #endif
@@ -165,6 +168,7 @@ SimAnneal::~SimAnneal() {
   for (auto &worker : anneal_threads)
     if (worker.joinable())
       worker.join();
+  vblock_geometry_.reset();
   refinement_geometry_.reset();
   repair_geometry_.reset();
   AllChargeResults().swap(charge_results);
@@ -228,6 +232,7 @@ void SimAnneal::invokeSimAnneal()
       suggested_gs_results.assign(
           1, ChargeConfigResult(configuration, true, energy));
       stats_.singleton_used = true;
+      if (vblock_geometry_) runVblock({}, search_scope.finite);
       return;
     }
   }
@@ -245,6 +250,7 @@ void SimAnneal::invokeSimAnneal()
   energy_results.assign(sim_params.num_instances, ThreadEnergyResults());
   suggested_gs_results.assign(sim_params.num_instances, ChargeConfigResult());
   anneal_threads.clear();
+  std::vector<mv::Stats> mv_restart_stats(sim_params.mv.polish_mode ? sim_params.num_instances : 0);
   std::atomic<int> next_restart(0);
   std::atomic<bool> failed(false);
   std::exception_ptr failure;
@@ -256,6 +262,7 @@ void SimAnneal::invokeSimAnneal()
         if (id >= sim_params.num_instances) break;
         SimAnnealThread annealer(id, seeds[id], search_scope.finite);
         annealer.run();
+        if (sim_params.mv.polish_mode) mv_restart_stats[id] = annealer.mv_stats;
       }
     } catch (...) {
       std::lock_guard<std::mutex> lock(failure_mutex);
@@ -281,6 +288,60 @@ void SimAnneal::invokeSimAnneal()
   for (auto &th : anneal_threads) th.join();
   anneal_threads.clear();
   if (failure) std::rethrow_exception(failure);
+  for (const auto &restart : mv_restart_stats) stats_.mv.add(restart);
+  std::vector<int> vblock_touched;
+  if (sim_params.mv.polish_mode && sim_params.mv.polish_top > 0) {
+    // Post-run polish of the K lowest-energy distinct restart endpoints.
+    std::vector<int> order;
+    for (int i = 0; i < sim_params.num_instances; ++i)
+      if (suggested_gs_results[i].config.size() == static_cast<std::size_t>(sim_params.n_dbs)) order.push_back(i);
+    std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
+      const auto &x = suggested_gs_results[a], &y = suggested_gs_results[b];
+      if (x.pop_likely_stable != y.pop_likely_stable) return x.pop_likely_stable;
+      return x.system_energy < y.system_energy;
+    });
+    std::vector<int> chosen;
+    for (int i : order) {
+      bool dup = false;
+      for (int j : chosen) {
+        const auto &a = suggested_gs_results[i].config, &b = suggested_gs_results[j].config;
+        if (std::equal(a.begin(), a.end(), b.begin())) { dup = true; break; }
+      }
+      if (!dup) chosen.push_back(i);
+      if (static_cast<int>(chosen.size()) >= sim_params.mv.polish_top) break;
+    }
+    if (vblock_geometry_) vblock_touched = chosen;
+    std::vector<mv::Stats> polish_stats(chosen.size());
+    std::atomic<std::size_t> next_polish(0);
+    auto polisher = [&]() {
+      try {
+        for (std::size_t k; (k = next_polish.fetch_add(1)) < chosen.size();) {
+          SimAnnealThread worker(0, seeds[chosen[k]], search_scope.finite);
+          worker.mvPolish(suggested_gs_results[chosen[k]]);
+          polish_stats[k] = worker.mv_stats;
+        }
+      } catch (...) {
+        std::lock_guard<std::mutex> lock(failure_mutex);
+        if (!failure) failure = std::current_exception();
+      }
+    };
+    std::vector<std::thread> polish_threads;
+    const int pw = std::max(1, std::min<int>(sim_params.num_workers, chosen.size()));
+    try {
+      for (int i = 0; i < pw; ++i) polish_threads.emplace_back(polisher);
+    } catch (...) {
+      for (auto &th : polish_threads) if (th.joinable()) th.join();
+      throw;
+    }
+    for (auto &th : polish_threads) th.join();
+    if (failure) std::rethrow_exception(failure);
+    for (const auto &ps : polish_stats) stats_.mv.add(ps);
+  }
+  if (vblock_geometry_) {
+    if (sim_params.mv.polish_mode && sim_params.mv.polish_top == 0)
+      for (int i = 0; i < sim_params.num_instances; ++i) vblock_touched.push_back(i);
+    runVblock(vblock_touched, search_scope.finite);
+  }
   stats_.executed_restarts = sim_params.num_instances;
   for (const auto &candidate : suggested_gs_results) {
     stats_.repair_attempts += candidate.repair_attempted;
@@ -651,8 +712,7 @@ void SimAnneal::initialize()
   qualified_backend |= sp.population_backend == PopulationBackend::Accelerate;
 #endif
   // The short budget was qualified only for this physics and search configuration.
-  const bool qualified_configuration = sp.n_dbs >= 2 && sp.n_dbs <= 62 &&
-      sp.mu >= -.32 && sp.mu <= -.20 &&
+  const bool qualified_search_configuration = sp.n_dbs >= 2 && sp.n_dbs <= 62 &&
       constants::eta == .59 && zero_fields && qualified_backend &&
       sp.search_profile == SearchProfile::Optimized &&
       sp.random_backend == RandomBackend::PCG32 && sp.repair_enabled &&
@@ -801,7 +861,16 @@ void SimAnneal::initialize()
   const bool qualified_physics = (sp.eps_r == 5.6 && sp.debye_length == 5) ||
       (sp.eps_r >= 1 && sp.eps_r <= 10 && sp.debye_length >= 1 &&
        sp.debye_length <= 10 && excludes_positive);
-  const bool qualified = qualified_configuration && qualified_physics;
+  const bool qualified_configuration = qualified_search_configuration &&
+      sp.mu >= -.32 && sp.mu <= -.20;
+  // pk+ means at least one prepared site still permits positive charge.
+  // The new default requires untouched Auto budgets and the tested physics box.
+  sp.pkp_large_auto_selected = qualified_search_configuration && sp.n_dbs >= 36 &&
+      !excludes_positive && sp.mu >= -.5 && sp.mu <= -.1 &&
+      sp.eps_r >= 1 && sp.eps_r <= 10 && sp.debye_length >= 1 && sp.debye_length <= 10 &&
+      sp.anneal_cycles == AutoAnnealCycles && sp.num_instances == AutoInstances &&
+      sp.hop_attempt_factor == AutoHopAttempts;
+  const bool qualified = (qualified_configuration && qualified_physics) || sp.pkp_large_auto_selected;
   sp.budget_auto_selected = qualified &&
       (sp.anneal_cycles == AutoAnnealCycles || sp.num_instances == AutoInstances ||
        sp.hop_attempt_factor == AutoHopAttempts);
@@ -809,6 +878,19 @@ void SimAnneal::initialize()
   if (sp.hop_attempt_factor == AutoHopAttempts) sp.hop_attempt_factor = qualified ? 2 : 5;
   if (sp.num_instances == AutoInstances)
     sp.num_instances = qualified && sp.n_dbs <= 35 ? stock_instances / 2 : stock_instances;
+  if (sp.mv.polish_mode == -1) sp.mv.polish_mode = sp.pkp_large_auto_selected ? 3 : 0;
+  if (sp.mv.polish_top == -1) sp.mv.polish_top = sp.pkp_large_auto_selected ? 4 : 0;
+  if (sp.mv.vblock_k == -1) sp.mv.vblock_k = sp.pkp_large_auto_selected ? 8 : 0;
+  if (sp.mv.vblock_top == -1) sp.mv.vblock_top = sp.pkp_large_auto_selected ? 16 : 0;
+  sp.mv.validate();
+  sp.mv_knn.clear();
+  if (sp.mv.polish_mode >= 2) sp.mv_knn = mv::nearest(sp.db_r, sp.mv.knn);
+  if (sp.mv.vblock_k) {
+    const auto neighbours = sp.mv.vblock_graph == 1 && sp.mv_knn.empty()
+        ? mv::nearest(sp.db_r, sp.mv.knn) : sp.mv_knn;
+    vblock_geometry_.reset(new vblock::Geometry(sp.v_ij, sp.v_ext, sp.v_fc,
+                                              sp.mu, sp.mv, neighbours));
+  }
   // determine number of threads to run
   if (sp.num_instances == -1) {
     if (sp.n_dbs <= 9) {
@@ -1274,6 +1356,7 @@ void SimAnnealThread::anneal()
     valid_incumbent.repair_budget_exhausted = suggested_gs.repair_budget_exhausted;
     suggested_gs = std::move(valid_incumbent);
   }
+  if (sparams->mv.polish_mode && sparams->mv.polish_top == 0) mvPolish(suggested_gs);
   SimAnneal::storeResults(this, thread_id);
 }
 
@@ -1493,4 +1576,187 @@ bool SimAnnealThread::populationValid() const
     }
   }
   return true;
+}
+
+namespace phys {
+mv::State SimAnnealThread::mvState() {
+  mv::State st;
+  st.V = &sparams->v_ij; st.n = &n; st.v = &v_local; st.E = &E_sys;
+  st.mu = muzm; st.eta = constants::eta;
+  return st;
+}
+
+void SimAnnealThread::mvPolish(ChargeConfigResult &result) {
+  const auto &o = sparams->mv;
+  if (!o.polish_mode || result.config.size() != static_cast<std::size_t>(sparams->n_dbs)) return;
+  ++mv_stats.polish_restarts;
+  const int N = sparams->n_dbs;
+  auto reset = [&](const ublas::vector<int> &cfg) {
+    n = cfg;
+    E_sys = systemEnergy();
+    v_local = -(sparams->v_ext + sparams->v_fc) - ublas::prod(sparams->v_ij, n);
+  };
+  auto st = mvState();
+  reset(result.config);
+  const bool was_valid = result.pop_likely_stable && result.initialized;
+  FPType e0 = 0;
+  const bool start_valid = SimAnneal::validatedSearchEnergy(n, e0, search_finite_model_);
+  ublas::vector<int> best = n; FPType best_e = start_valid ? e0 : 0; bool best_valid = start_valid;
+  if (!start_valid || o.polish_mode >= 1) {
+    if (mv::relax(st, 20 * N + 20)) {
+      FPType e;
+      if (SimAnneal::validatedSearchEnergy(n, e, search_finite_model_) &&
+          (!best_valid || e < best_e - 1e-12)) {
+        if (!start_valid) ++mv_stats.polish_relax_fixed;
+        best = n; best_e = e; best_valid = true;
+      }
+    }
+  }
+  if (o.polish_mode >= 2 && best_valid) {
+    const auto &knn = sparams->mv_knn;
+    auto neighbours = [&](int i, std::vector<int> &out) {
+      out.clear();
+      if (!knn.empty()) { const int lim = std::min<int>(o.knn, knn[i].size()); out.assign(knn[i].begin(), knn[i].begin() + lim); }
+      else for (int j = 0; j < N; ++j) if (j != i) out.push_back(j);
+    };
+    std::vector<int> nb;
+    for (int round = 0; round < o.polish_rounds; ++round) {
+      reset(best);
+      const ublas::vector<int> base_n = n; const ublas::vector<FPType> base_v = v_local; const FPType base_E = E_sys;
+      bool improved = false;
+      std::vector<int> region; std::vector<char> in_region(N, 0);
+      auto trial = [&](const int *s, const int *d, int m) {
+        n = base_n; v_local = base_v; E_sys = base_E;
+        st.apply(s, d, m, st.dE(s, d, m));
+        ++mv_stats.polish_kick_evals;
+        // Local relax around the kicked sites, then one global relax only for
+        // promising candidates; final acceptance is the strict validator.
+        region.clear();
+        for (int a = 0; a < m; ++a) {
+          if (!in_region[s[a]]) { in_region[s[a]] = 1; region.push_back(s[a]); }
+          if (!knn.empty()) for (int j : knn[s[a]]) if (!in_region[j]) { in_region[j] = 1; region.push_back(j); }
+        }
+        for (int j : region) in_region[j] = 0;
+        if (!knn.empty()) mv::relax(st, 4 * static_cast<int>(region.size()) + 8, 1e-9, &region);
+        if (E_sys >= best_e - 1e-9) return false;
+        if (!mv::relax(st, 4 * N + 8)) return false;
+        if (E_sys >= best_e - 1e-9) return false;
+        FPType e;
+        if (!SimAnneal::validatedSearchEnergy(n, e, search_finite_model_) || e >= best_e - 1e-12) return false;
+        best = n; best_e = e; return true;
+      };
+      for (int i = 0; i < N && !improved; ++i) {
+        for (int t = -1; t <= 1 && !improved; ++t) {
+          if (t == base_n[i]) continue;
+          int s[1] = {i}, d[1] = {t - base_n[i]};
+          improved = trial(s, d, 1);
+        }
+        neighbours(i, nb);
+        for (std::size_t q = 0; q < nb.size() && !improved; ++q) {
+          const int j = nb[q];
+          int s[2] = {i, j};
+          if (base_n[i] < 1 && base_n[j] > -1) { int d[2] = {1, -1}; improved = trial(s, d, 2); }
+          if (improved || o.polish_mode < 3) continue;
+          if (base_n[i] == 0 && base_n[j] == 0) {
+            int d1[2] = {-1, 1}; improved = trial(s, d1, 2);
+            if (!improved) { int d2[2] = {1, -1}; improved = trial(s, d2, 2); }
+          } else if (base_n[i] != 0 && base_n[j] == -base_n[i]) {
+            int d1[2] = {-base_n[i], -base_n[j]}; improved = trial(s, d1, 2);
+            if (!improved) { int d2[2] = {-2 * base_n[i], -2 * base_n[j]}; improved = trial(s, d2, 2); }
+          }
+        }
+      }
+      if (!improved) break;
+    }
+  }
+  if (best_valid && (!was_valid || !start_valid || best_e < e0 - 1e-12)) {
+    if (start_valid && best_e < e0 - 1e-12) { ++mv_stats.polish_improved; mv_stats.polish_delta_e += best_e - e0; }
+    const bool ra = result.repair_attempted, rb = result.repair_budget_exhausted;
+    result = ChargeConfigResult(best, true, best_e);
+    result.repair_attempted = ra; result.repair_budget_exhausted = rb;
+  }
+}
+
+} // namespace phys
+
+// Run serially after workers join: one shared table cache and invocation budget.
+void SimAnneal::runVblock(const std::vector<int> &touched, bool finite) {
+  const auto &o = sim_params.mv;
+  auto &stats = stats_.mv;
+  vblock::Budget budget(o);
+  std::map<vblock::Charges, vblock::Descent> memo;
+  vblock::Memo suffix_memo;
+  const bool cache_suffix = o.vblock_cache && !o.vblock_max_blocks && !o.vblock_max_ms;
+  std::ofstream trace;
+  if (const char *path = std::getenv("SIMANNEAL_VBLOCK_TRACE")) {
+    if (*path) {
+      trace.open(path, std::ios::app);
+      if (!trace) throw std::runtime_error("Cannot open SIMANNEAL_VBLOCK_TRACE");
+      trace << std::setprecision(17);
+    }
+  }
+  std::vector<int> eligible = touched;
+  if (o.vblock_scope == 1) {
+    eligible.clear();
+    for (std::size_t i = 0; i < suggested_gs_results.size(); ++i) eligible.push_back(i);
+  }
+  if (o.vblock_top) {
+    std::vector<std::pair<FPType,int>> ranked;
+    std::set<vblock::Charges> seen;
+    for (int id : eligible) {
+      const auto &result = suggested_gs_results[id];
+      if (!result.initialized || result.config.size() != static_cast<std::size_t>(sim_params.n_dbs)) continue;
+      const vblock::Charges q(result.config.begin(),result.config.end());
+      if (!seen.insert(q).second || !vblock_geometry_->valid(q,vblock_geometry_->fields(q))) continue;
+      const FPType e = systemEnergy(result.config);
+      if (std::isfinite(e)) ranked.emplace_back(e,id);
+    }
+    // Freeze selection before any descent: energy, then restart ID for exact ties.
+    std::sort(ranked.begin(),ranked.end());
+    if (ranked.size() > static_cast<std::size_t>(o.vblock_top)) ranked.resize(o.vblock_top);
+    eligible.clear();
+    for (const auto &entry : ranked) eligible.push_back(entry.second);
+  }
+  for (int id : eligible) {
+    if (budget.expired()) break;
+    auto &result = suggested_gs_results[id];
+    if (!result.initialized || result.config.size() != static_cast<std::size_t>(sim_params.n_dbs)) continue;
+    const vblock::Charges pre(result.config.begin(),result.config.end());
+    if (!vblock_geometry_->valid(pre,vblock_geometry_->fields(pre))) continue;
+    const FPType e_pre = systemEnergy(result.config);
+    ++stats.vblock_endpoints;
+    const auto cached = memo.find(pre);
+    auto descent = cached == memo.end() ? vblock_geometry_->descend(pre,budget,cache_suffix ? &suffix_memo : nullptr) : cached->second;
+    ublas::vector<int> post(descent.q.size());
+    std::copy(descent.q.begin(),descent.q.end(),post.begin());
+    FPType e_post;
+    if (!validatedSearchEnergy(post,e_post,finite) ||
+        (descent.q != pre && e_post >= e_pre-vblock::EPS*.5) ||
+        !vblock_geometry_->valid(descent.q,vblock_geometry_->fields(descent.q))) {
+      ++stats.vblock_reverts;
+      descent = vblock::Descent(pre); post = result.config; e_post = e_pre;
+    }
+    if (!budget.hit && cached == memo.end()) memo.emplace(pre,descent);
+    if (e_post < e_pre-vblock::EPS) {
+      ++stats.vblock_improved; stats.vblock_delta_e += e_post-e_pre;
+      stats.vblock_moves += descent.moves;
+      result.config = post; result.system_energy = e_post;
+      result.pop_likely_stable = true;
+    }
+    if (trace.is_open()) {
+      auto array = [&](const vblock::Charges &q) {
+        trace << '[';
+        for (std::size_t j = 0; j < q.size(); ++j) { if (j) trace << ','; trace << q[j]; }
+        trace << ']';
+      };
+      trace << "{\"restart\":" << id << ",\"pre\":"; array(pre);
+      trace << ",\"post\":"; array(descent.q);
+      trace << ",\"e_pre\":" << e_pre << ",\"e_post\":" << e_post
+            << ",\"moves\":" << descent.moves << "}\n";
+    }
+    if (budget.hit) break;
+  }
+  if (trace.is_open()) { trace.flush(); if (!trace) throw std::runtime_error("Cannot write vblock trace"); }
+  stats.vblock_guard_hits += budget.hit;
+  stats.vblock_ms += budget.ms();
 }

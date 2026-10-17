@@ -31,6 +31,9 @@ struct Observation {
   int rng = 0, backend = 0, refinement = 0, candidates = 0, rounds = 0;
   int blas_threads = 0;
   phys::SearchStats stats;
+  phys::mv::Options mv;
+  bool pkp_large_auto_selected = false;
+  int positive_sites = 0;
 };
 
 double milliseconds(Clock::time_point a, Clock::time_point b) {
@@ -134,9 +137,18 @@ Observation execute(const Tree &request) {
     options.candidates = request.get<int>("refinement_candidates");
     options.rounds = request.get<int>("refinement_rounds");
     options.trials = 1;
+    params.mv.polish_mode = request.get<int>("mv_polish_mode", -1);
+    params.mv.polish_top = request.get<int>("mv_polish_top", -1);
+    params.mv.vblock_k = request.get<int>("mv_vblock_k", -1);
+    params.mv.vblock_scope = request.get<int>("mv_vblock_scope", 1);
+    params.mv.vblock_top = request.get<int>("mv_vblock_top", -1);
+    params.mv.vblock_cache = request.get<bool>("mv_vblock_cache", true);
 
     phys::SimAnneal solver(std::move(params));
     const auto &effective = solver.effectiveParams();
+    observation.mv = effective.mv;
+    observation.pkp_large_auto_selected = effective.pkp_large_auto_selected;
+    for (unsigned char domain : effective.final_domains) observation.positive_sites += (domain & 4) != 0;
     observation.restarts = effective.num_instances;
     observation.workers = effective.num_workers;
     observation.cycles = effective.anneal_cycles;
@@ -234,7 +246,19 @@ void write(const Tree &request, const Observation &row) {
             << ",\"refinement_geometry_bytes\":"
             << row.stats.refinement.geometry_bytes
             << ",\"refinement_dedup_bytes\":"
-            << row.stats.refinement.dedup_bytes << "}\n";
+            << row.stats.refinement.dedup_bytes
+            << ",\"pkp_large_auto_selected\":" << row.pkp_large_auto_selected
+            << ",\"positive_sites\":" << row.positive_sites
+            << ",\"mv_polish_mode\":" << row.mv.polish_mode
+            << ",\"mv_polish_top\":" << row.mv.polish_top
+            << ",\"polish_restarts\":" << row.stats.mv.polish_restarts
+            << ",\"mv_vblock_k\":" << row.mv.vblock_k
+            << ",\"mv_vblock_scope\":" << row.mv.vblock_scope
+            << ",\"mv_vblock_top\":" << row.mv.vblock_top
+            << ",\"mv_vblock_cache\":" << row.mv.vblock_cache
+            << ",\"vblock_endpoints\":" << row.stats.mv.vblock_endpoints
+            << ",\"vblock_improved\":" << row.stats.mv.vblock_improved
+            << ",\"vblock_reverts\":" << row.stats.mv.vblock_reverts << "}\n";
 }
 } // namespace
 

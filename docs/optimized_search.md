@@ -20,6 +20,12 @@ Set these parameters in the input XML `<sim_params>` section. SiQAD exposes the 
 | `refinement_candidates` | `8` | Refine at most this many distinct, lowest-energy valid candidates. |
 | `refinement_rounds` | `1` | Bound sequential rounds per candidate. More rounds do not guarantee lower time to solution. |
 | `refinement_trials` | `1` | Bound the number of lower-energy cluster proposals repaired per round. |
+| `mv_polish_mode` | `-1` (Auto) | Auto selects 3 for qualified pk+ layouts with 36-62 sites, otherwise 0. Explicit 0 disables polish. Modes 1-3 add relaxation and progressively broader kicks. |
+| `mv_polish_top` | `-1` (Auto) | Auto selects 4 in that band, otherwise 0. Explicit 0 polishes all restarts. Positive values limit distinct endpoints. |
+| `mv_vblock_k` | `-1` (Auto) | Auto selects 8 in that band, otherwise 0. Explicit sizes are 0 (off), 6, 8, or 10. |
+| `mv_vblock_scope` | `1` | Select all restart endpoints, or 0 for endpoints selected by polish. |
+| `mv_vblock_top` | `-1` (Auto) | Auto selects 16 in that band, otherwise 0. Explicit 0 removes the endpoint guard. |
+| `mv_vblock_cache` | `true` | Defaults ON when vblock is enabled. Memoize exact charge and field suffixes within one invocation. |
 | `population_backend` | `auto` | Existing portable/Accelerate selection, or explicit `openblas`/`openblas_symmetric`. |
 
 For an initial refinement experiment, use `refinement=k6`. Compare K10 and shared refinement at the same target and complete-job timing boundary. Tune schedule lengths separately if needed. No profile is selected automatically from a filename or site count.
@@ -45,7 +51,7 @@ Existing saved projects with numeric budgets retain those values. In particular,
 Each budget resolves independently. Every explicit positive count and nonnegative hop factor remains unchanged, including 10,000 cycles and zero hops.
 Mixed explicit/Auto budgets are supported, but their performance is not established by the coupled-budget measurements.
 
-The short budget activates only for 2–62 sites, `-0.32 <= mu <= -0.20 eV`, and zero external and fixed-charge potential at every site.
+The existing short budget activates for 2–62 sites, `-0.32 <= mu <= -0.20 eV`, and zero external and fixed-charge potential at every site.
 At `eps_r=5.6` and screening length 5 nm, both pre-simulation charge classes qualify.
 Otherwise, `1 <= eps_r <= 10` and screening length 1–10 nm qualify only when preparation excludes positive charge at every site.
 This proof uses the existing all-other-sites-negative bound and model tolerances. It does not inspect simulated outcomes or remove transient charge states.
@@ -54,6 +60,17 @@ History, refinement, transient masking, and the probability cache must remain di
 Auto numerical selection qualifies when it selects portable or Accelerate arithmetic. OpenBLAS retains the historical budget unless budgets are explicitly supplied.
 Native default physics (`mu=-0.25 eV`, `eps_r=5.6`, screening length 5 nm) qualifies. No density rule widens the scope.
 Qualification sampled eight chemical potentials across the interval. It does not guarantee ground-state discovery at every intermediate value.
+
+An additional Auto default covers positive-charge-possible (pk+) layouts with 36-62 sites.
+It uses 512 cycles, 128 restarts, hop factor 2, then mode-3 polish of four distinct endpoints and valid-block cleanup with k=8.
+The cleanup guard selects the 16 lowest-energy distinct valid endpoints after polish. The suffix cache defaults ON when vblock is enabled.
+The default requires all three budgets to be Auto, the standard search settings above, zero fields, `-0.5 <= mu <= -0.1`, and permittivity/screening in [1,10].
+Pk+ means at least one prepared `final_domains` mask retains positive-charge bit 4. This conservative bound does not assert that an observed result contains positive charge.
+Nominal pk+ layouts also qualify. Positive-excluded layouts and sizes outside 36-62 retain existing behavior.
+Each explicit cleanup field overrides its Auto choice independently. Any literal budget field suppresses the new default and preserves existing resolution of other Auto budgets.
+For exact pre-PR2b behavior, use a literal budget field and leave cleanup absent or set `mv_polish_mode=0,mv_vblock_k=0`.
+For example, 10,000 literal cycles preserve the old resolution of remaining Auto fields. Disabling cleanup alone retains the new Auto budget.
+XML metadata reports effective cleanup settings and `pkp_large_auto_selected`. In Python, use `params.mv.polish_mode`, `params.mv.polish_top`, and corresponding `vblock_*` fields.
 
 Before initialization, these fields contain requests rather than effective counts. Use `effectiveParams()` to read resolved counts and the `requested_*` fields.
 XML exports the three request values, effective counts, and `search_budget`. The existing `requested_restarts` metadata continues to report the effective restart budget.
@@ -66,11 +83,11 @@ Each accepted repair/refinement result passes the common full population and ord
 Repair permits at most eight population passes and four times the site count in downhill hops. A capped stage retains a validated incumbent. Budget exhaustion does not mean that the incumbent is invalid or globally optimal.
 The optimized profile also retains the lowest strict-valid state visited at cycle boundaries when repair is enabled. Final repair can still explore the original tentative candidate. Export selects the lower valid result without changing actual repair status flags.
 
-Geometry caches belong to the solver job. The persistent cluster-cache limit is 8 MiB per geometry and 16 MiB for the shared pair. It counts reserved cluster headers and pattern payload. Geometry/engine owner objects and temporary scratch are outside that accounting. Deduplication has a separate 8 MiB limit. These bounds do not cap allocator overhead, model matrices, or parallel scratch storage.
+Geometry caches belong to the solver job. The existing refinement cache limit is 8 MiB per geometry and 16 MiB for the shared pair. It counts reserved cluster headers and pattern payload. Geometry/engine owner objects and temporary scratch are outside that accounting. Deduplication has a separate 8 MiB limit. These bounds do not cap allocator overhead, model matrices, or parallel scratch storage. Vblock uses separate lazy block tables and invocation-local suffix caches without this memory cap.
 
 One live `SimAnneal` object owns the active model. Keep that object alive while reading or exporting its results. A second live object is rejected. Independent concurrent jobs still require separate processes. Internal workers share one immutable model. The static compatibility API must not be mutated during a job.
 
-XML metadata reports the effective profile, RNG, numerical backend, executed restarts, singleton use, and repair/refinement budget status. A singleton result executes zero restarts. Ordinary restart records remain intact. A strictly better refinement result is an additional exported record. Occurrence counts count exported records, including history when enabled; they are not target-hit probabilities.
+XML metadata reports the effective profile, RNG, numerical backend, executed restarts, singleton use, and repair/refinement budget status. A singleton result executes zero restarts. End polish and vblock can replace restart endpoints. Existing cluster refinement retains those endpoints and adds a strictly better result as another exported record. Occurrence counts count exported records, including history when enabled; they are not target-hit probabilities.
 
 Tidy export deduplicates initialized records before full validation. It retains the first record metadata and original order, then recalculates valid energies.
 Export can validate candidates in parallel with at least 128 sites and four million estimated pair operations across unique records.

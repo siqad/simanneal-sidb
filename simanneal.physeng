@@ -115,6 +115,30 @@ interpreter, bin_path, command
             <tip>Exclude charges ruled out for final states during annealing too. This changes search paths and can help or harm convergence.</tip>
             <value_selection type="CheckBox"></value_selection>
         </transient_domain_mask>
+        <mv_polish_mode>
+            <T>int</T><val>-1</val><label>End polish mode</label>
+            <tip>-1 selects mode 3 for qualified pk+ n36-62 Auto runs, otherwise off. 0 disables polish, 1 relaxes, 2 adds single and hop kicks, 3 adds pair and swap kicks.</tip>
+        </mv_polish_mode>
+        <mv_polish_top>
+            <T>int</T><val>-1</val><label>End polish candidates</label>
+            <tip>-1 selects 4 for qualified pk+ n36-62 Auto runs, otherwise 0. 0 polishes every restart. A positive value limits distinct endpoints.</tip>
+        </mv_polish_top>
+        <mv_vblock_k>
+            <T>int</T><val>-1</val><label>Valid block size</label>
+            <tip>-1 selects 8 for qualified pk+ n36-62 Auto runs, otherwise off. 0 disables cleanup. Explicit sizes are 6, 8, and 10.</tip>
+        </mv_vblock_k>
+        <mv_vblock_scope>
+            <T>int</T><val>1</val><label>Valid block scope</label>
+            <tip>0 selects polished endpoints. 1 selects all restart endpoints before the top guard.</tip>
+        </mv_vblock_scope>
+        <mv_vblock_top>
+            <T>int</T><val>-1</val><label>Valid block candidates</label>
+            <tip>-1 selects 16 for qualified pk+ n36-62 Auto runs, otherwise 0. 0 removes the guard. Positive values limit distinct valid endpoints by energy.</tip>
+        </mv_vblock_top>
+        <mv_vblock_cache>
+            <T>bool</T><val>true</val><label>Valid block suffix cache</label>
+            <tip>Defaults ON when valid block cleanup is enabled. Exact charge and field keys preserve results.</tip>
+        </mv_vblock_cache>
         <refinement>
             <T>string</T><val>none</val><label>Local refinement</label>
             <tip>none, k6, k10, or shared. shared refines the same candidates using fixed and shifted ten-site clusters.</tip>

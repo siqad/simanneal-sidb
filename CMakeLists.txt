@@ -186,6 +186,7 @@ else()
         tests/parameter_storage.test.cc
         tests/kernel_defaults.test.cc
         tests/auto_budget.test.cc
+        tests/mv_cleanup.test.cc
 
         # HEADERS
         libs/catch2/catch.hpp
