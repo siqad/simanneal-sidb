@@ -161,6 +161,7 @@ namespace phys {
     int requested_hop_attempt_factor=AutoHopAttempts;
     bool budget_auto_selected=false;
     bool pkp_large_auto_selected=false;
+    bool pkm_auto_selected=false;
 
     // Experimental target selection. Uniform preserves the original RNG path.
     HopSelection hop_selection=UniformHop;

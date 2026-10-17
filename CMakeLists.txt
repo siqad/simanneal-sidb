@@ -242,6 +242,9 @@ else()
         add_test(NAME simanneal_cli_tests
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/cli_integration.py
                     $<TARGET_FILE:simanneal> ${CMAKE_CURRENT_SOURCE_DIR})
+        add_test(NAME simanneal_pkm_auto_budget_tests
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/pkm_auto_budget.py
+                    $<TARGET_FILE:simanneal> ${CMAKE_CURRENT_SOURCE_DIR})
         # add_custom_command(
         #     TARGET simanneal_tests
         #     POST_BUILD

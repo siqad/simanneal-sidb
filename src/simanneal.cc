@@ -870,10 +870,26 @@ void SimAnneal::initialize()
       sp.eps_r >= 1 && sp.eps_r <= 10 && sp.debye_length >= 1 && sp.debye_length <= 10 &&
       sp.anneal_cycles == AutoAnnealCycles && sp.num_instances == AutoInstances &&
       sp.hop_attempt_factor == AutoHopAttempts;
-  const bool qualified = (qualified_configuration && qualified_physics) || sp.pkp_large_auto_selected;
+  // pk- means every prepared site excludes positive charge. With all three
+  // budgets Auto inside the tested physics box, pk- never takes the 10,000-cycle
+  // fallback: 2-9 sites use the qualified tiers and 10-62 sites use SC2s.
+  sp.pkm_auto_selected = qualified_search_configuration && excludes_positive &&
+      sp.mu >= -.5 && sp.mu <= -.1 &&
+      sp.eps_r >= 1 && sp.eps_r <= 10 && sp.debye_length >= 1 && sp.debye_length <= 10 &&
+      sp.anneal_cycles == AutoAnnealCycles && sp.num_instances == AutoInstances &&
+      sp.hop_attempt_factor == AutoHopAttempts;
+  const bool qualified = (qualified_configuration && qualified_physics) ||
+      sp.pkp_large_auto_selected || sp.pkm_auto_selected;
   sp.budget_auto_selected = qualified &&
       (sp.anneal_cycles == AutoAnnealCycles || sp.num_instances == AutoInstances ||
        sp.hop_attempt_factor == AutoHopAttempts);
+  if (sp.pkm_auto_selected && sp.n_dbs >= 10) {
+    // SC2s: cycles 2^round(6.5 + 0.375 n/8), restarts 2^round(0.5 + 1.25 log2 n),
+    // hop factor 1, written as the integer breakpoints of that frozen form.
+    sp.anneal_cycles = sp.n_dbs <= 21 ? 128 : sp.n_dbs <= 42 ? 256 : 512;
+    sp.num_instances = sp.n_dbs <= 15 ? 32 : sp.n_dbs <= 27 ? 64 : sp.n_dbs <= 48 ? 128 : 256;
+    sp.hop_attempt_factor = 1;
+  }
   if (sp.anneal_cycles == AutoAnnealCycles) sp.anneal_cycles = qualified ? (sp.n_dbs <= 35 ? 256 : 512) : 10000;
   if (sp.hop_attempt_factor == AutoHopAttempts) sp.hop_attempt_factor = qualified ? 2 : 5;
   if (sp.num_instances == AutoInstances)

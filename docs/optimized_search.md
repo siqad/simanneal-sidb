@@ -72,6 +72,20 @@ For exact pre-PR2b behavior, use a literal budget field and leave cleanup absent
 For example, 10,000 literal cycles preserve the old resolution of remaining Auto fields. Disabling cleanup alone retains the new Auto budget.
 XML metadata reports effective cleanup settings and `pkp_large_auto_selected`. In Python, use `params.mv.polish_mode`, `params.mv.polish_top`, and corresponding `vblock_*` fields.
 
+A further Auto default covers positive-excluded (pk-) layouts: every prepared `final_domains` mask lacks positive-charge bit 4.
+It applies when all three budgets are Auto, the standard search settings above hold, fields are zero, `-0.5 <= mu <= -0.1`, permittivity/screening are in [1,10], and the layout has 2-62 sites. Such layouts never take the 10,000-cycle fallback.
+At 2-9 sites they use the qualified tiers (256 cycles, 8 restarts, hop factor 2). At 10-62 sites they use SC2s, one smooth size rule with hop factor 1:
+
+| Sites | 10-15 | 16-21 | 22-27 | 28-42 | 43-48 | 49-62 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Cycles | 128 | 128 | 256 | 256 | 512 | 512 |
+| Restarts | 32 | 64 | 64 | 128 | 128 | 256 |
+
+SC2s is cycles `2^round(6.5 + 0.375 n/8)` and restarts `2^round(0.5 + 1.25 log2 n)`, from the frozen policy file `tests/data/PART6_pkm_policies.json`; `tests/pkm_auto_budget.py` checks Auto against that file at every size.
+On a pre-registered held-out test (600 pk- layouts, 10-60 sites, 3 seeds) its penalized time-to-solution was 0.754x the qualified tiers on Trillium and 0.767x on Nibi, with no zero-hit layouts; the gain comes from 36-62 sites.
+**Known slowdown: at 10-25 sites SC2s is about 1.38x slower than the qualified tiers on Trillium (95% CI 1.22-1.56); on Nibi that band is 0.995x.** This trade-off was accepted for the default. 2-9 sites were not part of that test.
+Any literal budget field suppresses this default and preserves the previous resolution of the other Auto fields. Positive-possible layouts are unaffected. XML metadata reports `pkm_auto_selected`.
+
 Before initialization, these fields contain requests rather than effective counts. Use `effectiveParams()` to read resolved counts and the `requested_*` fields.
 XML exports the three request values, effective counts, and `search_budget`. The existing `requested_restarts` metadata continues to report the effective restart budget.
 See [Auto budget qualification](../benchmarks/production_tts/AUTO_BUDGET.md) for measurements and limitations.
