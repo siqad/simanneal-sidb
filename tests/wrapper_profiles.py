@@ -138,9 +138,11 @@ for count in [35, 36, 62, 63]:
         sp.num_workers = 1
         model = sa.SimAnneal(sp)
         effective = model.effectiveParams()
-        expected = (256, 64, 2) if count == 35 else (512, 128, 2) if count <= 62 else (10000, 128, 5)
+        # Separated sites exclude positive charge, so 10-62 sites use SC2s.
+        expected = {35: (256, 128, 1), 36: (256, 128, 1), 62: (512, 256, 1)}.get(count, (10000, 128, 5))
         assert (effective.anneal_cycles, effective.num_instances, effective.hop_attempt_factor) == expected
         assert effective.budget_auto_selected == (count <= 62)
+        assert effective.pkm_auto_selected == (count <= 62)
         assert effective.requested_instances == -2
         del effective, model
         gc.collect()

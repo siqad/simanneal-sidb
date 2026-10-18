@@ -1,5 +1,6 @@
 #include "tests/catch2_wrapper.hpp"
 #include "src/simanneal.h"
+#include <algorithm>
 #include <functional>
 #include <cmath>
 
@@ -77,7 +78,12 @@ TEST_CASE("Scoped Auto budgets cover the qualified mu range and numerical backen
     }
     for (double mu:{-.33,-.19,std::nextafter(-.32,-1.),std::nextafter(-.20,0.)}) {
         auto p=scoped(); p.mu=mu;
-        budget(p,10000,16,5,false);
+        // Outside the nominal mu range only positive-excluded (pk-) layouts keep
+        // an Auto budget; 2-9 pk- sites retain the qualified tiers.
+        const auto domains=phys::SimAnneal(p).effectiveParams().final_domains;
+        const bool pkm=std::none_of(domains.begin(),domains.end(),[](unsigned char d){return (d&4)!=0;});
+        INFO("mu=" << mu << " pkm=" << pkm);
+        budget(p,pkm ? 256 : 10000,pkm ? 8 : 16,pkm ? 2 : 5,pkm);
     }
 }
 
@@ -287,4 +293,108 @@ TEST_CASE("Large positive-possible Auto stays within the measured physics box") 
         phys::SimAnneal solver(p);
         REQUIRE(solver.effectiveParams().pkp_large_auto_selected);
     }
+}
+
+namespace {
+phys::SimParams separated(int count) {
+    auto p=scoped(count);
+    for (int i=0;i<count;++i) p.db_locs[i].first=i*10000.;  // every site excludes positive charge
+    return p;
+}
+}
+
+TEST_CASE("Positive-excluded Auto uses SC2s at 10-62 sites and qualified tiers below") {
+    for (double mu:{-.5,-.32,-.25,-.1}) for (double eps:{1.,5.6,10.}) for (double screening:{1.,5.,10.}) {
+        for (int count=1;count<=63;++count) {
+            auto p=separated(count); p.mu=mu; p.eps_r=eps; p.debye_length=screening;
+            INFO("count=" << count << " mu=" << mu << " eps=" << eps << " screening=" << screening);
+            phys::SimAnneal solver(p); const auto &e=solver.effectiveParams();
+            const bool selected=count>=2 && count<=62;
+            REQUIRE(e.pkm_auto_selected==selected);
+            REQUIRE_FALSE(e.pkp_large_auto_selected);
+            REQUIRE(e.budget_auto_selected==selected);
+            const int stock=count<=9 ? 16 : count<=25 ? 32 : 128;
+            if (!selected) {
+                REQUIRE(e.anneal_cycles==10000); REQUIRE(e.num_instances==stock); REQUIRE(e.hop_attempt_factor==5);
+            } else if (count<=9) {
+                REQUIRE(e.anneal_cycles==256); REQUIRE(e.num_instances==8); REQUIRE(e.hop_attempt_factor==2);
+            } else {
+                REQUIRE(e.anneal_cycles==(count<=21 ? 128 : count<=42 ? 256 : 512));
+                REQUIRE(e.num_instances==(count<=15 ? 32 : count<=27 ? 64 : count<=48 ? 128 : 256));
+                REQUIRE(e.hop_attempt_factor==1);
+            }
+            REQUIRE(e.mv.polish_mode==0); REQUIRE(e.mv.vblock_k==0);
+        }
+    }
+}
+
+TEST_CASE("Positive-excluded SC2s requires all budgets Auto and the measured physics box") {
+    // Any literal budget field keeps the pre-SC2s resolution of the other fields.
+    for (int field:{0,1,2}) {
+        auto p=separated(40);
+        if (field==0) p.anneal_cycles=512;
+        if (field==1) p.num_instances=128;
+        if (field==2) p.hop_attempt_factor=2;
+        phys::SimAnneal solver(p); const auto &e=solver.effectiveParams();
+        REQUIRE_FALSE(e.pkm_auto_selected);
+        REQUIRE(e.anneal_cycles==512); REQUIRE(e.num_instances==128); REQUIRE(e.hop_attempt_factor==2);
+    }
+    {
+        auto p=separated(40); p.mu=-.4; p.anneal_cycles=512;  // outside nominal mu: old fallback for remaining fields
+        phys::SimAnneal solver(p); const auto &e=solver.effectiveParams();
+        REQUIRE_FALSE(e.pkm_auto_selected);
+        REQUIRE(e.anneal_cycles==512); REQUIRE(e.num_instances==128); REQUIRE(e.hop_attempt_factor==5);
+    }
+    const std::vector<std::function<void(phys::SimParams &)>> outside={
+        [](phys::SimParams &p){p.mu=std::nextafter(-.5,-1.);},
+        [](phys::SimParams &p){p.mu=std::nextafter(-.1,0.);},
+        [](phys::SimParams &p){p.eps_r=std::nextafter(1.,0.);},
+        [](phys::SimParams &p){p.eps_r=std::nextafter(10.,11.);},
+        [](phys::SimParams &p){p.debye_length=std::nextafter(1.,0.);},
+        [](phys::SimParams &p){p.debye_length=std::nextafter(10.,11.);},
+        [](phys::SimParams &p){p.T_init=501;},
+        [](phys::SimParams &p){p.v_ext[0]=.01;}
+    };
+    for (std::size_t i=0;i<outside.size();++i) {
+        INFO("outside condition=" << i);
+        auto p=separated(40); outside[i](p);
+        phys::SimAnneal solver(p); const auto &e=solver.effectiveParams();
+        REQUIRE_FALSE(e.pkm_auto_selected);
+        REQUIRE(e.anneal_cycles==10000); REQUIRE(e.num_instances==128); REQUIRE(e.hop_attempt_factor==5);
+    }
+}
+
+TEST_CASE("Positive-excluded SC2s Auto matches explicit seeded execution") {
+    int compared=0;
+    for (int count:{10,22,28,43,49,62}) {
+        // Smallest grid pitch whose layout is still positive-excluded, so sites interact.
+        phys::SimParams p;
+        bool found=false;
+        for (double pitch:{12.,16.,20.,25.,30.,40.,50.,60.,80.}) {
+            p=separated(count); p.mu=-.4; p.eps_r=3; p.debye_length=8;
+            for (int i=0;i<count;++i) p.db_locs[i]=std::make_pair((i%8)*pitch,(i/8)*pitch);
+            if (phys::SimAnneal(p).effectiveParams().pkm_auto_selected) {found=true; break;}
+        }
+        if (!found) continue;
+        p.deterministic_seed=true; p.random_seed=731;
+        phys::SuggestedResults expected;
+        int cycles, restarts;
+        {
+            phys::SimAnneal model(p); const auto &e=model.effectiveParams();
+            cycles=e.anneal_cycles; restarts=e.num_instances;
+            REQUIRE(e.hop_attempt_factor==1);
+            model.invokeSimAnneal(); expected=model.suggestedResults();
+        }
+        p.anneal_cycles=cycles; p.num_instances=restarts; p.hop_attempt_factor=1;
+        ++compared;
+        phys::SimAnneal model(p); model.invokeSimAnneal();
+        const auto &actual=model.suggestedResults();
+        REQUIRE(actual.size()==expected.size());
+        for (std::size_t i=0;i<actual.size();++i) {
+            REQUIRE(phys::SimAnneal::configToStr(actual[i].config)==phys::SimAnneal::configToStr(expected[i].config));
+            REQUIRE(actual[i].system_energy==expected[i].system_energy);
+        }
+    }
+    INFO("compared=" << compared);
+    REQUIRE(compared==6);
 }

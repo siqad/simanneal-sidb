@@ -33,6 +33,7 @@ struct Observation {
   phys::SearchStats stats;
   phys::mv::Options mv;
   bool pkp_large_auto_selected = false;
+  bool pkm_auto_selected = false;
   int positive_sites = 0;
 };
 
@@ -148,6 +149,7 @@ Observation execute(const Tree &request) {
     const auto &effective = solver.effectiveParams();
     observation.mv = effective.mv;
     observation.pkp_large_auto_selected = effective.pkp_large_auto_selected;
+    observation.pkm_auto_selected = effective.pkm_auto_selected;
     for (unsigned char domain : effective.final_domains) observation.positive_sites += (domain & 4) != 0;
     observation.restarts = effective.num_instances;
     observation.workers = effective.num_workers;
@@ -248,6 +250,7 @@ void write(const Tree &request, const Observation &row) {
             << ",\"refinement_dedup_bytes\":"
             << row.stats.refinement.dedup_bytes
             << ",\"pkp_large_auto_selected\":" << row.pkp_large_auto_selected
+            << ",\"pkm_auto_selected\":" << row.pkm_auto_selected
             << ",\"positive_sites\":" << row.positive_sites
             << ",\"mv_polish_mode\":" << row.mv.polish_mode
             << ",\"mv_polish_top\":" << row.mv.polish_top
