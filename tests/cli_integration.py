@@ -129,8 +129,13 @@ with tempfile.TemporaryDirectory() as directory:
         assert cleanup.findtext('misc/mv_vblock_scope') == '1'
         assert cleanup.findtext('misc/mv_vblock_top') == '16'
         assert cleanup.findtext('misc/mv_vblock_cache') == 'false'
+    for dual in [0, 1]:
+        cleanup = run(dict(mv_polish_mode=3, mv_polish_top=4, mv_vblock_k=8, mv_vblock_dual=dual))
+        assert cleanup.findtext('misc/mv_vblock_dual') == str(dual)
+        assert any(x.get('physically_valid') == '1' for x in cleanup.findall('.//dist'))
     for key, value in [('mv_polish_mode',4), ('mv_polish_top',-2), ('mv_vblock_k',12),
-                       ('mv_vblock_scope',2), ('mv_vblock_top',-2), ('mv_vblock_cache','perhaps')]:
+                       ('mv_vblock_scope',2), ('mv_vblock_top',-2), ('mv_vblock_cache','perhaps'),
+                       ('mv_vblock_dual',2)]:
         run({key:value}, succeeds=False)
     singleton = run({}, singleton=True)
     assert singleton.findtext('misc/executed_restarts') == '0'

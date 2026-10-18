@@ -135,6 +135,10 @@ interpreter, bin_path, command
             <T>int</T><val>-1</val><label>Valid block candidates</label>
             <tip>-1 selects 16 for qualified pk+ n36-62 Auto runs, otherwise 0. 0 removes the guard. Positive values limit distinct valid endpoints by energy.</tip>
         </mv_vblock_top>
+        <mv_vblock_dual>
+            <T>int</T><val>-1</val><label>Dual valid block cleanup</label>
+            <tip>-1 selects 1 for qualified pk+ n36-62 Auto runs that use k=8 cleanup, otherwise 0. 1 also descends with 12-site blocks and keeps the lower-energy valid result. Requires k=8.</tip>
+        </mv_vblock_dual>
         <mv_vblock_cache>
             <T>bool</T><val>true</val><label>Valid block suffix cache</label>
             <tip>Defaults ON when valid block cleanup is enabled. Exact charge and field keys preserve results.</tip>

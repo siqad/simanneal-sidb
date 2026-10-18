@@ -239,6 +239,7 @@ SimParams SimAnnealInterface::loadSimParams()
   integer("mv_vblock_k", sp.mv.vblock_k);
   integer("mv_vblock_scope", sp.mv.vblock_scope);
   integer("mv_vblock_top", sp.mv.vblock_top);
+  integer("mv_vblock_dual", sp.mv.vblock_dual);
   boolean("mv_vblock_cache", sp.mv.vblock_cache);
   const auto history = sqconn->getParameter("record_history");
   sp.record_history = history == "true" || history == "1";
@@ -430,6 +431,7 @@ void SimAnnealInterface::writeSimResults(bool only_suggested_gs, bool qubo_energ
     {"mv_vblock_k", std::to_string(effective.mv.vblock_k)},
     {"mv_vblock_scope", std::to_string(effective.mv.vblock_scope)},
     {"mv_vblock_top", std::to_string(effective.mv.vblock_top)},
+    {"mv_vblock_dual", std::to_string(effective.mv.vblock_dual)},
     {"mv_vblock_cache", boolean(effective.mv.vblock_cache)},
     {"refinement", refinement_mode},
     {"refinement_candidates", std::to_string(effective.refinement_options.candidates)},

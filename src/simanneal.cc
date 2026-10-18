@@ -169,6 +169,7 @@ SimAnneal::~SimAnneal() {
     if (worker.joinable())
       worker.join();
   vblock_geometry_.reset();
+  vblock12_geometry_.reset();
   refinement_geometry_.reset();
   repair_geometry_.reset();
   AllChargeResults().swap(charge_results);
@@ -898,6 +899,11 @@ void SimAnneal::initialize()
   if (sp.mv.polish_top == -1) sp.mv.polish_top = sp.pkp_large_auto_selected ? 4 : 0;
   if (sp.mv.vblock_k == -1) sp.mv.vblock_k = sp.pkp_large_auto_selected ? 8 : 0;
   if (sp.mv.vblock_top == -1) sp.mv.vblock_top = sp.pkp_large_auto_selected ? 16 : 0;
+  // Dual k8+k12 cleanup (PRED1) is the Auto choice only for the pk+ n36-62
+  // default and only while its k=8 unlimited-budget cleanup is in effect.
+  if (sp.mv.vblock_dual == -1)
+    sp.mv.vblock_dual = sp.pkp_large_auto_selected && sp.mv.vblock_k == 8 &&
+        !sp.mv.vblock_max_ms && !sp.mv.vblock_max_blocks ? 1 : 0;
   sp.mv.validate();
   sp.mv_knn.clear();
   if (sp.mv.polish_mode >= 2) sp.mv_knn = mv::nearest(sp.db_r, sp.mv.knn);
@@ -906,6 +912,12 @@ void SimAnneal::initialize()
         ? mv::nearest(sp.db_r, sp.mv.knn) : sp.mv_knn;
     vblock_geometry_.reset(new vblock::Geometry(sp.v_ij, sp.v_ext, sp.v_fc,
                                               sp.mu, sp.mv, neighbours));
+    vblock12_geometry_.reset();
+    if (sp.mv.vblock_dual) {
+      auto twelve = sp.mv; twelve.vblock_k = 12;
+      vblock12_geometry_.reset(new vblock::Geometry(sp.v_ij, sp.v_ext, sp.v_fc,
+                                                   sp.mu, twelve, neighbours));
+    }
   }
   // determine number of threads to run
   if (sp.num_instances == -1) {
@@ -1701,7 +1713,7 @@ void SimAnneal::runVblock(const std::vector<int> &touched, bool finite) {
   auto &stats = stats_.mv;
   vblock::Budget budget(o);
   std::map<vblock::Charges, vblock::Descent> memo;
-  vblock::Memo suffix_memo;
+  vblock::Memo suffix_memo, suffix12_memo;
   const bool cache_suffix = o.vblock_cache && !o.vblock_max_blocks && !o.vblock_max_ms;
   std::ofstream trace;
   if (const char *path = std::getenv("SIMANNEAL_VBLOCK_TRACE")) {
@@ -1733,6 +1745,26 @@ void SimAnneal::runVblock(const std::vector<int> &touched, bool finite) {
     eligible.clear();
     for (const auto &entry : ranked) eligible.push_back(entry.second);
   }
+  // Dual branches are each validated and reverted like a single descent.
+  auto branch = [&](vblock::Geometry &g, vblock::Memo &suffix, const vblock::Charges &q) {
+    auto out = g.descend(q,budget,cache_suffix ? &suffix : nullptr);
+    ublas::vector<int> z(q.size()); std::copy(out.q.begin(),out.q.end(),z.begin());
+    ublas::vector<int> origin(q.size()); std::copy(q.begin(),q.end(),origin.begin());
+    FPType e;
+    if (!validatedSearchEnergy(z,e,finite) ||
+        (out.q != q && e >= systemEnergy(origin)-vblock::EPS*.5) ||
+        !g.valid(out.q,g.fields(out.q))) {
+      ++stats.vblock_reverts;
+      return vblock::Descent(q);
+    }
+    return out;
+  };
+  auto run8 = [&](const vblock::Charges &q) { return branch(*vblock_geometry_,suffix_memo,q); };
+  auto run12 = [&](const vblock::Charges &q) { return branch(*vblock12_geometry_,suffix12_memo,q); };
+  auto energy = [&](const vblock::Charges &q) {
+    ublas::vector<int> z(q.size()); std::copy(q.begin(),q.end(),z.begin());
+    return systemEnergy(z);
+  };
   for (int id : eligible) {
     if (budget.expired()) break;
     auto &result = suggested_gs_results[id];
@@ -1742,7 +1774,9 @@ void SimAnneal::runVblock(const std::vector<int> &touched, bool finite) {
     const FPType e_pre = systemEnergy(result.config);
     ++stats.vblock_endpoints;
     const auto cached = memo.find(pre);
-    auto descent = cached == memo.end() ? vblock_geometry_->descend(pre,budget,cache_suffix ? &suffix_memo : nullptr) : cached->second;
+    auto descent = cached != memo.end() ? cached->second : !o.vblock_dual
+        ? vblock_geometry_->descend(pre,budget,cache_suffix ? &suffix_memo : nullptr)
+        : vblock::dualDescend(pre,run8,run12,energy);
     ublas::vector<int> post(descent.q.size());
     std::copy(descent.q.begin(),descent.q.end(),post.begin());
     FPType e_post;

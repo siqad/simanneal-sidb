@@ -25,6 +25,7 @@ Set these parameters in the input XML `<sim_params>` section. SiQAD exposes the 
 | `mv_vblock_k` | `-1` (Auto) | Auto selects 8 in that band, otherwise 0. Explicit sizes are 0 (off), 6, 8, or 10. |
 | `mv_vblock_scope` | `1` | Select all restart endpoints, or 0 for endpoints selected by polish. |
 | `mv_vblock_top` | `-1` (Auto) | Auto selects 16 in that band, otherwise 0. Explicit 0 removes the endpoint guard. |
+| `mv_vblock_dual` | `-1` (Auto) | Auto selects 1 in that band when k=8 cleanup is in effect, otherwise 0. 1 also descends each selected endpoint with 12-site blocks and keeps the lower-energy valid result. Requires `mv_vblock_k=8` and unlimited cleanup budgets. |
 | `mv_vblock_cache` | `true` | Defaults ON when vblock is enabled. Memoize exact charge and field suffixes within one invocation. |
 | `population_backend` | `auto` | Existing portable/Accelerate selection, or explicit `openblas`/`openblas_symmetric`. |
 
@@ -64,6 +65,8 @@ Qualification sampled eight chemical potentials across the interval. It does not
 An additional Auto default covers positive-charge-possible (pk+) layouts with 36-62 sites.
 It uses 512 cycles, 128 restarts, hop factor 2, then mode-3 polish of four distinct endpoints and valid-block cleanup with k=8.
 The cleanup guard selects the 16 lowest-energy distinct valid endpoints after polish. The suffix cache defaults ON when vblock is enabled.
+Each selected endpoint is descended twice from the same state, with 8-site and with 12-site blocks; each branch is validated on its own and the lower-energy result is kept (`mv_vblock_dual=1`, ties keep the 12-site result).
+On a pre-registered fresh panel (PRED1: 538 certified pk+ layouts, 36-62 sites, 4 seeds x 64 calls per cluster), dual cleanup reduced zero-hit layout-seeds from 98 to 18 on Trillium and 94 to 22 on Nibi with no layout-seed lost, at 1.82x and 2.28x CPU on those layouts. Set `mv_vblock_dual=0` for the single k=8 cleanup.
 The default requires all three budgets to be Auto, the standard search settings above, zero fields, `-0.5 <= mu <= -0.1`, and permittivity/screening in [1,10].
 Pk+ means at least one prepared `final_domains` mask retains positive-charge bit 4. This conservative bound does not assert that an observed result contains positive charge.
 Nominal pk+ layouts also qualify. Positive-excluded layouts and sizes outside 36-62 retain existing behavior.

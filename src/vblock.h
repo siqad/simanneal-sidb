@@ -42,8 +42,8 @@ struct Budget {
 };
 
 struct Row {
-  std::array<int, 10> z{};
-  std::array<double, 10> bf{};
+  std::array<int, 12> z{};
+  std::array<double, 12> bf{};
   double internal = 0;
   int index = 0;
 };
@@ -248,7 +248,7 @@ public:
       for (auto &b : bank) {
         if (!budget.beginBlock()) break;
         const int k = b.sites.size();
-        std::array<double,10> h{};
+        std::array<double,12> h{};
         double old = 0;
         for (int i = 0; i < k; ++i) {
           h[i] = f[b.sites[i]];
@@ -297,6 +297,18 @@ public:
         } else {
           // Exact depth-first B&B: independent linear/pair lower bounds and
           // conservative assigned-site population intervals, as in the reference.
+          // Cache endpoint-independent bounds without changing accumulation order.
+          std::array<std::array<double,12>,12> B{}, pair_min{}, field_min{}, field_max{};
+          for (int i = 0; i < k; ++i) for (int j = 0; j < k; ++j) {
+            B[i][j] = A(b.sites[i],b.sites[j]);
+            double mn = std::numeric_limits<double>::infinity(), mx = -mn;
+            for (int t : b.allowed[j]) { const double x=t*B[i][j]; mn=std::min(mn,x); mx=std::max(mx,x); }
+            field_min[i][j]=mn; field_max[i][j]=mx;
+            mn=std::numeric_limits<double>::infinity();
+            for (int t : b.allowed[i]) for (int u : b.allowed[j]) mn=std::min(mn,t*u*B[i][j]);
+            pair_min[i][j]=mn;
+          }
+          auto coupling = [&](int i, int j) { return B[i][j]; };
           Row r; std::uint64_t nodes = 0;
           std::function<void(int,double,int)> visit = [&](int depth, double partial, int index) {
             if ((++nodes & 255) == 0 && budget.expired()) return;
@@ -305,38 +317,34 @@ public:
               r.index = index;
               for (int i = 0; i < k; ++i) {
                 r.bf[i] = 0;
-                for (int j = 0; j < k; ++j) r.bf[i] += r.z[j]*A(b.sites[j],b.sites[i]);
+                for (int j = 0; j < k; ++j) r.bf[i] += r.z[j]*coupling(j,i);
               }
               consider(r,partial); return;
             }
             for (int z : b.allowed[depth]) {
               r.z[depth] = z;
               double linear = h[depth];
-              for (int i = 0; i < depth; ++i) linear += r.z[i]*A(b.sites[i],b.sites[depth]);
+              for (int i = 0; i < depth; ++i) linear += r.z[i]*coupling(i,depth);
               const double p = partial+z*linear;
               double lower = p;
               for (int j = depth+1; j < k; ++j) {
                 double a = h[j];
-                for (int i = 0; i <= depth; ++i) a += r.z[i]*A(b.sites[i],b.sites[j]);
+                for (int i = 0; i <= depth; ++i) a += r.z[i]*coupling(i,j);
                 double term = std::numeric_limits<double>::infinity();
                 for (int t : b.allowed[j]) term = std::min(term,a*t);
                 lower += term;
                 for (int l = j+1; l < k; ++l) {
-                  term = std::numeric_limits<double>::infinity();
-                  for (int t : b.allowed[j]) for (int u : b.allowed[l]) term = std::min(term,t*u*A(b.sites[j],b.sites[l]));
-                  lower += term;
+                  lower += pair_min[j][l];
                 }
               }
               if (!(lower-old < bound+1e-10*(1+std::abs(old)+std::abs(lower)))) continue;
               bool possible = true;
               for (int i = 0; i <= depth && possible; ++i) {
                 double lo = h[i];
-                for (int j = 0; j <= depth; ++j) lo += r.z[j]*A(b.sites[j],b.sites[i]);
+                for (int j = 0; j <= depth; ++j) lo += r.z[j]*coupling(j,i);
                 double hi = lo;
                 for (int j = depth+1; j < k; ++j) {
-                  double mn = std::numeric_limits<double>::infinity(), mx = -mn;
-                  for (int t : b.allowed[j]) { const double x = t*A(b.sites[i],b.sites[j]); mn = std::min(mn,x); mx = std::max(mx,x); }
-                  lo += mn; hi += mx;
+                  lo += field_min[i][j]; hi += field_max[i][j];
                 }
                 possible = (r.z[i] == -1 && hi > mu-TOL) || (r.z[i] == 1 && lo < mu-.59+TOL) ||
                            (r.z[i] == 0 && lo < mu+TOL && hi > mu-.59-TOL);
@@ -380,5 +388,16 @@ public:
     return out;
   }
 };
+// Dual cleanup: descend independently with k8 and k12 from the same pre-state
+// and keep the lower-energy result; strict ties retain k12. Callers gate each
+// branch with their final FP64 validator (research/vblock-cpu 6e0f995, PRED1).
+inline Descent dualDescend(const Charges &pre,
+    const std::function<Descent(const Charges &)> &run8,
+    const std::function<Descent(const Charges &)> &run12,
+    const std::function<double(const Charges &)> &energy) {
+  const auto a = run8(pre);
+  const auto b = run12(pre);
+  return energy(a.q) < energy(b.q) ? a : b;
+}
 } }
 #endif

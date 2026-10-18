@@ -143,6 +143,7 @@ Observation execute(const Tree &request) {
     params.mv.vblock_k = request.get<int>("mv_vblock_k", -1);
     params.mv.vblock_scope = request.get<int>("mv_vblock_scope", 1);
     params.mv.vblock_top = request.get<int>("mv_vblock_top", -1);
+    params.mv.vblock_dual = request.get<int>("mv_vblock_dual", -1);
     params.mv.vblock_cache = request.get<bool>("mv_vblock_cache", true);
 
     phys::SimAnneal solver(std::move(params));
@@ -258,6 +259,7 @@ void write(const Tree &request, const Observation &row) {
             << ",\"mv_vblock_k\":" << row.mv.vblock_k
             << ",\"mv_vblock_scope\":" << row.mv.vblock_scope
             << ",\"mv_vblock_top\":" << row.mv.vblock_top
+            << ",\"mv_vblock_dual\":" << row.mv.vblock_dual
             << ",\"mv_vblock_cache\":" << row.mv.vblock_cache
             << ",\"vblock_endpoints\":" << row.stats.mv.vblock_endpoints
             << ",\"vblock_improved\":" << row.stats.mv.vblock_improved
