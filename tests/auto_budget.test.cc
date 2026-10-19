@@ -233,6 +233,7 @@ TEST_CASE("Positive-possible large Auto selects cleanup only with all budgets au
         REQUIRE(e.mv.polish_top==(selected?4:0));
         REQUIRE(e.mv.vblock_k==(selected?8:0));
         REQUIRE(e.mv.vblock_top==(selected?16:0));
+        REQUIRE(e.mv.vblock_dual==(selected?1:0));
         REQUIRE(e.mv.vblock_scope==1);
         REQUIRE(e.mv.vblock_cache);
     }
@@ -247,6 +248,53 @@ TEST_CASE("Positive-possible large Auto selects cleanup only with all budgets au
         REQUIRE(e.hop_attempt_factor==(field==2?2:5));
         REQUIRE(e.mv.polish_mode==0);
         REQUIRE(e.mv.vblock_k==0);
+        REQUIRE(e.mv.vblock_dual==0);
+    }
+}
+
+TEST_CASE("Dual k8+k12 cleanup is Auto only for qualified pk+ layouts with 36-62 sites") {
+    // pk+ below 36 sites and above 62 sites keep the previous resolution.
+    for (int count:{2,9,10,25,26,35,36,48,62,63}) {
+        auto p=scoped(count); p.eps_r=1; p.debye_length=10; p.mu=-.4;
+        for (int i=0;i<count;++i) p.db_locs[i].first=i*3.84;
+        phys::SimAnneal solver(p); const auto &e=solver.effectiveParams();
+        INFO("count=" << count);
+        const bool selected=count>=36 && count<=62;
+        REQUIRE(e.pkp_large_auto_selected==selected);
+        REQUIRE(e.mv.vblock_dual==(selected?1:0));
+        if (!selected) {
+            REQUIRE(e.mv.polish_mode==0); REQUIRE(e.mv.vblock_k==0); REQUIRE(e.mv.vblock_top==0);
+        }
+    }
+    // Explicit choices override Auto; Auto stays off unless k=8 cleanup is in effect.
+    auto p=scoped(40); p.eps_r=1; p.mu=-.4;
+    for (int i=0;i<40;++i) p.db_locs[i].first=i*3.84;
+    {
+        auto q=p; q.mv.vblock_dual=0;
+        phys::SimAnneal solver(q); const auto &e=solver.effectiveParams();
+        REQUIRE(e.pkp_large_auto_selected); REQUIRE(e.mv.vblock_k==8); REQUIRE(e.mv.vblock_dual==0);
+    }
+    for (int k:{0,6,10}) {
+        auto q=p; q.mv.vblock_k=k;
+        phys::SimAnneal solver(q);
+        REQUIRE(solver.effectiveParams().mv.vblock_dual==0);
+    }
+    {
+        auto q=p; q.mv.vblock_max_blocks=100;
+        phys::SimAnneal solver(q);
+        REQUIRE(solver.effectiveParams().mv.vblock_dual==0);
+    }
+    for (int k:{0,6,10}) {
+        auto q=p; q.mv.vblock_k=k; q.mv.vblock_dual=1;
+        REQUIRE_THROWS_AS(phys::SimAnneal(q),std::invalid_argument);
+    }
+    for (int dual:{-2,2}) {
+        auto q=p; q.mv.vblock_dual=dual;
+        REQUIRE_THROWS_AS(phys::SimAnneal(q),std::invalid_argument);
+    }
+    {
+        auto q=p; q.mv.vblock_dual=1; q.mv.vblock_max_ms=5;
+        REQUIRE_THROWS_AS(phys::SimAnneal(q),std::invalid_argument);
     }
 }
 
@@ -324,6 +372,7 @@ TEST_CASE("Positive-excluded Auto uses SC2s at 10-62 sites and qualified tiers b
                 REQUIRE(e.hop_attempt_factor==1);
             }
             REQUIRE(e.mv.polish_mode==0); REQUIRE(e.mv.vblock_k==0);
+            REQUIRE(e.mv.vblock_dual==0);
         }
     }
 }

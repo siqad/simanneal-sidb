@@ -18,6 +18,7 @@ struct Options {
   int vblock_k = -1;     // -1 Auto, 0 off, else 6, 8, 10
   int vblock_scope = 1;  // 0 polished endpoints, 1 all restarts
   int vblock_top = -1;   // -1 Auto, 0 unlimited, K distinct valid endpoints
+  int vblock_dual = -1;  // -1 Auto, 0 off, 1 also descend with k=12 and keep the lower energy
   bool vblock_cache = true; // Exact state+field suffix memo, enabled with vblock
   int vblock_graph = 0;
   double vblock_max_ms = 0;
@@ -32,6 +33,11 @@ struct Options {
         vblock_graph < 0 || vblock_graph > 1 || !std::isfinite(vblock_max_ms) ||
         vblock_max_ms < 0 || vblock_max_blocks < 0)
       throw std::invalid_argument("mv_vblock options out of range");
+    if (vblock_dual < 0 || vblock_dual > 1)
+      throw std::invalid_argument("mv_vblock_dual must be 0 or 1");
+    // Both branches must complete for the lower-energy choice to be exact.
+    if (vblock_dual && (vblock_k != 8 || vblock_max_ms || vblock_max_blocks))
+      throw std::invalid_argument("mv_vblock_dual requires mv_vblock_k=8 and unlimited budgets");
   }
 };
 struct Stats {
