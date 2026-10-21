@@ -83,3 +83,14 @@ This example supports free sites and external potentials. Use the full Python in
 ### Optimized search profiles
 
 The default optimized profile enables PCG32 sampling, bounded validated repair, and the singleton shortcut. Select `search_profile=legacy` for legacy profile defaults. Bounded cluster refinement and transient domain masking remain opt-in. See [search settings and limits](docs/optimized_search.md), [method attribution](docs/ATTRIBUTION.md), and the [production TTS benchmark](benchmarks/production_tts/README.md). Qualified positive-charge-possible layouts with 36-62 sites also use end polish and guarded valid-block cleanup, with 8- and 12-site descents per endpoint, when all budgets are Auto. The optimized profile does not certify a global ground state.
+
+
+### Python packaging toolchain
+
+The package workflow uses its selected Python 3.10 or 3.11 interpreter throughout.
+It bootstraps hash-verified pip 26.2.2 before dependency downloads and requires
+certifi 2026.10.19 or newer. These installs use patched bundled roots, rather than
+native roots that could retain compromised eMudhra trust. System-only private
+certificate authorities are not automatically included. The generated wheel is
+installed offline before the Python wrapper test runs. Solver code and defaults
+are unchanged by this packaging update.
