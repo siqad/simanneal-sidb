@@ -1,41 +1,43 @@
-name: Python Package using Conda
+name: Python Package
 
 on:
   push:
     branches: [ "master", "dev", "ci-test" ]
+  pull_request:
+    branches: [ "master", "dev" ]
 
 jobs:
   build-pysimanneal-linux:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.7', '3.8', '3.9', '3.10', '3.11']
+        python-version: ['3.10', '3.11']
       max-parallel: 5
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v3
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
-    - name: Add conda to system path
-      run: |
-        # $CONDA is an environment variable pointing to the root of the miniconda directory
-        echo $CONDA/bin >> $GITHUB_PATH
     - name: Install apt dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y cmake libboost-dev libboost-random-dev 
-    - name: Install conda dependencies
+        sudo apt-get install -y ca-certificates cmake libboost-dev libboost-random-dev swig
+    - name: Bootstrap patched Python certificate tooling
       run: |
-        # conda env update --file environment.yml --name base
-        conda install -y scikit-build pytest numpy=1.22.3
+        python -m pip --disable-pip-version-check install --no-deps --upgrade "https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl#sha256=fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"
+        export PIP_USE_DEPRECATED=legacy-certs
+        echo "PIP_USE_DEPRECATED=legacy-certs" >> "$GITHUB_ENV"
+        python -m pip --disable-pip-version-check install --use-deprecated=legacy-certs "certifi>=2026.10.19" scikit-build pytest "numpy==1.26.4"
     - name: Run compilation
       working-directory: ${{github.workspace}}
       run: |
-        python3 setup.py bdist_wheel
-        pip3 install dist/pysimanneal-*.whl
+        python setup.py bdist_wheel
+        python -m pip --disable-pip-version-check install --no-index --no-deps dist/pysimanneal-*.whl
     - name: Run test
       working-directory: ${{github.workspace}}
       run: |
-        pytest
+        python -m pytest
